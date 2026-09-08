@@ -1,10 +1,96 @@
-# SDV_MCU_Project
+<div align="center">
 
-**CAN·LIN·RTOS 기반 5 ECU 시스템을 벤치에서 검증하고, RC카에 통합하는 6인·4주 모빌리티 SDV 팀 프로젝트입니다.**
+# SDV MCU Project
+
+**5 ECU로 구현하는 모빌리티 SDV 시스템**
+
+CAN·LIN·RTOS 기반 벤치 검증부터 RC카 통합까지
+
+![기간: 4주](https://img.shields.io/badge/DURATION-4_WEEKS-334155?style=flat-square)
+![팀: 6명](https://img.shields.io/badge/TEAM-6_MEMBERS-334155?style=flat-square)
+![구성: 5 ECU](https://img.shields.io/badge/ARCHITECTURE-5_ECUs-334155?style=flat-square)
+![상태: 계획 단계](https://img.shields.io/badge/STATUS-PLANNING-D97706?style=flat-square)
+
+[기술 스택](#tech-stack) · [시스템 구성](#ecu-architecture) · [4주 로드맵](#roadmap) · [상세 개발 계획](docs/WEEKLY_PLAN.md)
+
+</div>
+
+---
 
 > **상태:** 초기 계획 / 구현·시험 완료 전  
 > **작성 기준:** 제공 명세 `mobility_project_spec_v0.9.md` (본문 제목은 v0.8), 2026-09-08  
 > 아래 내용은 해당 명세를 정리한 개발 계획입니다. 상세 보드 모델, 프로토콜 수치, 부품 적합성 및 시험 기준은 착수 시 확정합니다.
+
+<a id="tech-stack"></a>
+
+## 기술 스택
+
+> 제공 명세에 따른 **사용 예정 스택**입니다. 세부 모델·버전과 실제 구현 여부는 개발 진행에 맞춰 갱신합니다.
+
+### Embedded & RTOS
+
+![STM32](https://img.shields.io/badge/STM32-03234B?style=for-the-badge&logo=stmicroelectronics&logoColor=white)
+![ESP32](https://img.shields.io/badge/ESP32-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
+![RTOS](https://img.shields.io/badge/RTOS-2563EB?style=for-the-badge)
+
+| 스택 | 적용 위치 | 역할 |
+|---|---|---|
+| **STM32 × 4** | 공조/모터·ADAS·IVI·배터리 게이트웨이 | 센서 수집, 제어, 상태 표시 및 ECU 간 연동 |
+| **ESP32 × 1** | 텔레매틱스 | WiFi 웹 대시보드와 CAN 명령·상태 중계 |
+| **RTOS** | ECU 펌웨어 | 통신·센서·제어·표시 작업의 주기와 우선순위 관리 |
+| **PWM · ADC · GPIO** | 구동 및 센서 인터페이스 | 팬·모터·서보 출력, 서미스터 입력, 디지털 입출력 |
+
+RTOS 배포판, 펌웨어 언어, IDE·SDK 및 보드 세부 모델은 아직 선정 전입니다.
+
+### Network & Interface
+
+![CAN](https://img.shields.io/badge/CAN-0F766E?style=for-the-badge)
+![LIN](https://img.shields.io/badge/LIN-0891B2?style=for-the-badge)
+![WiFi](https://img.shields.io/badge/WiFi-0284C7?style=for-the-badge)
+![TouchGFX](https://img.shields.io/badge/TouchGFX-7C3AED?style=for-the-badge)
+
+| 스택 | 연결 구간 | 역할 |
+|---|---|---|
+| **CAN** | 5 ECU 공통 버스 | 목표 제어값·구동 상태·온도·거리·모드 전달 |
+| **LIN** | 배터리 게이트웨이 ↔ CDS/안개등 노드 | 조도 폴링, 자동 안개등 명령·상태 전달 |
+| **WiFi · Web Dashboard** | 휴대폰 ↔ ESP32 | 목표 속도·조향 입력, 모드 전환, 상태 확인 |
+| **TouchGFX** | STM32 IVI | 팬 PWM·RPM·온도·거리·안개등·모드 시각화 |
+
+LIN은 Phase 1부터 개발하며, 2주차 체크포인트에서 진행 상태에 따라 후순위로 전환할 수 있습니다. 웹 프레임워크와 상세 통신 규격은 미정입니다.
+
+### Sensing & Actuation
+
+| 구분 | 구성 | 적용 단계 |
+|---|---|---|
+| **거리 감지** | 초음파 센서 | Phase 1 벤치 → Phase 2 차량 전방 |
+| **온도 측정** | 서미스터 + ADC | Phase 1 벤치 → Phase 2 배터리팩 |
+| **자동 등화** | CDS + LIN 슬레이브 + LED | Phase 1 개발, 유지 시 Phase 2 장착 |
+| **벤치 구동** | EZ 모터 R300 5V 팬 + PWM 구동 회로 | Phase 1 |
+| **차량 구동·조향** | 브러시드 모터 + TB6612FNG 후보 + 서보 | Phase 2, 정격 적합성 확인 필요 |
+| **주행 상태 측정** | 로터리 엔코더 또는 자석+홀센서 | Phase 2, 부품 선정 필요 |
+| **전원** | USB 파워뱅크 → 배터리 + UBEC 기반 3레일 | Phase 1 → Phase 2 |
+
+<details>
+<summary><strong>선택 확장 · Vision Stack</strong> — Phase 1/2 완료 후 검토</summary>
+
+<br>
+
+![Raspberry Pi 4](https://img.shields.io/badge/Raspberry_Pi_4-A22846?style=for-the-badge)
+![IMX500](https://img.shields.io/badge/AI_Camera-IMX500-7C3AED?style=for-the-badge)
+![SPI CAN](https://img.shields.io/badge/SPI_CAN-MCP2515-0F766E?style=for-the-badge)
+
+| 구성 | 역할 | 상태 |
+|---|---|---|
+| Raspberry Pi 4 + AI Camera(IMX500) | 정지 표지판·신호등 인식 | 명세상 보유 |
+| MCP2515 SPI-CAN HAT | 비전 결과의 CAN 전달 | 추가 조달 |
+| 사전학습 객체 탐지 모델 + 색상 판별 | 표지판·신호등 종류 및 적/녹 판단 | 모델·지원 클래스·판별 방식 검증 필요 |
+| 독립 5V/3A 전원 | 비전 장치 전원 공급 | 구성 검증 필요 |
+
+기본 4주 필수 범위에 포함하지 않습니다.
+
+</details>
+
+---
 
 ## 1. 목표와 진행 방식
 
@@ -14,6 +100,8 @@
 - **Phase 1 (1~2주차):** RC카 없이 5 ECU와 LIN 서브네트워크, CAN 통신·RTOS·핵심 제어 로직을 벤치에서 검증합니다.
 - **Phase 2 (3~4주차):** 검증한 시스템을 RC카에 장착하고 구동·조향 전환과 전원 재설계를 수행합니다. 엔코더·회피 로직·표시 필드 확장도 이 단계의 구현·시험 작업에 포함합니다.
 - **Phase 3 (선택):** Phase 1/2 완료 후 여유가 있을 때만 비전 인식을 추가합니다.
+
+<a id="ecu-architecture"></a>
 
 ## 2. ECU 구성과 6인 역할 분담
 
@@ -82,6 +170,8 @@ LIN 마스터가 조도값을 폴링하고 안개등 ON/OFF를 판단합니다. 
 - Phase 1: CDS, 안개등 대용 LED, LIN 트랜시버 모듈 2개.
 - Phase 2: 브러시드 RC카, UBEC 2개, 로터리 엔코더 또는 자석+홀센서, 후방 적색 LED.
 - 보유·누락 확인: STM32 보드 4개, ESP32 1개, TouchGFX 디스플레이, CAN 인터페이스·배선·종단, 초음파·서미스터, 팬 구동부, LIN 슬레이브 MCU, TB6612FNG 및 서보.
+
+<a id="roadmap"></a>
 
 ## 6. 4주 일정
 
