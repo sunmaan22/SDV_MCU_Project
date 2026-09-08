@@ -119,19 +119,68 @@ A~F는 역할 식별자이며 실제 팀원 이름은 추후 연결합니다.
 
 ## 3. 네트워크 구조
 
-```text
-휴대폰 웹 대시보드
-        ↕ WiFi
-텔레매틱스(ESP32) ───────────── CAN 버스
-                              ├─ 공조 → 모터+조향 ECU
-                              ├─ ADAS ECU
-                              ├─ IVI ECU (TouchGFX)
-                              └─ 배터리(온도)+LIN 게이트웨이 ECU
-                                         ↕ LIN
-                                  CDS+안개등 슬레이브
+**WiFi로 명령을 입력하고, CAN으로 5 ECU를 연결하며, LIN으로 조도·안개등을 제어합니다.**
+
+```mermaid
+flowchart TB
+    PHONE(["휴대폰 · 웹 대시보드<br/>목표 속도 / 조향 · 모드 선택"])
+
+    subgraph CORE["차량 네트워크 · 5 ECU"]
+        direction TB
+        TEL["텔레매틱스 ECU · F<br/>ESP32<br/>웹 명령 ↔ 차량 상태"]
+        CAN{{"CAN BUS<br/>목표값 · 구동 상태 · 온도 · 거리 · 모드"}}
+
+        DRIVE["구동 ECU · A / B<br/>STM32<br/>Phase 1 팬 → Phase 2 모터·조향"]
+        ADAS["ADAS ECU · C<br/>STM32<br/>초음파 거리 · 비상정지"]
+        IVI["IVI ECU · D<br/>STM32 + TouchGFX<br/>차량 상태 시각화"]
+        GW["배터리 + LIN 게이트웨이 · E<br/>STM32 · LIN Master<br/>온도 송신 · 조도 판단"]
+
+        TEL <--> CAN
+        CAN <--> DRIVE
+        CAN <--> ADAS
+        CAN <--> IVI
+        CAN <--> GW
+    end
+
+    subgraph BODY["LIN 서브네트워크 · 5 ECU 외 별도 노드"]
+        direction TB
+        SLAVE["LIN Slave · 통합 노드<br/>CDS 조도 응답 · 안개등 명령 실행"]
+    end
+
+    PHONE <-->|"WiFi · 명령 / 상태"| TEL
+    GW -->|"LIN · 조도 폴링 / 등화 명령"| SLAVE
+    SLAVE -->|"LIN · 조도 응답"| GW
+
+    classDef client fill:#EFF6FF,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
+    classDef bus fill:#CCFBF1,stroke:#0F766E,color:#134E4A,stroke-width:3px;
+    classDef control fill:#FFF7ED,stroke:#EA580C,color:#7C2D12,stroke-width:2px;
+    classDef display fill:#F5F3FF,stroke:#7C3AED,color:#4C1D95,stroke-width:2px;
+    classDef gateway fill:#ECFDF5,stroke:#059669,color:#064E3B,stroke-width:2px;
+    classDef lin fill:#ECFEFF,stroke:#0891B2,color:#164E63,stroke-width:2px;
+
+    class PHONE,TEL client;
+    class CAN bus;
+    class DRIVE,ADAS control;
+    class IVI display;
+    class GW gateway;
+    class SLAVE lin;
+    style CORE fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#0F172A;
+    style BODY fill:#F0FDFA,stroke:#0891B2,stroke-width:1px,color:#164E63;
 ```
 
-LIN 마스터가 조도값을 폴링하고 안개등 ON/OFF를 판단합니다. 슬레이브는 조도 응답과 등화 명령 실행을 담당하며, 게이트웨이가 결과를 CAN으로 전달합니다.
+| 연결 | 담당 범위 | 대표 데이터 흐름 |
+|---|---|---|
+| **WiFi · 사용자 인터페이스** | 휴대폰 ↔ ESP32 | 목표 속도·조향·모드 입력 / 차량 상태 확인 |
+| **CAN · ECU 공통 네트워크** | 텔레매틱스·구동·ADAS·IVI·게이트웨이 | 제어 명령 / 비상정지 / 센서·구동 상태 |
+| **LIN · 센서 및 등화** | 게이트웨이 ↔ CDS·안개등 슬레이브 | 조도 폴링·응답 / 안개등 ON·OFF 명령 |
+
+**주요 동작 경로**
+
+- **구동 제어:** 휴대폰 → WiFi → 텔레매틱스 → CAN → 팬/모터·조향 ECU.
+- **비상정지:** 초음파 → ADAS → CAN → 팬/모터 정지, IVI 상태 표시.
+- **자동 안개등:** CDS → LIN 응답 → 게이트웨이 판단 → LIN 명령 → 안개등. 게이트웨이는 결과를 CAN으로 전달해 IVI에 표시합니다.
+
+> **단계별 적용:** Phase 1은 팬 제어, Phase 2는 모터·조향 및 차량 상태 필드를 사용합니다. LIN은 2주차 체크포인트에서 유지 여부를 결정합니다. 선택 비전 ECU는 기본 5 ECU 구성에 포함하지 않습니다.
 
 ## 4. 통신 및 제어 동작
 
