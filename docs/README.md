@@ -21,6 +21,11 @@ docs/
 │  ├ SPECIFICATION.md
 │  ├ ARCHITECTURE.md
 │  └ TEST_REPORT.md
+├ Motor_Steering_Control/
+│  ├ README.md
+│  ├ SPECIFICATION.md
+│  ├ ARCHITECTURE.md
+│  └ TEST_REPORT.md
 └ templates/
    ├ FUNCTIONAL_SPECIFICATION_TEMPLATE.md
    ├ SOFTWARE_ARCHITECTURE_TEMPLATE.md
@@ -117,10 +122,11 @@ TEST_REPORT.md
 
 현재 채운 예시:
 
-- **B / Cluster + IVI:** [`IVI/`](IVI/)
 - **A / Ultrasonic Perception:** [`Ultrasonic_Perception/`](Ultrasonic_Perception/)
+- **B / Cluster + IVI:** [`IVI/`](IVI/)
+- **C / Motor + Steering Control:** [`Motor_Steering_Control/`](Motor_Steering_Control/)
 
-각 예시의 `TBD`와 `NOT RUN`은 실제 부품 선정/구현/시험 후 담당자가 채운다.
+각 예시의 `TBD`, `후보`, `NOT RUN`은 실제 부품 선정/구현/시험 후 담당자가 채운다.
 
 ---
 
