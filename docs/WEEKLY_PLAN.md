@@ -1,158 +1,400 @@
-# 4주 개발 계획 — 5 ECU 벤치 검증에서 RC카 통합까지
+# 4주 개발 계획 — Stage 1 단독 Bring-up부터 차량 통합까지
 
-[프로젝트 개요](../README.md)
+[Main README](../README.md)
 
-> **기준:** 제공 명세 `mobility_project_spec_v0.9.md` (본문 제목 v0.8), 2026-09-08  
-> **기간 / 인원:** 4주 / 6명. 실제 날짜 및 A~F 실명은 미정입니다. 모든 항목은 계획 상태입니다.  
-> 명세의 단계와 역할을 유지하고, 실행을 위한 산출물·시험 기준·세부 작업을 보완했습니다.
+> **기간 / 인원:** 4주 / 6명  
+> **기준 Architecture:** Raspberry Pi 4 HPC + STM32 #1~#5 + STM32H735 Cockpit + CAN FD Backbone + LIN Subnetwork  
+> **핵심 원칙:** 1주차에 모든 ECU를 한꺼번에 연결하지 않는다. 먼저 각자 자기 Node를 단독 검증한다.
 
-## 일정의 선행 조건
+---
 
-1. C가 1주차 초반 CAN 공통 규격을 확정·배포한다. 다른 담당자는 그동안 보드·센서·UI 기본 구동을 진행한다.
-2. Phase 1부터 RTOS를 적용하고 CAN/LIN·제어 로직을 벤치에서 검증한다.
-3. RC카·UBEC·구동부·엔코더 등은 1주차에 조달을 시작해 3주차 통합을 준비한다.
-4. 2주차 말 LIN 유지/후순위 여부를 결정한다. 온도 ECU와 나머지 5 ECU 기능은 필수로 유지한다.
-5. Phase 2는 장착·전원 작업에 더해 모터·서보 전환, 엔코더·회피 로직 및 UI/웹 확장을 포함한다. 4주차를 이 기능들의 최초 착수 시점으로 미루지 않는다.
+# 0. 역할
 
-## 1주차 — 규격 확정·Phase 1 병렬 개발 착수
+| 담당 | Node |
+|---|---|
+| A | STM32 #1 VCU / Driver Input / Safety / CAN Integration |
+| B | STM32 #2 Drive + Steering |
+| C | Raspberry Pi 4 HPC / Front ADAS / DTC Manager |
+| D | STM32 #3 Parking + Rear Camera Service |
+| E | STM32H735 Cluster + IVI Cockpit |
+| F | STM32 #4 Body Gateway + STM32 #5 LIN Body Slave |
 
-| 담당 | 주요 작업 | 산출물 |
-|---|---|---|
-| C | 초반 CAN ID·DLC·단위·바이트 배치·주기·타임아웃 및 Phase 2 확장 규칙 배포. 초음파 측정·비상정지 프레임 구현 착수 | 공통 메시지 규격, CAN 시험 로그, 거리 측정 로그 |
-| A·B | 팬 PWM·구동 회로 구성, CAN 목표값 수신, 정지·통신 두절 로직 설계. A/B 내부 업무 분담 확정 | 팬 기본 동작, 제어 상태·우선순위 초안 |
-| D | TouchGFX 화면과 CAN 데이터 연결 구조 구성 | 팬 PWM·온도·거리·안개등·모드 화면 초안 |
-| E | 서미스터 ADC·온도 송신, LIN 마스터·CDS/안개등 슬레이브 구성 및 PID·스케줄 결정 | 온도 로그, LIN 규격·노드 기본 구동 |
-| F | ESP32 WiFi 웹 대시보드, 목표 팬 속도·모드 토글, CAN 송수신 | 폰 접속 화면, 명령 송신 로그 |
-| 전원 | RTOS·툴체인 정리, 결선·전원 예산 확인, 부품 재고·발주·도착일 기록 | 환경 안내, 부품 목록, 결선도 |
+---
 
-**주간 완료 기준**
+# Week 1 — Specification, Architecture, Stage 1 Bring-up
 
-- [ ] 모든 담당자가 동일 CAN 규격을 사용하며 시험 프레임 송수신을 확인한다.
-- [ ] 각 ECU의 기본 기능을 독립 실행할 수 있다.
-- [ ] 거리·조도 임계값, 정지 해제·복구·모드별 우선순위를 합의한다.
-- [ ] 제어·상태 보고 주기, 응답 시간 및 반복 시험 횟수를 수치로 정한다.
-- [ ] LIN 슬레이브 MCU와 트랜시버 전압 조건을 확인한다.
-- [ ] RC카·전원·드라이버의 적합성 확인 및 조달 일정을 기록한다.
+## 공통
 
-## 2주차 — Phase 1 벤치 통합 및 체크포인트
+모든 담당자는 코딩 전에 다음 3개 문서를 만든다.
 
-| 담당 | 주요 작업 | 산출물 |
-|---|---|---|
-| A·B | 팬 제어·비상정지·목표 프레임 두절 정지·모드 동작 통합 | 제어 시험 결과 |
-| C | 5 ECU CAN 통합 리드, 거리 기반 정지 및 정상/오류 프레임 시험 | CAN 통합 로그, 결함 목록 |
-| D | 실제 CAN 데이터로 팬 PWM·온도·거리·안개등·모드 표시 | IVI 화면 및 갱신 확인 |
-| E | LIN 조도 폴링 → 마스터 판단 → 안개등 명령 → CAN 상태 전달 완성 | LIN/CAN 연동 기록 |
-| F | 폰 목표값·모드 토글과 상태 수신 연동 | 웹 조작 시나리오 결과 |
-| 전원 | 아래 벤치 시험 실행, LIN 유지/보류 판단, Phase 2 준비 점검 | 체크포인트 기록 |
+```text
+SPECIFICATION.md
+ARCHITECTURE.md
+STAGE1_TEST_REPORT.md
+```
 
-**벤치 시연 및 완료 기준**
+필수 작업:
 
-- [ ] 폰 목표값 변경 → CAN 수신 → 팬 PWM 변경 → IVI/웹 상태 반영.
-- [ ] 장애물 거리 임계값 미만 → ADAS 프레임 → 팬 정지.
-- [ ] 목표 제어 프레임 송신 중단 → 합의한 타임아웃 내 팬 정지.
-- [ ] 서미스터 온도·초음파 거리·모드의 표시 갱신.
-- [ ] CDS에 그림자/조명 변화 → LIN 마스터 판단 → 안개등 ON/OFF → IVI 표시.
-- [ ] 수동/자율 전환·비상정지 우선순위·복구를 정의한 조건으로 확인.
-- [ ] 각 ECU의 RTOS 작업이 함께 동작하는 상태로 시험 로그 기록.
+- [ ] Board / MCU 정확한 모델 확인
+- [ ] Logic voltage / power input 확인
+- [ ] CAN/FDCAN 지원 여부 확인
+- [ ] Sensor / actuator datasheet 확인
+- [ ] Pin Map 작성
+- [ ] Wiring Table 작성
+- [ ] Build / Flash / Debug 확인
+- [ ] UART 또는 Debug 출력 확보
 
-**LIN 분기 결정**
+## A — VCU
 
-| 결과 | 결정 | 이후 기록 방식 |
-|---|---|---|
-| LIN 전체 시나리오 통과 | Phase 2에 그대로 장착·회귀 시험 | Phase 1 전체 범위 완료 |
-| LIN이 통합 일정을 막음 | LIN을 스트레치로 후순위 전환, E는 온도 기능 유지 | 5 ECU 필수 범위 완료 / LIN 보류 |
-| 5 ECU 필수 기능도 미완료 | 결함·담당·해결 목표를 기록하고 필수 기능 우선 복구 | Phase 1 필수 범위 미완료 |
+- Gear P/R/N/D 버튼
+- Accelerator ADC
+- Brake ADC
+- Steering AS5600 후보
+- E-Stop
+- `INIT / READY / DRIVE / REVERSE / FAULT` State 초안
 
-LIN 보류 시 IVI는 안개등 데이터를 정상값처럼 표시하지 않고 비활성/미지원으로 구분한다.
+완료 예:
 
-## 3주차 — Phase 2 RC카 통합
+```text
+GEAR=D ACCEL=35 BRAKE=0 STEER=-11.2 ESTOP=0
+```
 
-| 담당 | 주요 작업 | 산출물 |
-|---|---|---|
-| A·B | 팬 → 브러시드 모터·TB6612FNG 후보·서보로 전환. 드라이버 정격 확인, 엔코더 RPM·odom, 모드별 회피 로직 구현. 여유 시 후방 LED | 모터/조향 펌웨어, 환산식·동작 로그 |
-| C | 초음파 전방 장착, 거리·비상정지 재시험, 확장 메시지 호환 검증 | 차량 CAN·정지 시험 기록 |
-| D | RPM·속도·조향 필드 확장, 장착 및 표시 연동 | 차량 IVI 화면 |
-| E | 온도 센서 배터리팩 장착, 유지한 LIN 노드·안개등 장착 | 장착도, 온도·LIN 재시험 |
-| F | 목표 조향각·차량 상태 웹 필드 확장 | 차량 제어 대시보드 |
-| 전원 | 배터리 기반 모터·서보·로직 3레일 구성, 공통 GND, 배선 고정, 구동 중 전압·리셋·통신 확인 | 전원·결선도 및 측정 결과 |
+## B — Drive + Steering
 
-**주간 완료 기준**
+- TB6612FNG 후보 데이터시트/정격 확인
+- Motor PWM / Direction
+- 낮은 출력 Motor test
+- Encoder/Hall pulse
+- RPM 계산
+- RC Servo center/left/right calibration
 
-- [ ] 웹에서 차량 구동·조향 명령을 전달하고 상태를 확인한다.
-- [ ] 팬에서 차량으로 전환한 속도 단위·확장 필드·유효성 처리가 규격과 일치한다.
-- [ ] 엔코더 기반 RPM·odom을 확인하고 조향 정보가 명령/추정/측정 중 무엇인지 구분한다.
-- [ ] 모드별 동작·회피 로직 및 장애물 정지를 검증한다.
-- [ ] 통신 두절 정지와 복구 동작을 RC카에서도 확인한다.
-- [ ] 모터·서보 구동 시 로직 레일 강하·MCU 리셋·CAN 오류 여부를 기록한다.
-- [ ] IVI·웹·온도 및 유지한 LIN 기능을 장착 후 재검증한다.
+## C — HPC / ADAS
 
-Phase 1 공통 로직을 재사용하되, 구동계·센서 장착·전원 변경으로 영향을 받는 기능은 다시 시험한다.
+- Pi 4 boot / power 안정화
+- Front CSI Camera capture
+- Resolution / FPS 측정
+- OpenCV frame read
+- ROI / grayscale 등 최소 pipeline
+- DTC Manager 저장구조 초안
 
-## 4주차 — RTOS 안정화·최종 점검·시연
+## D — Parking
 
-| 시점 | 작업 | 담당 |
-|---|---|---|
-| 초반 | RTOS 주기·우선순위·큐·공유 데이터 점검, 제어/표시 지연 측정 | 각 ECU 담당, C 통합 조율 |
-| 초반~중반 | 정상·경계·오류·복구·재부팅·통신 재연결 시험, 반복 시연 | 전원 |
-| 중반 | 결함 수정 및 영향 범위 재시험, 신규 확장 제한 | 해당 담당 |
-| 후반 | 빌드·다운로드 재현, 결선도·시험표·시연 영상·결과 보고 정리 | 전원 |
+- ToF/Ultrasonic 1개 bring-up
+- Near/Mid/Far 측정
+- 최소 2개 센서 확장 방향 확인
+- Rear USB Camera capture
+- C와 Camera 실행 규칙 합의
 
-**최종 완료 기준**
+## E — H735 Cockpit
 
-- [ ] 필수 5 ECU와 RC카 구동·조향·전원 통합 시험 통과.
-- [ ] 합의한 제어·통신 주기와 응답 시간 측정 결과 확보.
-- [ ] 비상정지·타임아웃·복구 시험 통과.
-- [ ] 엔코더·모드별 로직·표시/웹 확장 시험 결과 확보.
-- [ ] 유지한 LIN 기능 시험 통과 또는 보류 범위 명시.
-- [ ] 빌드·다운로드·실행 절차를 재현하고 시연 자료 정리.
-- [ ] 남은 결함·제약·후속 기능을 구현 완료 항목과 구분.
+- TouchGFX build
+- LCD / Touch
+- Cluster main 화면
+- Dummy Speed/RPM/Battery/Gear
+- ADAS/Parking/DTC/Settings 화면 전환
 
-## 최종 시험 기록 항목
+## F — Body Network
 
-| 시험 | 확인할 결과 | 주요 담당 |
-|---|---|---|
-| 웹 목표값·조향 입력 | 명령 전달, 구동 반응, 상태 표시 일치 | F, A·B, D |
-| 장애물 감지 | 거리 기준에 따른 정지, 모드별 우선순위 준수 | C, A·B |
-| 목표 프레임 두절 | 타임아웃 내 정지, 정의한 복구 조건 준수 | F, A·B |
-| 온도 표시 | 측정값 CAN 송신 및 IVI/웹 갱신 | E, D, F |
-| LIN 조도·안개등 | 폴링·판단·명령·상태 전달 일치 (유지 시) | E, D |
-| 모드 전환·회피 | 정의한 시나리오의 구동·정지·조향 | F, A·B, C |
-| 엔코더·차량 상태 | RPM·odom 환산 및 표시 일치 | A·B, D, F |
-| 전원·재부팅·재연결 | 리셋/오류 여부 및 복구 동작 기록 | 전원 |
-| RTOS 안정화 | 합의한 주기·응답 목표 충족 | 각 ECU 담당 |
+### STM32 #4 Gateway
 
-각 시험에는 조건, 기대 결과, 실제 결과, 측정값, 통과 여부와 로그/영상 링크를 남긴다.
+- LIN peripheral/UART 확인
+- LIN Transceiver 확인
+- Master Header/Frame 기초
+- LIN Schedule v0.1
 
-## 범위와 지연 대응
+### STM32 #5 Slave
 
-- **필수:** 5 ECU, Phase 2 모터·조향 전환과 전원 통합. 지연 시 결함 담당과 해결 목표를 먼저 정한다.
-- **LIN:** 1주차부터 개발하며 2주차 체크포인트에서만 진행 상태를 근거로 유지/후순위 결정을 기록한다.
-- **후방 LED:** 기본 비상정지 검증 후 여유가 있을 때 추가한다.
-- **비전:** Phase 1/2가 모두 완료된 뒤에만 검토한다. Pi 4·IMX500·CAN HAT·독립 전원, 모델·색상 판별 검증이 필요하며 필수 4주 작업에 넣지 않는다.
-- **RC카 조달 지연:** 벤치 회귀 시험과 전원·장착 설계, 구동계 코드 준비를 진행한다. 실제 차량 검증이 빠진 상태를 Phase 2 완료로 표시하지 않는다.
-- **부품 부적합:** LIN 전압, 모터/드라이버 전류, 서보/전원 정격 등을 확인해 부품 또는 설계를 수정하고 일정 영향을 기록한다.
+- Ambient ADC
+- Head/Tail/Brake/Turn/Hazard LED output
+- Turn blink
+- Slave response 구조
 
-## 진행 상태
+## Week 1 완료 조건
 
-| 주차 | 단계 | 상태 | 실제 기간 | 결과 / 이슈 |
-|---|---|---|---|---|
-| 1주차 | 규격·Phase 1 착수 | 계획 | 미정 | — |
-| 2주차 | 벤치 통합·LIN 판단 | 계획 | 미정 | — |
-| 3주차 | Phase 2 차량 통합 | 계획 | 미정 | — |
-| 4주차 | RTOS 안정화·최종 시연 | 계획 | 미정 | — |
+- [ ] 모든 Node 단독 Build/Flash/Run 가능
+- [ ] 각 담당이 Spec + Architecture 초안 작성
+- [ ] 핵심 Sensor/Actuator Raw 값 확인
+- [ ] Disconnect / Invalid 시험 최소 1개
+- [ ] Front/Rear Camera 각각 frame 확보
+- [ ] H735 Cluster/IVI dummy UI 동작
+- [ ] LIN Master/Slave 기본 연결 준비
 
-완료 기준을 충족한 경우에만 상태를 완료로 변경한다.
+> Week 1에서 CAN 전체 통합 성공은 완료조건이 아니다.
 
-## 주간 기록 양식
+---
+
+# Week 2 — Local Function 완성 + 2-Node Network Integration
+
+## 공통
+
+- CAN Signal Matrix v0.1 확정
+- CAN bitrate / FD 설정 확정
+- ECU Heartbeat 규칙
+- Timeout 규칙
+- DTC Event 형식
+- LIN Schedule / Mapping Table v0.1 확정
+
+## CAN 연결 순서
+
+```text
+1. VCU ↔ Drive
+2. VCU ↔ Parking
+3. VCU ↔ H735
+4. Gateway ↔ CAN
+5. Pi ↔ CAN
+```
+
+전부 동시에 연결하지 않는다.
+
+## A
+
+- `Driver_Input`
+- `Vehicle_State`
+- VCU Arbitration
+- Brake > Accelerator 우선 규칙
+- Gear R / D mode
+- Heartbeat monitor skeleton
+
+## B
+
+- VCU Target 수신
+- Motor command 적용
+- RPM feedback 송신
+- Servo steering command
+- Speed PID는 가능하면 이 단계에서 시작
+- Command timeout 시 Motor stop
+
+## C
+
+- Lane 또는 Object Detection 최소 1개
+- ADAS Result 구조
+- Pi CAN/SocketCAN 준비
+- Dummy DTC Event 저장
+- Active / History 구분
+
+## D
+
+- Parking Sensor 2~4채널
+- SAFE/WARNING/CRITICAL
+- `Parking_Status`
+- R-mode Rear camera service
+
+## E
+
+- CAN RX → Vehicle Data Model
+- Cluster에 실제 Speed/RPM/Gear 표시 시작
+- ADAS/Parking dummy → 실제 signal 교체
+- DTC dummy list 유지
+
+## F
+
+### LIN
+
+```text
+Gateway Master ↔ LIN Slave
+```
+
+- Ambient_Status
+- Lamp_Command
+- Lamp_Status
+- Lamp_Diagnostic
+
+### Gateway
+
+```text
+CAN Body_Command → LIN Lamp_Command
+LIN Ambient_Status → CAN Body_Status
+```
+
+## Week 2 완료 조건
+
+- [ ] VCU ↔ Drive CAN 통신
+- [ ] VCU ↔ Parking CAN 통신
+- [ ] H735가 실제 CAN signal 최소 2개 표시
+- [ ] Gateway ↔ LIN Slave 양방향 통신
+- [ ] CAN↔LIN Mapping 최소 1개 End-to-End
+- [ ] 각 ECU Heartbeat 또는 상태 프레임 구현 시작
+
+---
+
+# Week 3 — Full Backbone & End-to-End Integration
+
+## 3.1 Driver Path
+
+```text
+Accel / Brake / Steering / Gear
+→ VCU
+→ CAN
+→ Drive + Steering
+→ Motor / Servo
+→ Status
+→ H735
+```
+
+## 3.2 ADAS Path
+
+```text
+Front Camera
+→ Pi ADAS
+→ ADAS_Request
+→ VCU Arbitration
+→ Drive/Steering
+```
+
+## 3.3 Parking Path
+
+```text
+Gear R
+→ VCU Vehicle_State
+→ Pi Front ADAS Pause / Rear Camera Active
+→ Parking Sensor Status
+→ H735 Parking Screen
+```
+
+## 3.4 Body Gateway Path
+
+```text
+Ambient
+→ LIN Slave
+→ LIN
+→ Gateway
+→ CAN Body_Status
+→ H735 / VCU / HPC
+```
+
+```text
+H735/VCU Body_Command
+→ CAN
+→ Gateway
+→ LIN
+→ Slave
+→ Lamp
+```
+
+## 3.5 DTC Path
+
+```text
+Sensor Disconnect
+→ Local ECU Fault
+→ DTC_Event
+→ Pi DTC Manager
+→ H735 Warning + Diagnostic Detail
+```
+
+## Week 3 중점
+
+새 기능보다 다음을 우선한다.
+
+- Timeout
+- Invalid data
+- Mode conflict
+- Message ownership
+- Recovery
+- Network reconnect
+- Camera service switching
+
+## 완료 조건
+
+- [ ] 전체 CAN Backbone 통신
+- [ ] LIN subnetwork 정상
+- [ ] CAN↔LIN Gateway 양방향
+- [ ] Driver input → Motor/Steering
+- [ ] ADAS request → VCU
+- [ ] Gear R → Rear camera
+- [ ] Parking → H735
+- [ ] Local DTC → Pi → H735
+
+---
+
+# Week 4 — Vehicle Mounting, Validation, Fault Injection
+
+## 차량 장착
+
+- [ ] Wiring 고정
+- [ ] Motor/logic power rail 확인
+- [ ] Ground / voltage drop 확인
+- [ ] Camera 위치 고정
+- [ ] Parking sensor 위치 확정
+- [ ] H735 Cockpit 장착
+- [ ] Lighting / LIN node 장착
+
+## 기능 시험
+
+- [ ] P/R/N/D
+- [ ] Accelerator / Brake
+- [ ] Steering Wheel → Servo
+- [ ] Motor RPM
+- [ ] Front ADAS
+- [ ] R-mode camera switching
+- [ ] Parking warning
+- [ ] Ambient → Auto light
+- [ ] Turn/Brake/Hazard
+- [ ] Cluster + IVI 화면
+
+## Fault Injection
+
+- [ ] Parking sensor disconnect
+- [ ] Encoder signal loss
+- [ ] LIN Slave power off
+- [ ] CAN ECU unplug
+- [ ] Camera service error
+- [ ] Heartbeat timeout
+- [ ] DTC clear / recovery
+
+## 측정 항목
+
+| 항목 | 측정 |
+|---|---|
+| Front ADAS FPS | avg / min |
+| Camera → ADAS Request | ms |
+| CAN Request → Actuator | ms |
+| Gear R → Rear first frame | ms |
+| Parking update period | ms |
+| LIN Schedule / Response | ms |
+| CAN↔LIN Gateway latency | ms |
+| Heartbeat timeout | ms |
+| Fault → DTC → H735 warning | ms |
+
+---
+
+# 최종 Demo Scenario
+
+```text
+1. Power ON
+2. ECU Heartbeat / H735 READY
+3. Gear D
+4. Accelerator + Steering input
+5. Motor / Servo response
+6. Front Camera ADAS
+7. ADAS steering/stop request → VCU
+8. Gear R
+9. Front ADAS pause / Rear Camera active
+10. Parking sensor warning → H735
+11. Ambient light change
+12. LIN Slave → Gateway → CAN → H735
+13. H735/VCU Lamp command → CAN → Gateway → LIN → Lamp
+14. Sensor/ECU fault injection
+15. DTC → Pi History → H735 Diagnostic screen
+16. Critical fault → VCU safe state
+```
+
+---
+
+# 진행 기록 양식
 
 ```markdown
-### N주차 진행 기록
-- 기간 / 담당:
-- 목표 및 완료 작업:
-- 커밋·이슈·산출물:
-- 시험 조건 / 기대 결과 / 실제 결과 / 측정값:
-- 로그·영상:
-- 미완료 항목 / 원인 / 담당 / 해결 목표:
-- LIN 유지·보류 등 범위 결정:
-- 다음 주 작업 및 일정 영향:
+### Week N
+- 담당:
+- 이번 주 요구사항:
+- 구현:
+- Commit:
+- Test condition:
+- Expected:
+- Actual:
+- Measured:
+- PASS/FAIL:
+- 문제/원인:
+- 다음 작업:
 ```
+
+완료 여부는 "코드가 있음"이 아니라 **시험과 증거가 있음**을 기준으로 판단한다.
