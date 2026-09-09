@@ -1,194 +1,255 @@
-# [ECU NAME] Architecture
+# [NODE NAME] Architecture
 
 > 담당자: A / B / C / D / E / F  
-> Board:  
+> Node Type: STM32 ECU / Raspberry Pi HPC / H735 Cockpit / LIN Slave  
+> Board / MCU:  
 > Revision: v0.1  
 > Date:  
+> Related Specification: `SPECIFICATION.md`
 
 ---
 
-## 1. 이 ECU의 역할
+## 1. Role
 
-이 ECU가 차량에서 담당하는 기능을 2~3문장으로 작성한다.
+이 Node가 차량에서 담당하는 역할과 **담당하지 않는 역할**을 2~5문장으로 작성한다.
 
-예시:
+예:
 
-> Parking ECU는 차량 주변 거리센서를 직접 읽고 유효성을 검사한다. 측정된 거리로 Parking Warning Level을 생성하며, Stage 2부터 CAN을 통해 VCU/IVI/HPC에 제공한다.
+> Parking ECU는 ToF/Ultrasonic 거리센서의 owner이며 거리 측정과 유효성 판단을 담당한다. Camera 영상처리는 담당하지 않으며 Rear Camera는 Raspberry Pi가 처리한다.
 
 ---
 
-## 2. Hardware Block Diagram
+## 2. Requirement Traceability
+
+명세서 Requirement와 Architecture 요소를 연결한다.
+
+| Requirement ID | Architecture Element | 구현 위치 |
+|---|---|---|
+| REQ-XXX-001 | Sensor Read Task | `sensor.c` |
+| | | |
+
+---
+
+## 3. Hardware Block Diagram
 
 ```text
 [Sensor / Input]
       ↓
-[This ECU / Board]
+[This Node]
       ↓
 [Actuator / Local Output]
-
-Stage 2 이후:
       ↕
-   CAN / CAN FD
+[CAN FD / LIN / CSI / USB]
 ```
 
+현재 Node에 맞게 수정한다.
+
 ---
 
-## 3. Inputs
+## 4. Inputs
 
-| Input | Source | Electrical / Bus Interface | Unit / Range | Update Period | Note |
+| Input | Source | Interface | Unit / Range | Period | Owner | Invalid Condition |
+|---|---|---|---|---|---|---|
+| | | | | | | |
+
+---
+
+## 5. Outputs
+
+| Output | Destination | Interface | Unit / Range | Period / Event | 비고 |
 |---|---|---|---|---|---|
 | | | | | | |
-| | | | | | |
 
 ---
 
-## 4. Outputs
+## 6. Pin Map
 
-| Output | Destination | Interface | Unit / Range | Update Method | Note |
-|---|---|---|---|---|---|
-| | | | | | |
-| | | | | | |
-
----
-
-## 5. Pin Map
-
-> 실제 보드 datasheet / schematic / CubeMX에서 확인한 핀만 적는다.
+> 실제 board schematic / datasheet / CubeMX에서 확인한 핀만 적는다.
 
 | Function | MCU Pin | Peripheral | Direction | Voltage | Note |
 |---|---|---|---|---|---|
 | | | | | | |
-| | | | | | |
 
 ---
 
-## 6. Wiring
+## 7. Wiring / External Circuit
 
-| Device | Device Pin | MCU / Board Pin | Power | Note |
-|---|---|---|---|---|
-| | | | | |
-| | | | | |
-
----
-
-## 7. Software Flow
-
-```text
-Initialization
-      ↓
-Input Read
-      ↓
-Validation
-      ↓
-Conversion / Filtering
-      ↓
-Control / State Decision
-      ↓
-Local Output / Data Update
-```
-
-내 ECU에 맞게 위 흐름을 수정한다.
-
----
-
-## 8. 주요 Local Data
-
-| Variable | Type | Meaning | Unit | Valid Range | Invalid Condition |
+| Device | Device Pin | Board Pin | Power | Additional Circuit | Note |
 |---|---|---|---|---|---|
 | | | | | | |
-| | | | | | |
 
-Raw 값과 변환된 Physical 값을 구분한다.
+예: Motor는 MCU GPIO에 직접 연결하지 않고 Driver를 거친다. Battery Voltage는 ADC에 직접 넣지 않고 Divider/Measurement Circuit을 사용한다.
+
+---
+
+## 8. Software Component Diagram
 
 예:
 
 ```text
-adc_raw       = ADC 원시값
-motor_temp_c  = 변환된 °C
+Driver / HAL
+    ↓
+Sensor Service
+    ↓
+Validation / Filtering
+    ↓
+Application / State / Control
+    ↓
+Network Service / Local Output
 ```
+
+실제 모듈명을 적는다.
 
 ---
 
-## 9. State / Mode
-
-해당되는 ECU만 작성한다.
+## 9. Software Flow
 
 ```text
-INIT
+Init
  ↓
-READY
+Read / Receive
  ↓
-ACTIVE
+Validate
  ↓
-FAULT
+Convert / Filter
+ ↓
+State / Control
+ ↓
+Publish / Actuate
 ```
 
-| State | Entry Condition | Action | Exit Condition |
-|---|---|---|---|
-| | | | |
+---
+
+## 10. Local Data
+
+| Variable | Type | Meaning | Unit | Valid Range | Owner | Invalid 표현 |
+|---|---|---|---|---|---|---|
+| | | | | | | |
+
+Raw와 Physical 값을 분리한다.
 
 ---
 
-## 10. Fault Cases
+## 11. State / Mode
 
-| Fault | Detection Method | Local Action | Recovery |
-|---|---|---|---|
-| Sensor Timeout | | | |
-| Sensor Invalid | | | |
-| Communication Timeout | Stage 2 | | |
-| | | | |
+해당되는 Node만 작성한다.
+
+| State | Entry | Action | Exit | Fault Behavior |
+|---|---|---|---|---|
+| INIT | | | | |
+| READY | | | | |
+| ACTIVE | | | | |
+| FAULT | | | | |
 
 ---
 
-## 11. Future CAN Interface — TX
+## 12. CAN / CAN FD Interface
 
-> Stage 1에서는 실제 송신을 구현하지 않아도 되며, **어떤 데이터의 owner인지 먼저 정의**한다.
+### TX
 
-| Signal | Meaning | Unit | Proposed Cycle | Receiver | Valid Condition |
+| Message / Signal | Meaning | Unit | Cycle | Receiver | Valid Condition |
+|---|---|---|---|---|---|
+| | | | | | |
+
+### RX
+
+| Message / Signal | Meaning | Unit | Timeout | Sender | Timeout Action |
+|---|---|---|---|---|---|
+| | | | | | |
+
+Stage 1에서는 실제 CAN 구현 전이라도 데이터 owner와 의미는 작성한다.
+
+---
+
+## 13. LIN Interface — 해당 Node만
+
+### 역할
+
+- [ ] LIN Master
+- [ ] LIN Slave
+- [ ] N/A
+
+### Frame / Schedule
+
+| Frame | Publisher | Subscriber | Period / Slot | Payload |
+|---|---|---|---|---|
+| | | | | |
+
+### CAN ↔ LIN Mapping — Gateway만
+
+| CAN Signal | Direction | LIN Signal | Conversion / Rule |
+|---|---|---|---|
+| | CAN→LIN / LIN→CAN | | |
+
+---
+
+## 14. Fault / DTC
+
+| Fault | Detection | Debounce / Timeout | Local Action | DTC | Recovery |
 |---|---|---|---|---|---|
 | | | | | | |
 
 ---
 
-## 12. Future CAN Interface — RX
+## 15. Timing
 
-| Signal | Meaning | Unit | Proposed Timeout | Sender | Action |
-|---|---|---|---|---|---|
-| | | | | | |
+| Function | Target Period / Deadline | Measurement Method |
+|---|---:|---|
+| Sensor Update | | |
+| Control Loop | | |
+| CAN Tx | | |
+| LIN Frame | | |
+| UI Update | | |
 
----
-
-## 13. Stage 1 Test
-
-| No. | Test | Expected | Measured / Observed | Result |
-|---:|---|---|---|---|
-| 1 | Board Boot | 정상 부팅 | | PASS / FAIL |
-| 2 | Peripheral Init | Init 성공 | | PASS / FAIL |
-| 3 | Sensor Raw Read | 입력에 따라 값 변화 | | PASS / FAIL |
-| 4 | Physical Conversion | 정상 범위 값 | | PASS / FAIL |
-| 5 | Min / Max Test | 범위 확인 | | PASS / FAIL |
-| 6 | Disconnect / Invalid | 오류 검출 | | PASS / FAIL |
-| 7 | Recovery | 재연결 후 복구 | | PASS / FAIL |
+N/A 항목은 삭제한다.
 
 ---
 
-## 14. Evidence
+## 16. Stage 1 Test Plan
 
-- UART Log:
-- Debug Screenshot:
-- Wiring Photo:
-- Test Video:
-- Logic Analyzer / Scope Capture:
+| No. | Test | Expected | Evidence |
+|---:|---|---|---|
+| 1 | Board Boot | 정상 | log |
+| 2 | Peripheral Init | 정상 | log |
+| 3 | Raw Input | 입력에 따라 변화 | log/table |
+| 4 | Conversion | 정상 범위 | table |
+| 5 | Local Output | 정상 또는 N/A | video/scope |
+| 6 | Disconnect / Invalid | 오류 검출 | log |
+| 7 | Recovery | 정상 복구 | log |
 
 ---
 
-## 15. Stage 1 완료 체크
+## 17. Stage 2 Integration Plan
 
-- [ ] Architecture를 다른 팀원에게 3분 안에 설명할 수 있다.
-- [ ] 실제 Pin Map을 작성했다.
-- [ ] 센서/입력 Raw 값을 확인했다.
-- [ ] Physical 값 변환을 확인했다.
-- [ ] Invalid/Disconnect 조건을 시험했다.
-- [ ] 출력 장치가 있다면 안전한 범위에서 단독 동작을 확인했다.
-- [ ] Stage 2에서 필요한 CAN TX/RX Signal을 적었다.
-- [ ] 테스트 증거를 남겼다.
+처음 연결할 상대 Node를 적는다.
+
+```text
+My Node ↔ First Integration Node
+```
+
+예:
+
+- VCU ↔ Drive CAN
+- Gateway ↔ LIN Slave
+- VCU ↔ H735 CAN
+
+---
+
+## 18. Open Issues
+
+| Issue | 영향 | 담당 | 결정 필요일 |
+|---|---|---|---|
+| | | | |
+
+---
+
+## 19. 완료 체크
+
+- [ ] Specification의 요구사항을 Architecture와 연결했다.
+- [ ] Input / Output owner를 정의했다.
+- [ ] Pin/Wiring이 실제 보드와 일치한다.
+- [ ] Raw / Physical data를 구분했다.
+- [ ] Fault와 Recovery를 적었다.
+- [ ] CAN/LIN interface를 적었다.
+- [ ] Stage 1 시험 계획이 있다.
+- [ ] 다른 팀원이 3분 안에 구조를 이해할 수 있다.
