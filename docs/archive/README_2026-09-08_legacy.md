@@ -11,7 +11,7 @@ CAN·LIN·RTOS 기반 벤치 검증부터 RC카 통합까지
 ![구성: 5 ECU](https://img.shields.io/badge/ARCHITECTURE-5_ECUs-334155?style=flat-square)
 ![상태: 계획 단계](https://img.shields.io/badge/STATUS-PLANNING-D97706?style=flat-square)
 
-[기술 스택](#tech-stack) · [시스템 구성](#ecu-architecture) · [4주 로드맵](#roadmap) · [상세 개발 계획](docs/WEEKLY_PLAN.md)
+[기술 스택](#tech-stack) · [시스템 구성](#ecu-architecture) · [4주 로드맵](#roadmap) · [상세 개발 계획](legacy_v1.2_before_full_sync_2026-09-09/WEEKLY_PLAN.md)
 
 </div>
 
@@ -231,7 +231,7 @@ flowchart TB
 | 3주차 | Phase 2 구동·조향 전환, 전원 재설계·장착, 확장 기능 구현 | RC카 기본 구동·조향·정지와 ECU 연동 검증 |
 | 4주차 | RTOS 안정화, 회귀 시험, 최종 시연·문서 | 필수 시험 통과와 재현 가능한 시연 자료 |
 
-역할별 작업·산출물·진행 기록은 [4주 상세 계획](docs/WEEKLY_PLAN.md)을 참고합니다.
+역할별 작업·산출물·진행 기록은 [4주 상세 계획](legacy_v1.2_before_full_sync_2026-09-09/WEEKLY_PLAN.md)을 참고합니다.
 
 ## 7. 우선순위와 완료 기준
 
@@ -277,7 +277,7 @@ Raspberry Pi 4 + AI Camera(IMX500), MCP2515 SPI-CAN HAT 및 독립 5V/3A 전원 
 
 ## 문서와 라이선스
 
-- [4주 상세 계획 및 주간 기록](docs/WEEKLY_PLAN.md)
-- [LICENSE](LICENSE)
+- [4주 상세 계획 및 주간 기록](legacy_v1.2_before_full_sync_2026-09-09/WEEKLY_PLAN.md)
+- [LICENSE](../../LICENSE)
 
 현재 문서는 계획 단계입니다. 구현 코드와 검증된 실행 안내는 개발 진행에 맞춰 추가합니다.

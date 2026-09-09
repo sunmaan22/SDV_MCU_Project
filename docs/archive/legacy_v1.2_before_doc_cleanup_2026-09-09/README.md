@@ -94,9 +94,26 @@ F는 DTC Code 규칙, CAN Diagnostic 계약, VCU의 중요 고장 대응을 통�
 
 전체 문서 동기화 전 버전은 아래에 보존한다.
 
-- [`archive/legacy_v1.2_before_full_sync_2026-09-09/`](archive/legacy_v1.2_before_full_sync_2026-09-09/)
-- 기존 초기 README: [`archive/README_2026-09-08_legacy.md`](archive/README_2026-09-08_legacy.md)
+- [`archive/legacy_v1.2_before_full_sync_2026-09-09/`](../legacy_v1.2_before_full_sync_2026-09-09)
+- 기존 초기 README: [`archive/README_2026-09-08_legacy.md`](../README_2026-09-08_legacy.md)
 
 현재 개발에서는 legacy 문서가 아니라 이 폴더의 최신 문서를 사용한다.
 
 [Main README](../README.md)
+
+
+## 이 폴더의 전체 문서
+
+[과거 자료 목록](../README.md) · [현재 문서 안내](../../README.md)
+
+- [BEGINNER_ARCHITECTURE_STAGE1_GUIDE.md](BEGINNER_ARCHITECTURE_STAGE1_GUIDE.md)
+- [ELECTRONICS_PREREQUISITES_FOR_SW_TEAM.md](ELECTRONICS_PREREQUISITES_FOR_SW_TEAM.md)
+- [MANIFEST.md](MANIFEST.md)
+- [NODE_SPEC_ARCHITECTURE_EXAMPLES.md](NODE_SPEC_ARCHITECTURE_EXAMPLES.md)
+- [ROOT_README.md](ROOT_README.md)
+- [SENSOR_LIST.md](SENSOR_LIST.md)
+- [TEAM_ROLE_EASY_GUIDE.md](TEAM_ROLE_EASY_GUIDE.md)
+- [WEEKLY_PLAN.md](WEEKLY_PLAN.md)
+- [templates/ECU_ARCHITECTURE_TEMPLATE.md](templates/ECU_ARCHITECTURE_TEMPLATE.md)
+- [templates/NODE_SPECIFICATION_TEMPLATE.md](templates/NODE_SPECIFICATION_TEMPLATE.md)
+- [templates/STAGE1_TEST_REPORT_TEMPLATE.md](templates/STAGE1_TEST_REPORT_TEMPLATE.md)

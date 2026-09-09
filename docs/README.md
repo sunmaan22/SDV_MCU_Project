@@ -1,180 +1,51 @@
-# Documentation Guide
+# 문서 안내
 
-> 기준: **Architecture v1.2 + Final Implementation Freeze Policy / 2026-09-09**
+[프로젝트 홈](../README.md)
 
-# 1. 최상위 구현 기준
+원하는 주제를 아래에서 선택하거나, 담당 A–F의 명세·구조·테스트로 바로 이동한다.
 
-코드 작성 직전의 최상위 명세서는 아래 파일 하나다.
+## 처음 읽는 순서
 
-- [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md)
+1. [팀 시작 가이드](getting_started/TEAM_GUIDE.md)에서 역할과 진행 방식을 확인한다.
+2. [프로젝트 상세 설명](overview/PROJECT_OVERVIEW.md)에서 전체 구성을 파악한다.
+3. [최종 구현 명세](system/FINAL_IMPLEMENTATION_SPEC.md)에서 공통 계약과 미확정 항목을 확인한다.
+4. 아래 담당 문서에서 **안내 → 기능 명세 → 아키텍처 → 테스트** 순서로 읽는다.
 
-```text
-FINAL_IMPLEMENTATION_SPEC.md
-        ↓
-각 역할 SPECIFICATION.md
-        ↓
-각 역할 ARCHITECTURE.md
-        ↓
-Code
-        ↓
-TEST_REPORT.md
-```
+## 주제별 문서
 
-문서 간 충돌이 있으면 우선순위는 다음과 같다.
-
-```text
-1. FINAL_IMPLEMENTATION_SPEC.md
-2. 역할별 SPECIFICATION.md
-3. 역할별 ARCHITECTURE.md
-4. README / 예시 문서
-5. archive
-```
-
-Project Owner가 Hardware / CAN / LIN / Vehicle State / Arbitration / DTC / RTOS 공통값을 직접 확정한다. 담당자나 AI는 `OWNER INPUT`, `OPEN` 상태를 임의로 `FROZEN`으로 바꾸지 않는다.
-
-# 2. 역할 문서
-
-```text
-docs/
-├ FINAL_IMPLEMENTATION_SPEC.md     # 공통 최종 구현 명세
-├ Ultrasonic_Perception/           # A
-├ IVI/                             # B
-├ Motor_Steering_Control/          # C
-├ Lighting_Ambient_LIN_CAN/        # D
-├ HPC_Camera_Vision/               # E
-├ VCU_DTC_CAN_Integration/         # F
-└ templates/
-```
-
-각 역할 폴더에는:
-
-```text
-README.md
-SPECIFICATION.md
-ARCHITECTURE.md
-TEST_REPORT.md
-```
-
-가 있다.
-
-역할 README는 현재 해야 할 개발 항목을 설명하고, 실제 최종 수치와 Interface는 `FINAL_IMPLEMENTATION_SPEC.md`를 따른다.
-
-# 3. 이미 고정된 역할 경계
-
-| Message / Data | Owner / Publisher |
+| 분류 | 문서 |
 |---|---|
-| `Ultrasonic_Status` | A |
-| UI representation | B |
-| `Body_User_Request` | B |
-| Motor / Servo actual output | C |
-| `Drive_Status` | C |
-| LIN schedule / CAN↔LIN mapping | D Gateway |
-| Ambient / Lamp actual state | D Slave |
-| `Body_Status` | D Gateway |
-| `Vision_Status` | E |
-| `ADAS_Request` | E |
-| `Final_Drive_Command` | F |
-| `Body_Command` | F |
-| `Vehicle_State` | F |
-| `Driver_Input` | F |
-| DTC History DB | Raspberry Pi DTC Manager |
+| 시작·일정 | [팀 가이드](getting_started/TEAM_GUIDE.md) · [주간 계획](getting_started/WEEKLY_PLAN.md) |
+| 전체 프로젝트 | [상세 설명](overview/PROJECT_OVERVIEW.md) |
+| 공통 시스템 | [최종 구현 명세](system/FINAL_IMPLEMENTATION_SPEC.md) · [참고 문서](system/PROJECT_REFERENCE.md) · [문서 운영 규칙](system/DOCUMENTATION_POLICY.md) |
+| 새 문서 작성 | [기능 명세 양식](templates/FUNCTIONAL_SPECIFICATION_TEMPLATE.md) · [아키텍처 양식](templates/SOFTWARE_ARCHITECTURE_TEMPLATE.md) · [테스트 양식](templates/TEST_REPORT_TEMPLATE.md) |
+| 이전 자료 | [과거 자료 전체 목록](archive/README.md) |
 
-같은 최종 데이터를 여러 Node가 동시에 publish하지 않는다.
+## 담당별 바로가기
 
-# 4. 고정 Safety / Integration 규칙
+| 담당 | 역할 | 시작 | 기능 명세 | 구조 | 시험 기록 |
+|---|---|---|---|---|---|
+| A | 초음파·주차 거리 감지 | [안내](ecus/Ultrasonic_Perception/README.md) | [명세](ecus/Ultrasonic_Perception/SPECIFICATION.md) | [아키텍처](ecus/Ultrasonic_Perception/ARCHITECTURE.md) | [테스트](ecus/Ultrasonic_Perception/TEST_REPORT.md) |
+| B | 화면·사용자 요청 | [안내](ecus/IVI/README.md) | [명세](ecus/IVI/SPECIFICATION.md) | [아키텍처](ecus/IVI/ARCHITECTURE.md) | [테스트](ecus/IVI/TEST_REPORT.md) |
+| C | 모터·조향 출력 | [안내](ecus/Motor_Steering_Control/README.md) | [명세](ecus/Motor_Steering_Control/SPECIFICATION.md) | [아키텍처](ecus/Motor_Steering_Control/ARCHITECTURE.md) | [테스트](ecus/Motor_Steering_Control/TEST_REPORT.md) |
+| D | 조명·CAN/LIN Gateway | [안내](ecus/Lighting_Ambient_LIN_CAN/README.md) | [명세](ecus/Lighting_Ambient_LIN_CAN/SPECIFICATION.md) | [아키텍처](ecus/Lighting_Ambient_LIN_CAN/ARCHITECTURE.md) | [테스트](ecus/Lighting_Ambient_LIN_CAN/TEST_REPORT.md) |
+| E | 카메라·ADAS 요청 | [안내](ecus/HPC_Camera_Vision/README.md) | [명세](ecus/HPC_Camera_Vision/SPECIFICATION.md) | [아키텍처](ecus/HPC_Camera_Vision/ARCHITECTURE.md) | [테스트](ecus/HPC_Camera_Vision/TEST_REPORT.md) |
+| F | VCU·최종 명령 중재·DTC | [안내](ecus/VCU_DTC_CAN_Integration/README.md) | [명세](ecus/VCU_DTC_CAN_Integration/SPECIFICATION.md) | [아키텍처](ecus/VCU_DTC_CAN_Integration/ARCHITECTURE.md) | [테스트](ecus/VCU_DTC_CAN_Integration/TEST_REPORT.md) |
 
-```text
-E-Stop / Critical Fault
-> Ultrasonic Parking Critical
-> ADAS Safety Request
-> Normal Driver Request
-```
+## 찾는 기능이 있다면
 
-- Ultrasonic `CRITICAL`을 Rear Vision이 해제하지 않는다.
-- `valid=false`인 센서값은 정상 판단에 사용하지 않는다.
-- H735는 `Body_Command`를 직접 publish하지 않고 `Body_User_Request`만 보낸다.
-- `Final_Drive_Command`의 Publisher는 VCU 하나다.
-- `VcuControlTask`만 final command를 작성한다.
-- Drive ECU가 `Final_Drive_Command` timeout을 감지한다.
-- VCU는 peer status/heartbeat timeout을 감지한다.
-- DTC local detection은 각 Node, safety/severity integration은 VCU, History DB는 Pi, 표시는 H735가 담당한다.
+| 찾는 내용 | 우선 볼 문서 |
+|---|---|
+| 기어·후진 요청, 차량 상태, 최종 명령 중재 | [VCU 기능 명세](ecus/VCU_DTC_CAN_Integration/SPECIFICATION.md) |
+| 모터·조향 출력, Drive 상태 | [Drive 기능 명세](ecus/Motor_Steering_Control/SPECIFICATION.md) |
+| 초음파 거리·주차 경고 | [초음파 기능 명세](ecus/Ultrasonic_Perception/SPECIFICATION.md) |
+| 카메라 인식·ADAS 요청 | [Vision 기능 명세](ecus/HPC_Camera_Vision/SPECIFICATION.md) |
+| 화면·사용자 입력·상태 표시 | [IVI 기능 명세](ecus/IVI/SPECIFICATION.md) |
+| 조명·LIN·CAN Gateway | [Body 기능 명세](ecus/Lighting_Ambient_LIN_CAN/SPECIFICATION.md) |
+| 통신 계약·DTC 역할·공통 실행 기준 | [최종 구현 명세](system/FINAL_IMPLEMENTATION_SPEC.md) |
 
-# 5. 실행 환경
+## 문서 기준
 
-```text
-STM32 Node
-→ FreeRTOS + CMSIS-RTOS2 기본
+**최종 구현 명세 → 역할별 명세 → 역할별 아키텍처 → README·예시 → 과거 자료** 순서로 적용한다. `OWNER INPUT` / `OPEN` 값을 임의로 확정하지 않는다. 자세한 기준은 [문서 운영 규칙](system/DOCUMENTATION_POLICY.md)을 따른다.
 
-Raspberry Pi HPC
-→ Linux Service / Process / Thread
-```
-
-공통 원칙:
-- ISR 최소 처리
-- Control/Safety path에서 blocking log 금지
-- Queue / Notification / Event / single-owner 구조 우선
-- Task period/jitter, stack high-water, queue overflow, watchdog 실제 측정
-- Pi는 FPS/latency/CPU/RAM/temperature/backlog 실제 측정
-
-# 6. Owner Freeze 순서
-
-코드 작성 전 Project Owner가 아래 순서로 `FINAL_IMPLEMENTATION_SPEC.md`를 채운다.
-
-```text
-1. Hardware Freeze
-2. Network Freeze
-3. Vehicle / Control Freeze
-4. Perception / Vision Freeze
-5. HMI / Body Freeze
-6. DTC / Health Freeze
-7. CAN / LIN Message Contract Freeze
-8. RTOS / Linux Execution Contract Freeze
-```
-
-각 항목은:
-
-```text
-OPEN
-→ Owner 결정
-→ FROZEN
-```
-
-상태로 관리한다.
-
-# 7. Coding Gate
-
-다음 항목이 FROZEN되기 전에는 통합 코드에 영구 상수로 박지 않는다.
-
-- CAN ID / DLC / bit position
-- Message cycle / timeout
-- Unit / scale / offset / range
-- LIN frame / schedule
-- Final_Drive_Command
-- Vision_Status / ADAS_Request
-- Ultrasonic_Status
-- Body_User_Request / Body_Command
-- DTC_Event
-- ECU_Heartbeat
-- Vehicle State Machine
-- Arbitration / Safe State
-- RTOS numeric priority / stack / queue depth
-
-# 8. AI에게 역할 문서를 줄 때
-
-다음 규칙을 같이 전달한다.
-
-```text
-FINAL_IMPLEMENTATION_SPEC.md가 최상위 규칙이다.
-고정된 Publisher/Owner/역할 경계를 변경하지 마라.
-OWNER INPUT 또는 OPEN 상태를 임의로 최종 확정하지 마라.
-Project Owner가 승인한 값만 FROZEN으로 바꿔라.
-내부 구현은 제안할 수 있지만 ECU 간 Interface는 최종 명세를 따른다.
-```
-
-# 9. 구현 Baseline
-
-모든 핵심 결정이 FROZEN되면 해당 커밋을 **Implementation Baseline v1.0**으로 사용한다.
-
-`docs/archive/`는 과거 참고용이며 현재 구현 기준으로 사용하지 않는다.
-
-[Main README](../README.md)
+폴더별 목록: [시작](getting_started/README.md) · [전체 설명](overview/README.md) · [공통 시스템](system/README.md) · [ECU](ecus/README.md) · [템플릿](templates/README.md) · [과거 자료](archive/README.md)

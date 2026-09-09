@@ -1,5 +1,7 @@
 # [NODE / SOFTWARE SYSTEM NAME] Software Architecture
 
+[프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
+
 > 문서 목적: 이 기능을 **어떤 구조로 구현하는지**, 왜 그렇게 나눴는지, 실행 중 어떤 Task/Service가 어떻게 협력하는지 설명한다.  
 > 기능 요구사항은 `SPECIFICATION.md`, 검증 결과는 `TEST_REPORT.md`를 기준으로 한다.
 

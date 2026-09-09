@@ -1,5 +1,7 @@
 # [FEATURE / NODE NAME] Functional Specification
 
+[프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
+
 > 문서 목적: 이 기능이 **무엇을 해야 하는지** 정의한다.  
 > 구현 구조와 Task 배치는 별도 `ARCHITECTURE.md`, 검증 결과는 `TEST_REPORT.md`에서 관리한다.
 

@@ -1,9 +1,15 @@
-# Archive Index
+# 과거 자료
 
-과거 문서는 참고용으로만 보존한다. 현재 개발 기준은 `../README.md`이다.
+[프로젝트 홈](../../README.md) · [현재 문서 안내](../README.md)
 
-- `README_2026-09-08_legacy.md`: 초기 README 보존본
-- `legacy_v1.2_before_full_sync_2026-09-09/`: 6역할 전체 동기화 전 문서
-- `legacy_v1.2_before_doc_cleanup_2026-09-09/`: 문서 통합 및 명세/아키텍처 템플릿 개선 직전 문서
+현재 구현 기준은 [최종 구현 명세](../system/FINAL_IMPLEMENTATION_SPEC.md)다. 아래 자료는 이전 설계와 변경 이력을 확인하기 위한 기록이다.
 
-새 개발 문서는 `docs/` 상위와 `docs/templates/`만 사용한다.
+## 자료 묶음
+
+- [초기 개발 가이드](legacy_guides/README.md)
+- [문서 정리 전 v1.2 스냅샷](legacy_v1.2_before_doc_cleanup_2026-09-09/README.md)
+- [전체 동기화 전 v1.2 스냅샷](legacy_v1.2_before_full_sync_2026-09-09/README.md)
+
+## 이전 루트 README
+
+- [README_2026-09-08_legacy.md](README_2026-09-08_legacy.md)
