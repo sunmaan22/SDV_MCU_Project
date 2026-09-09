@@ -16,6 +16,11 @@ docs/
 │  ├ SPECIFICATION.md
 │  ├ ARCHITECTURE.md
 │  └ TEST_REPORT.md
+├ Ultrasonic_Perception/
+│  ├ README.md
+│  ├ SPECIFICATION.md
+│  ├ ARCHITECTURE.md
+│  └ TEST_REPORT.md
 └ templates/
    ├ FUNCTIONAL_SPECIFICATION_TEMPLATE.md
    ├ SOFTWARE_ARCHITECTURE_TEMPLATE.md
@@ -110,7 +115,12 @@ TEST_REPORT.md
 - `ARCHITECTURE.md`: Component + Task + ISR + Queue + Runtime 구조
 - `TEST_REPORT.md`: 기능 검증 + Timing/Jitter/Stack/Queue/Watchdog 검증
 
-IVI 담당의 채운 예시는 [`IVI/`](IVI/)를 참고한다.
+현재 채운 예시:
+
+- **B / Cluster + IVI:** [`IVI/`](IVI/)
+- **A / Ultrasonic Perception:** [`Ultrasonic_Perception/`](Ultrasonic_Perception/)
+
+각 예시의 `TBD`와 `NOT RUN`은 실제 부품 선정/구현/시험 후 담당자가 채운다.
 
 ---
 
