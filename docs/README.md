@@ -1,247 +1,199 @@
 # Documentation Guide
 
-> 기준: **Architecture v1.2 + RTOS Development Policy / 2026-09-09**  
-> 목적: 문서를 최소화하면서도 각 담당자가 `무엇을 만들지`, `어떻게 나눌지`, `어떤 Task/Service가 언제 돌아야 하는지`까지 같은 기준으로 설계한다.
+> 기준: **Architecture v1.2 + RTOS/Linux Execution Policy + Integration Review 2026-09-09**
 
-# 1. 현재 활성 문서
+이 문서는 `docs/`의 **공통 통합 기준**이다. 각 역할 폴더의 `README.md`에는 최신 개발/결정사항이 있고, `SPECIFICATION.md`, `ARCHITECTURE.md`, `TEST_REPORT.md`는 그 기준을 실제 수치와 구현 결과로 채워가는 문서다.
+
+# 1. 현재 역할 문서
 
 ```text
 docs/
-├ README.md
-├ TEAM_GUIDE.md
-├ PROJECT_REFERENCE.md
-├ WEEKLY_PLAN.md
-├ IVI/
-│  ├ README.md
-│  ├ SPECIFICATION.md
-│  ├ ARCHITECTURE.md
-│  └ TEST_REPORT.md
-├ Ultrasonic_Perception/
-│  ├ README.md
-│  ├ SPECIFICATION.md
-│  ├ ARCHITECTURE.md
-│  └ TEST_REPORT.md
-├ Motor_Steering_Control/
-│  ├ README.md
-│  ├ SPECIFICATION.md
-│  ├ ARCHITECTURE.md
-│  └ TEST_REPORT.md
-├ Lighting_Ambient_LIN_CAN/
-│  ├ README.md
-│  ├ SPECIFICATION.md
-│  ├ ARCHITECTURE.md
-│  └ TEST_REPORT.md
-├ HPC_Camera_Vision/
-│  ├ README.md
-│  ├ SPECIFICATION.md
-│  ├ ARCHITECTURE.md
-│  └ TEST_REPORT.md
-├ VCU_DTC_CAN_Integration/
-│  ├ README.md
-│  ├ SPECIFICATION.md
-│  ├ ARCHITECTURE.md
-│  └ TEST_REPORT.md
+├ Ultrasonic_Perception/          # A
+├ IVI/                            # B
+├ Motor_Steering_Control/         # C
+├ Lighting_Ambient_LIN_CAN/       # D
+├ HPC_Camera_Vision/              # E
+├ VCU_DTC_CAN_Integration/        # F
 └ templates/
-   ├ FUNCTIONAL_SPECIFICATION_TEMPLATE.md
-   ├ SOFTWARE_ARCHITECTURE_TEMPLATE.md
-   └ TEST_REPORT_TEMPLATE.md
 ```
 
-과거 문서는 `docs/archive/`에만 보존한다.
+각 역할은 먼저 자기 폴더의 `README.md`를 읽고, 거기에 적힌 **지금 개발해야 할 것 / 반드시 결정해야 할 것**을 기준으로 `SPECIFICATION.md`, `ARCHITECTURE.md`, `TEST_REPORT.md`를 갱신한다.
 
----
-
-# 2. 프로젝트 RTOS 기본 정책
-
-## 2.1 한 줄 원칙
+# 2. 실행 환경
 
 ```text
-STM32 Node → FreeRTOS 기본
-Raspberry Pi → Linux Service / Process / Thread
+STM32 Node
+→ FreeRTOS + CMSIS-RTOS2 기본
+
+Raspberry Pi HPC
+→ Linux Service / Process / Thread
 ```
 
-STM32에서는 가능한 경우 **FreeRTOS Kernel + CMSIS-RTOS2 API**를 기본 구조로 사용한다. STM32CubeMX/STM32CubeIDE에서 생성되는 설정과 사용 보드의 실제 RAM/Flash가 최종 기준이다.
+공통 원칙:
+- ISR은 timestamp/flag/notification 등 최소 처리만 한다.
+- 주기/제어/통신/UI/진단을 서로 blocking시키지 않는다.
+- Queue/Notification/Event를 사용하고 무분별한 공유 전역변수를 피한다.
+- Control/Safety 경로에서 blocking log를 하지 않는다.
+- Task period/jitter, stack high-water, queue overflow, watchdog 조건을 실제 측정한다.
+- Pi는 FPS/latency/CPU/RAM/temperature/queue backlog를 측정한다.
 
-단, RTOS를 넣는 목적은 Task 숫자를 늘리는 것이 아니다.
+# 3. Integration Review에서 정리한 공통 Interface
+
+아래 이름은 **논리적 메시지 이름**이다. 실제 CAN ID, DLC, bit position은 F 담당이 CAN Matrix에서 확정한다.
+
+| Message | Publisher | Consumer | 의미 |
+|---|---|---|---|
+| `Ultrasonic_Status` | A | F/B/E | distance, valid, warning, fault flags |
+| `Vision_Status` | E | F/B | lane/object/parking semantic result, valid/health |
+| `ADAS_Request` | E | F | speed/steering 등 고수준 요청 |
+| `Final_Drive_Command` | F | C | final speed/steering/drive enable/gear 관련 최종 명령 |
+| `Drive_Status` | C | F/B/E | RPM, speed, steering/control health |
+| `Body_User_Request` | B | F | HMI에서 발생한 조명/차량설정 사용자 요청 |
+| `Body_Command` | F | D | VCU가 검증/통합한 최종 Body 명령 |
+| `Body_Status` | D | F/B/E | ambient, lamp, LIN/gateway health |
+| `Vehicle_State` | F | All | gear, mode, safety/ready state |
+| `Driver_Input` | F | B/E | normalized accel/brake/steering 등 |
+| `DTC_Event` | 각 Node | F/Pi/B 필요 시 | 공통 고장 이벤트 |
+| `ECU_Heartbeat` | 각 Node | F/Pi | node alive/health |
+
+# 4. Single Owner 규칙
+
+통합에서 가장 중요한 규칙이다.
 
 ```text
-주기 제어
-이벤트 처리
-CAN / LIN 통신
-UI
-진단 / Watchdog
+Ultrasonic distance/warning → A
+UI representation           → B
+Motor/Servo actuator output → C
+LIN schedule / CAN↔LIN      → D Gateway
+Ambient/Lamp actual state   → D Slave
+Vision semantic result      → E
+ADAS high-level request     → E
+Final vehicle command       → F
+Body final command          → F
+DTC history database        → Pi DTC Manager
 ```
 
-을 서로 방해하지 않게 분리하고, 실행 주기와 우선순위를 설명 가능하게 만드는 것이 목적이다.
+같은 최종 데이터를 여러 Node가 동시에 publish하지 않는다.
 
-Raspberry Pi는 Linux이므로 FreeRTOS 형식을 억지로 적용하지 않는다. 대신 **Service / Process / Thread / IPC / Queue / Health / Restart** 구조를 설계한다.
+# 5. 이번 검토에서 고친 핵심 문제
 
-## 2.2 Node별 적용
+1. **Vision 상태와 제어요청이 섞여 있던 문제**
+   - `Vision_Status`와 `ADAS_Request`로 분리한다.
 
-| 담당 | Node | 실행 환경 |
-|---|---|---|
-| A | Ultrasonic STM32 | FreeRTOS |
-| B | STM32H735 Cluster + IVI | FreeRTOS + TouchGFX |
-| C | Drive + Steering STM32 | FreeRTOS |
-| D | Body Gateway STM32 | FreeRTOS |
-| D | Body LIN Slave STM32 | FreeRTOS 기본, MCU 자원 부족 시 예외 검토 |
-| E | Raspberry Pi Vision/HPC | Linux Service / Process / Thread |
-| F | VCU STM32 | FreeRTOS |
+2. **H735와 VCU가 둘 다 Body_Command를 publish할 수 있던 문제**
+   - H735는 `Body_User_Request`만 생성한다.
+   - VCU가 최종 `Body_Command`의 single publisher다.
 
-작은 LIN Slave도 프로젝트 기본안은 FreeRTOS 사용으로 잡는다. 다만 최종 MCU가 너무 작은 경우 RAM/Flash 측정 결과를 근거로 Bare-metal 예외를 허용할 수 있다. 예외는 `ARCHITECTURE.md`의 Architecture Decision에 이유를 남긴다.
+3. **Ultrasonic invalid와 warning enum이 중복될 수 있던 문제**
+   - `valid`와 `warning_level`을 분리한다.
+   - `valid=false`이면 warning을 정상 판단에 사용하지 않는다.
 
----
+4. **VCU/Drive timeout 책임이 뒤집혀 있던 문제**
+   - Drive ECU가 `Final_Drive_Command` timeout을 검출한다.
+   - VCU는 `Drive_Status`/Heartbeat/peer timeout을 검출한다.
 
-# 3. RTOS 공통 설계 규칙
+5. **DTC History ownership이 겹칠 수 있던 문제**
+   - 각 ECU는 local fault를 검출한다.
+   - F는 DTC 규칙/severity/safety action을 통합한다.
+   - Pi가 DTC History DB를 소유한다.
+   - B는 표시한다.
 
-1. **ISR은 짧게 끝낸다.** Timestamp/flag 저장 후 Task Notification 또는 Queue로 Task를 깨운다.
-2. 주기 Task는 가능하면 `osDelayUntil()` 또는 `vTaskDelayUntil()` 계열로 주기를 관리한다.
-3. Task 간 데이터 전달은 전역변수 난사보다 **Queue / Task Notification / Event Flags**를 우선한다.
-4. Mutex는 실제 공유 자원 보호가 필요한 곳에만 사용한다.
-5. Motor/VCU 같은 중요한 Task가 UART log, printf, UI 때문에 Block되지 않게 한다.
-6. Scheduler 시작 후 불필요한 동적 메모리 할당을 피하고, 가능하면 Static Allocation을 검토한다.
-7. 각 Task는 `Period / Trigger / Priority / Deadline / Stack`을 문서화한다.
-8. Queue overflow, Task starvation, Stack overflow를 검출하거나 시험한다.
-9. MCU Node는 **Health Monitor + Independent Watchdog** 구조를 권장한다. 모든 중요 Task가 정상일 때만 Watchdog refresh를 허용하는 방향으로 설계한다.
-10. 정확한 Task period와 Priority 숫자는 처음부터 감으로 확정하지 않고 실제 Timing Test 후 조정한다.
+6. **SafetyTask와 VcuControlTask가 final command를 동시에 쓸 위험**
+   - `VcuControlTask`만 final command를 쓴다.
+   - `SafetyTask`는 override state를 갱신하고 VcuControlTask를 즉시 깨운다.
 
-## 우선순위 기본 방향
+# 6. Parking 데이터 규칙
 
 ```text
-Safety / Hard Real-Time Control
-        ↓
-Critical CAN RX / Command handling
-        ↓
-Sensor / State / Gateway processing
-        ↓
-UI model / Status transmission
-        ↓
-Diagnostics / Logging
+A Ultrasonic
+→ 거리 / valid / SAFE-WARNING-CRITICAL
+→ VCU에 직접 전달
+
+E Rear Vision
+→ object / position / vision warning
+→ Vision_Status
+
+F VCU
+→ 두 정보를 각각 유지
+→ Ultrasonic CRITICAL을 Rear Vision이 해제하지 못함
+→ 최종 action 결정
 ```
 
-FreeRTOS numeric priority는 각 Node의 Task 수와 실제 측정 후 정한다.
+센서 fusion을 한다고 해서 한 센서의 critical fault를 다른 센서가 지워버리면 안 된다.
 
----
-
-# 4. Linux HPC 공통 설계 규칙
-
-Raspberry Pi Vision/HPC는 다음을 중심으로 본다.
-
-1. Camera Capture와 무거운 Vision Processing이 서로 불필요하게 block되지 않게 한다.
-2. Frame/Result Queue는 bounded 구조를 사용한다.
-3. backlog가 생기면 오래된 frame을 계속 처리하기보다 **최신성(Freshness)** 을 우선한다.
-4. CAN interface는 가능하면 한 Service가 소유하고 다른 기능은 IPC로 요청한다.
-5. Front/Rear Vision은 독립 개발/시험 가능하도록 분리한다.
-6. Process crash, Camera disconnect, CAN failure를 Health 상태로 만들고 recovery/restart 정책을 둔다.
-7. FPS, processing latency, CPU, memory, thermal, queue occupancy를 실제 측정한다.
-8. Raw Camera Frame은 CAN FD로 전송하지 않는다.
-
----
-
-# 5. 각 담당자가 작성할 문서
-
-각 기능 폴더에는 아래 세 파일을 기준으로 둔다.
+# 7. Body 제어 규칙
 
 ```text
-SPECIFICATION.md
-ARCHITECTURE.md
-TEST_REPORT.md
+H735 Touch
+→ Body_User_Request
+→ VCU
+→ validation / vehicle state rule
+→ Body_Command
+→ Gateway
+→ LIN Lamp_Command
+→ LIN Slave
+→ Lamp Output
 ```
 
-- `SPECIFICATION.md`: 무엇을 해야 하는가, Timing/RTOS/Linux 실행 요구사항 포함
-- `ARCHITECTURE.md`: Component + Task/Service + ISR/IPC + Runtime 구조
-- `TEST_REPORT.md`: 기능 검증 + Timing/Resource/Health 검증
+Brake lamp, direction/vehicle-state-dependent output처럼 차량 상태와 연관된 명령은 VCU가 최종 통합한다.
 
-현재 채운 예시:
+# 8. DTC 규칙
 
-- **A / Ultrasonic Perception:** [`Ultrasonic_Perception/`](Ultrasonic_Perception/)
-- **B / Cluster + IVI:** [`IVI/`](IVI/)
-- **C / Motor + Steering Control:** [`Motor_Steering_Control/`](Motor_Steering_Control/)
-- **D / Lighting + Ambient / LIN-CAN:** [`Lighting_Ambient_LIN_CAN/`](Lighting_Ambient_LIN_CAN/)
-- **E / HPC + Camera Vision:** [`HPC_Camera_Vision/`](HPC_Camera_Vision/)
-- **F / VCU + DTC + CAN Integration:** [`VCU_DTC_CAN_Integration/`](VCU_DTC_CAN_Integration/)
+```text
+Local Node
+→ fault detect
+→ local fault_flags
+→ confirmed DTC_Event
 
-이제 A~F 전체 역할에 대해 채운 예시가 있다. 각 예시의 `TBD`, `후보`, `NOT RUN`은 실제 부품 선정/구현/시험 후 담당자가 채운다.
+VCU
+→ severity / safety relevance
+→ safe action if needed
 
----
+Pi
+→ history / timestamp / count / storage
 
-# 6. 기능 명세서 기준
+H735
+→ active/history display
+```
 
-`FUNCTIONAL_SPECIFICATION_TEMPLATE.md`는 다음을 포함한다.
+공통 `DTC_Event` 최소 필드 후보:
+- source/node
+- code
+- status
+- severity
+- timestamp 또는 sequence
 
-- Feature ID / Name
-- Scope / 제외 범위
-- Usage/System Scenario
-- Functional Flow
-- Input / Output
-- Functional Requirements
-- Rules / Edge Cases
-- UI/UX Reference
-- Hardware/CAN/LIN/API Interface
-- Timing / Performance
-- Execution / RTOS 또는 Linux Service Requirements
-- Safety / Fail-safe / DTC
-- Acceptance Criteria
-- Revision / TBD
+최종 field/bit layout은 F가 팀과 합의해 CAN Matrix/DTC table에 확정한다.
 
-MCU 기능은 Task와 Timing 요구사항을, Linux HPC 기능은 Process/Service/Thread/IPC/Restart 요구사항을 명확히 적는다.
+# 9. Stage 2 전에 반드시 Freeze할 공통 결정
 
----
+아래가 안 정해지면 2-node 통합을 시작하지 않는다.
 
-# 7. Software Architecture 기준
+- 각 STM32 실제 MCU와 FDCAN 지원 여부
+- CAN FD Transceiver / Pi CAN FD interface
+- logical message별 Publisher/Consumer
+- signal name / unit / range / valid condition
+- message cycle / timeout
+- `Final_Drive_Command` 구조
+- `Vision_Status` / `ADAS_Request` 구조
+- `Body_User_Request` / `Body_Command` 구조
+- `Ultrasonic_Status` 구조
+- `DTC_Event` 공통 field
+- `ECU_Heartbeat` node 식별 방식
+- VCU arbitration 기본 rule
 
-`SOFTWARE_ARCHITECTURE_TEMPLATE.md`의 공통 관점:
+# 10. 문서 작성 순서
 
-- Context / Scope
-- Building Block / Component
-- Runtime
-- Deployment
-- Interface Contract
-- Data / State
-- Quality / Risk
-- Architecture Decision
-- Requirement Traceability
+```text
+1. README의 개발/결정사항 확인
+2. 부품/센서/보드 Datasheet 확인
+3. SPECIFICATION의 TBD 결정
+4. ARCHITECTURE의 Task/Service/Interface 갱신
+5. Stage 1 구현
+6. TEST_REPORT에 실제 측정값 기록
+7. Stage 2 전 CAN/LIN contract freeze
+```
 
-RTOS Node에서는 추가로:
-
-- Task Model
-- Task Priority와 Period/Trigger
-- ISR → Task 연결
-- Queue / Notification / Event / Mutex
-- Watchdog / Stack / Heap
-
-Linux HPC Node에서는 추가로:
-
-- Service / Process / Thread
-- IPC / Queue
-- Shared resource owner
-- Supervisor / Restart
-- Frame/Result freshness
-- CPU / Memory / Thermal / FPS / Latency
-
-즉 설계서에는 **무엇으로 나눴는지**와 **실행 중 어떻게 협력하는지**가 둘 다 보여야 한다.
-
----
-
-# 8. 문서 작성 규칙
-
-1. 같은 내용을 여러 파일에 복붙하지 않는다.
-2. 값이 미정이면 `TBD`로 둔다.
-3. Candidate period는 `10 ms 후보`처럼 확정값과 구분한다.
-4. ISR에서 긴 연산, blocking I/O, printf를 하지 않는다.
-5. Task/Service 이름만 적고 책임과 입력/출력이 없으면 설계가 덜 끝난 것이다.
-6. RTOS를 사용해도 Deadline을 자동으로 보장해주는 것은 아니다. 실제 측정한다.
-7. Linux를 사용해도 Process를 많이 쪼갠다고 좋은 Architecture가 되는 것은 아니다. Failure isolation과 IPC 비용을 같이 본다.
-8. 설계 결정이 중요하면 ADR에 남긴다.
-
----
-
-# 9. Legacy
-
-- `archive/README_2026-09-08_legacy.md`
-- `archive/legacy_v1.2_before_full_sync_2026-09-09/`
-- `archive/legacy_v1.2_before_doc_cleanup_2026-09-09/`
-
-현재 개발에서는 archive 문서를 기준으로 사용하지 않는다.
+`docs/archive/`는 과거 참고용이며 현재 개발 기준으로 사용하지 않는다.
 
 [Main README](../README.md)
