@@ -14,6 +14,7 @@
 | Status | Draft |
 | Priority | MUST |
 | Board / Platform | STM32H735 + TouchGFX |
+| Execution Model | FreeRTOS + CMSIS-RTOS2 |
 | Related Architecture | `ARCHITECTURE.md` |
 | Related Test | `TEST_REPORT.md` |
 
@@ -22,6 +23,7 @@
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial filled example |
+| v0.2 | 2026-09-09 | Team | FreeRTOS task/timing/health requirements added |
 
 ---
 
@@ -29,65 +31,66 @@
 
 ## 1.1 한 문장 설명
 
-> H735 Cockpit은 CAN FD로 전달되는 차량 상태, ADAS, Parking, Body, DTC 정보를 운전자에게 보여주고, 일부 사용자 요청을 CAN으로 전달한다.
+> H735 Cockpit은 CAN FD로 전달되는 차량 상태, ADAS, Parking, Body, DTC 정보를 운전자에게 보여주고, 일부 사용자 요청을 CAN으로 전달하며, UI/CAN/진단 기능을 FreeRTOS Task로 분리해 실행한다.
 
 ## 1.2 포함 범위
 
 - Digital Cluster 기본 화면
 - Speed / RPM / Gear / Battery / Temperature 표시
-- ADAS 상태 및 Warning 표시
-- Ultrasonic / Rear Parking 상태 표시
-- DTC 목록 및 상세 정보 표시
-- Lighting / Vehicle Setting 요청 UI
+- ADAS 상태 및 Warning
+- Ultrasonic / Rear Parking 상태
+- DTC 목록/상세
+- Lighting / Vehicle Setting Request UI
 - Touch 기반 화면 전환
-- CAN 데이터 수신, 유효성/Timeout 상태 표시
-- General Warning 표시
+- CAN RX/TX
+- Signal validity / timeout
+- FreeRTOS Task 분리
+- Queue / Notification 기반 Task 간 데이터 전달
+- Health / Stack / Queue monitoring
 
 ## 1.3 제외 범위
 
-- Motor PWM 또는 Steering PWM 직접 생성
+- Motor PWM / Steering PWM 직접 생성
 - ADAS 최종 제어 판단
 - Camera 영상처리
-- Raw Camera Frame 수신/표시
+- Raw Camera Frame CAN 수신
 - Ultrasonic 거리 계산
-- DTC 원인 자체 진단
 - Lighting GPIO 직접 구동
-
-H735는 **데이터를 만들어내는 센서 ECU가 아니라 다른 Node의 상태를 받아 보여주는 Cockpit Node**를 중심으로 한다.
+- VCU arbitration
 
 ---
 
 # 2. Usage / System Scenario
 
-## 2.1 정상 주행 화면
+## 2.1 정상 차량 상태 표시
 
 | Item | Description |
 |---|---|
-| Actor / Trigger | VCU / Drive ECU의 CAN Status |
-| Preconditions | H735 부팅 완료, TouchGFX 실행, CAN 수신 가능 |
+| Actor / Trigger | VCU / Drive ECU CAN frame |
+| Preconditions | H735 init 완료, FreeRTOS scheduler running, TouchGFX running, CAN ready |
 | Trigger | `Vehicle_State`, `Drive_Status` 수신 |
-| Normal Flow | CAN RX → Decode → Data Model Update → Cluster Widget Update |
-| Postconditions | Speed, RPM, Gear, READY, Warning 정보가 최신 상태로 표시됨 |
+| Normal Flow | FDCAN ISR → CanRxTask → decode → VehicleModelTask → GuiTask |
+| Postconditions | Speed/RPM/Gear/READY/Warning 최신 상태 표시 |
 
 ## 2.2 Parking Warning
 
 | Item | Description |
 |---|---|
 | Actor / Trigger | Ultrasonic ECU / HPC Rear Vision |
-| Preconditions | Gear R 또는 Parking 화면 활성 |
-| Trigger | `Ultrasonic_Status` 또는 Parking Vision 결과 수신 |
-| Normal Flow | 거리/Warning 수신 → Parking Model 갱신 → 영역별 Warning 표시 |
-| Postconditions | 운전자가 Rear/Left/Right 위험 상태를 확인 가능 |
+| Preconditions | Cockpit READY |
+| Trigger | Parking status 수신 |
+| Normal Flow | CanRxTask → Model Queue → Warning evaluation → GuiTask overlay |
+| Postconditions | 운전자가 위험 위치/상태 확인 가능 |
 
-## 2.3 DTC 확인
+## 2.3 사용자 Lighting Request
 
 | Item | Description |
 |---|---|
-| Actor / Trigger | 사용자 Touch / `DTC_Event` |
-| Preconditions | Cockpit READY |
-| Trigger | Diagnostics 메뉴 진입 또는 새 DTC 수신 |
-| Normal Flow | DTC Model 갱신 → 목록 표시 → 항목 선택 → 상세 표시 |
-| Postconditions | Active/History 상태 및 설명을 확인 가능 |
+| Actor / Trigger | Driver touch |
+| Preconditions | Settings screen active |
+| Trigger | Lighting toggle/select |
+| Normal Flow | GuiTask → Command Queue → CommandTxTask → CAN Body_Command |
+| Postconditions | Body Gateway가 Request 수신 가능 |
 
 ---
 
@@ -95,16 +98,17 @@ H735는 **데이터를 만들어내는 센서 ECU가 아니라 다른 Node의 �
 
 ```mermaid
 flowchart TD
-    A[CAN RX / Touch Input] --> B[Decode & Validate]
-    B --> C{Valid?}
-    C -->|Yes| D[Vehicle Data Model Update]
-    C -->|No / Timeout| E[Invalid / Communication Warning]
-    D --> F[Screen Presenter]
-    F --> G[Cluster / ADAS / Parking / DTC / Settings]
-    G --> H{User Command?}
-    H -->|No| I[Display Only]
-    H -->|Yes| J[Request Validation]
-    J --> K[CAN Request TX]
+    A[FDCAN ISR / Touch Event] --> B[Task Wake-up]
+    B --> C{CAN or UI?}
+    C -->|CAN| D[CanRxTask]
+    D --> E[VehicleModelTask]
+    E --> F[Validity / Warning / DTC]
+    F --> G[GuiTask / TouchGFX]
+    C -->|Touch| G
+    G --> H{User Request?}
+    H -->|Yes| I[Command Queue]
+    I --> J[CommandTxTask]
+    J --> K[CAN TX]
 ```
 
 ---
@@ -113,28 +117,26 @@ flowchart TD
 
 | Input ID | Input | Source | Interface | Unit / Range | Valid Condition | Update / Trigger |
 |---|---|---|---|---|---|---|
-| IN-HMI-001 | `Vehicle_State` | VCU | CAN FD | Gear/Mode/Safety | Valid CAN payload | Periodic |
-| IN-HMI-002 | `Drive_Status` | Drive ECU | CAN FD | rpm, speed, steering status | Valid flag / timeout 정상 | Periodic |
-| IN-HMI-003 | `Ultrasonic_Status` | Ultrasonic ECU | CAN FD | mm / warning enum | sensor valid | Periodic |
-| IN-HMI-004 | `Vision_Request` / Vision Status | Raspberry Pi HPC | CAN FD | ADAS/Parking semantic result | valid result | Periodic/Event |
-| IN-HMI-005 | `Body_Status` | Body Gateway | CAN FD | ambient/lamp/LIN health | valid payload | Periodic |
-| IN-HMI-006 | `DTC_Event` | 각 Node / Pi Manager | CAN FD | code/status/severity | valid DTC format | Event |
-| IN-HMI-007 | `ECU_Heartbeat` | 각 Node | CAN FD | alive/status | timeout 미발생 | Periodic |
-| IN-HMI-008 | Touch Event | Driver | Touch Controller | x/y/action | valid touch region | Event |
+| IN-HMI-001 | `Vehicle_State` | VCU | CAN FD | Gear/Mode/Safety | valid payload | periodic |
+| IN-HMI-002 | `Drive_Status` | Drive ECU | CAN FD | rpm/speed/status | timeout 정상 | periodic |
+| IN-HMI-003 | `Ultrasonic_Status` | Ultrasonic ECU | CAN FD | mm/warning | sensor valid | periodic |
+| IN-HMI-004 | Vision status/request | Raspberry Pi | CAN FD | semantic result | source valid | periodic/event |
+| IN-HMI-005 | `Body_Status` | Body Gateway | CAN FD | ambient/lamp/LIN health | valid payload | periodic |
+| IN-HMI-006 | `DTC_Event` | ECU/Pi DTC Manager | CAN FD | code/status/severity | valid format | event |
+| IN-HMI-007 | `ECU_Heartbeat` | ECU Nodes | CAN FD | alive/status | timeout 정상 | periodic |
+| IN-HMI-008 | Touch Event | Driver | Touch | x/y/action | valid region | event |
 
 ---
 
 # 5. Outputs
 
-| Output ID | Output | Destination | Interface | Unit / Range | Update / Event | Valid Condition |
-|---|---|---|---|---|---|---|
-| OUT-HMI-001 | Cluster Screen | Driver | LCD/TouchGFX | visual | Frame update | model valid |
-| OUT-HMI-002 | ADAS/Parking Warning | Driver | LCD/TouchGFX | visual enum | Event/Periodic | source valid |
-| OUT-HMI-003 | DTC Detail | Driver | LCD/TouchGFX | text/status | Event | DTC valid |
-| OUT-HMI-004 | `Body_Command` | Body Gateway | CAN FD | lighting request | User event | request valid |
-| OUT-HMI-005 | Diagnostic Clear Request 후보 | Diagnostics target | CAN FD | TBD | User event | 권한/상태 조건 만족 |
-
-`OUT-HMI-005`의 실제 Message 이름, CAN ID와 처리 정책은 DTC/CAN 통합 단계에서 확정한다.
+| Output ID | Output | Destination | Interface | Update / Event | Valid Condition |
+|---|---|---|---|---|---|
+| OUT-HMI-001 | Cluster/IVI Screen | Driver | LCD/TouchGFX | render update | model valid/degraded state |
+| OUT-HMI-002 | Critical Warning | Driver | LCD/TouchGFX | event | warning valid |
+| OUT-HMI-003 | DTC Detail | Driver | LCD/TouchGFX | event | DTC entry valid |
+| OUT-HMI-004 | `Body_Command` | Body Gateway | CAN FD | user event | request valid |
+| OUT-HMI-005 | Diagnostic Clear Request 후보 | Diagnostics target | CAN FD | user event | policy satisfied |
 
 ---
 
@@ -143,32 +145,39 @@ flowchart TD
 | Requirement ID | Requirement | Priority | Verification | Related Test |
 |---|---|---|---|---|
 | REQ-HMI-001 | Cockpit은 Speed, RPM, Gear를 Cluster 기본 화면에 표시해야 한다. | MUST | Test | T-HMI-001 |
-| REQ-HMI-002 | Cockpit은 READY 및 General Warning 상태를 표시해야 한다. | MUST | Test | T-HMI-002 |
-| REQ-HMI-003 | Cockpit은 ADAS 상태와 Warning 정보를 표시해야 한다. | MUST | Test | T-HMI-003 |
-| REQ-HMI-004 | Cockpit은 Ultrasonic 거리/Warning 정보를 Parking 화면에 표시해야 한다. | MUST | Test | T-HMI-004 |
-| REQ-HMI-005 | Cockpit은 DTC 목록과 선택된 DTC의 상세 상태를 표시해야 한다. | MUST | Test | T-HMI-005 |
-| REQ-HMI-006 | Cockpit은 Touch 입력으로 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 전환해야 한다. | MUST | Test | T-HMI-006 |
-| REQ-HMI-007 | Cockpit은 유효하지 않거나 Timeout된 차량 데이터를 정상값처럼 표시하지 않아야 한다. | MUST | Fault Test | T-HMI-007 |
-| REQ-HMI-008 | Cockpit은 Lighting 설정을 직접 GPIO로 출력하지 않고 CAN Request로 전송해야 한다. | MUST | Inspect/Test | T-HMI-008 |
-| REQ-HMI-009 | Cockpit은 Raw Camera Frame을 CAN FD로 수신하도록 설계하지 않아야 한다. | MUST | Inspect | T-HMI-009 |
-| REQ-HMI-010 | Cockpit은 새 Critical Warning이 발생하면 현재 화면과 무관하게 운전자에게 Warning을 제공해야 한다. | SHOULD | Test | T-HMI-010 |
-| REQ-HMI-011 | 주요 차량 상태는 유효한 CAN 데이터 수신 후 목표 100 ms 이내에 화면 모델에 반영해야 한다. | SHOULD | Measure | T-HMI-011 |
-| REQ-HMI-012 | 정상 Touch 입력은 목표 150 ms 이내에 화면 전환 또는 사용자 피드백이 나타나야 한다. | SHOULD | Measure | T-HMI-012 |
+| REQ-HMI-002 | READY 및 General Warning을 표시해야 한다. | MUST | Test | T-HMI-002 |
+| REQ-HMI-003 | ADAS 상태와 Warning을 표시해야 한다. | MUST | Test | T-HMI-003 |
+| REQ-HMI-004 | Ultrasonic 거리/Warning을 Parking 화면에 표시해야 한다. | MUST | Test | T-HMI-004 |
+| REQ-HMI-005 | DTC 목록과 상세 상태를 표시해야 한다. | MUST | Test | T-HMI-005 |
+| REQ-HMI-006 | Touch로 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 전환해야 한다. | MUST | Test | T-HMI-006 |
+| REQ-HMI-007 | Timeout/Invalid 차량 데이터를 정상 최신값처럼 표시하지 않아야 한다. | MUST | Fault Test | T-HMI-007 |
+| REQ-HMI-008 | Lighting 설정은 GPIO 직접 출력이 아니라 CAN Request로 전송해야 한다. | MUST | Test/Inspect | T-HMI-008 |
+| REQ-HMI-009 | Raw Camera Frame을 CAN으로 수신하도록 설계하지 않아야 한다. | MUST | Inspect | T-HMI-009 |
+| REQ-HMI-010 | Critical Warning은 현재 화면과 무관하게 우선 표시 가능해야 한다. | SHOULD | Test | T-HMI-010 |
+| REQ-HMI-011 | 주요 CAN 데이터는 수신 후 목표 100 ms 이내에 UI Model에 반영해야 한다. | SHOULD | Measure | T-HMI-011 |
+| REQ-HMI-012 | Touch 입력은 목표 150 ms 이내에 화면 피드백을 제공해야 한다. | SHOULD | Measure | T-HMI-012 |
+| REQ-HMI-013 | CAN 수신 처리와 TouchGFX rendering은 서로 독립적인 FreeRTOS Task context로 분리해야 한다. | MUST | Inspect/Test | T-HMI-013 |
+| REQ-HMI-014 | FDCAN ISR은 긴 decode/rendering을 수행하지 않고 Task를 깨우는 최소 처리만 해야 한다. | MUST | Inspect | T-HMI-014 |
+| REQ-HMI-015 | Task 간 CAN/Model/UI 데이터 전달은 Queue/Notification/Repository 정책으로 관리해야 한다. | MUST | Inspect/Test | T-HMI-015 |
+| REQ-HMI-016 | Critical Warning 처리 경로는 일반 DTC list rendering이나 logging 때문에 block되지 않아야 한다. | MUST | Load Test | T-HMI-016 |
+| REQ-HMI-017 | Stack overflow와 Queue overflow를 검출 또는 시험할 수 있어야 한다. | SHOULD | RTOS Test | T-HMI-017 |
+| REQ-HMI-018 | Cockpit은 HealthTask를 통해 중요 Task/Queue 상태를 감시하고 Watchdog 적용 가능 구조를 가져야 한다. | SHOULD | Inspect/Test | T-HMI-018 |
 
-시간값은 프로젝트 목표값이며 실제 H735/TouchGFX 측정 후 조정한다.
+시간/Stack/Queue 수치는 실제 TouchGFX/FreeRTOS profiling 후 확정한다.
 
 ---
 
 # 7. Rules / Conditions
 
-| Rule ID | Condition / Rule | Result |
+| Rule ID | Condition | Result |
 |---|---|---|
-| RULE-HMI-001 | Power ON 후 기본 화면 | Cluster Main 표시 |
-| RULE-HMI-002 | Gear R | Parking 정보 접근성을 높이고 Parking Warning 표시 |
-| RULE-HMI-003 | Critical Warning 발생 | 현재 메뉴보다 Warning 표시 우선 |
-| RULE-HMI-004 | CAN Signal timeout | 마지막 값을 정상 최신값처럼 유지하지 않고 Invalid/통신경고 처리 |
-| RULE-HMI-005 | Lighting Setting 변경 | Local GPIO가 아니라 `Body_Command` Request 송신 |
-| RULE-HMI-006 | DTC Clear 요청 | 실제 Clear 권한/조건을 통합 규격에 따라 검증 후 Request 송신 |
+| RULE-HMI-001 | Power ON | Cluster Main 기본 진입 |
+| RULE-HMI-002 | Gear R | Parking 정보 접근성 강화 |
+| RULE-HMI-003 | Critical Warning | 일반 화면보다 Warning 우선 |
+| RULE-HMI-004 | CAN Signal timeout | `valid=false` + Comm Warning |
+| RULE-HMI-005 | Lighting 설정 | Command Queue → CAN Request |
+| RULE-HMI-006 | DTC Clear | 통합 규격 조건 확인 후 Request |
+| RULE-HMI-007 | GUI load 증가 | CanRxTask/Validity 처리가 starvation되지 않아야 함 |
 
 ---
 
@@ -176,27 +185,28 @@ flowchart TD
 
 | Case ID | Exception / Edge Case | Detection | Expected Behavior | Recovery |
 |---|---|---|---|---|
-| EDGE-HMI-001 | `Drive_Status` timeout | last_rx timeout | Speed/RPM invalid 표시, Comm Warning | 정상 frame 재수신 |
-| EDGE-HMI-002 | DTC code unknown | DTC lookup miss | Unknown DTC + raw code 표시 | DB/lookup 갱신 |
-| EDGE-HMI-003 | Touch 연타 / 잘못된 영역 | UI event validation | 무효 입력 무시, UI hang 금지 | 자동 |
-| EDGE-HMI-004 | CAN bus unavailable | CAN error state | Communication Fault 표시, 제어값 생성 금지 | CAN recovery 후 갱신 |
-| EDGE-HMI-005 | Parking sensor invalid | `valid=false` | 실제 거리 대신 Sensor Invalid 표시 | sensor recovery |
-| EDGE-HMI-006 | Vision unavailable | vision status timeout/fault | ADAS/Parking Vision unavailable 표시 | HPC service recovery |
+| EDGE-HMI-001 | `Drive_Status` timeout | timestamp | Speed/RPM invalid + warning | 정상 frame 재수신 |
+| EDGE-HMI-002 | Unknown DTC | lookup miss | raw code/source 표시 | table update |
+| EDGE-HMI-003 | Touch 연타 | event validation | hang 없이 처리/무시 | automatic |
+| EDGE-HMI-004 | CAN unavailable | controller/error state | Comm Fault 표시 | bus recovery |
+| EDGE-HMI-005 | Parking sensor invalid | `valid=false` | Sensor Invalid 표시 | source recovery |
+| EDGE-HMI-006 | Vision unavailable | timeout | Vision unavailable | service recovery |
+| EDGE-HMI-007 | CAN RX queue full | queue send failure/high-water | overflow count/diagnostic, critical data 정책 적용 | load 감소/queue tuning |
+| EDGE-HMI-008 | GuiTask 지연 | task health/timing | CAN model ingestion 계속 유지, health warning | profiling/tuning |
 
 ---
 
 # 9. UI / UX Reference
 
-| Item | Description |
+| Screen | Main Data |
 |---|---|
-| Cluster Main | Speed 중심, RPM/Gear/READY/Warning/Lamp 상태 |
-| ADAS Screen | ADAS active, lane/object/warning semantic data |
-| Parking Screen | Ultrasonic 거리/Warning + Rear Vision semantic status |
-| Diagnostics | Active/History DTC list, code, source ECU, severity/status |
-| Settings | Lighting/Vehicle setting Request UI |
-| Screen Flow | `Cluster Main ↔ ADAS / Parking / Diagnostics / Settings` |
+| Cluster Main | Speed, RPM, Gear, READY, Warning, Lamp |
+| ADAS | ADAS active, lane/object/warning semantic data |
+| Parking | Ultrasonic distance/warning + Rear Vision status |
+| Diagnostics | Active/History DTC list/detail |
+| Settings | Lighting/vehicle setting Request |
 
-Raw Rear Camera 영상 자체를 CAN FD로 받아 H735에 표시하는 것은 현재 범위가 아니다.
+Raw Rear Camera 영상 자체를 CAN으로 받아 표시하는 것은 현재 범위가 아니다.
 
 ---
 
@@ -204,34 +214,27 @@ Raw Rear Camera 영상 자체를 CAN FD로 받아 H735에 표시하는 것은 �
 
 ## 10.1 Hardware
 
-| Device | Interface | Electrical / Voltage | Requirement / Note |
-|---|---|---|---|
-| STM32H735 Display | Board integrated | Board spec | TouchGFX UI |
-| Touch Controller | Board integrated | Board spec | Touch event |
-| CAN FD Transceiver | FDCAN ↔ CANH/L | 사용 부품 기준 | 실제 Transceiver 필요 |
-
-실제 Pin/Transceiver 모델은 보드 선정 및 CubeMX 설정 후 기록한다.
+| Device | Interface | Note |
+|---|---|---|
+| STM32H735 Display | board integrated | TouchGFX |
+| Touch Controller | board integrated | event input |
+| CAN FD Transceiver | FDCAN ↔ CANH/L | actual model TBD |
 
 ## 10.2 CAN / CAN FD
 
-| Message / Signal | TX/RX | Owner / Peer | Unit | Cycle/Event | Timeout | Timeout Action |
-|---|---|---|---|---|---|---|
-| `Vehicle_State` | RX | VCU | enum/flags | Periodic | TBD | Vehicle state invalid |
-| `Drive_Status` | RX | Drive ECU | rpm/speed | Periodic | TBD | Speed/RPM invalid |
-| `Ultrasonic_Status` | RX | Ultrasonic ECU | mm/enum | Periodic | TBD | Sensor invalid 표시 |
-| `Vision_Request` | RX | HPC | semantic data | Periodic/Event | TBD | Vision unavailable |
-| `Body_Status` | RX | Body Gateway | status | Periodic | TBD | Body comm warning |
-| `DTC_Event` | RX | All/Pi | code/status | Event | N/A/Event | Event 저장/표시 |
-| `ECU_Heartbeat` | RX | All | alive | Periodic | TBD | ECU warning |
-| `Body_Command` | TX | Body Gateway | request | Event | N/A | 송신 결과/log 기록 |
+| Message | Direction | Peer | Cycle/Event | Timeout | Timeout Action |
+|---|---|---|---|---|---|
+| `Vehicle_State` | RX | VCU | periodic | TBD | invalid state |
+| `Drive_Status` | RX | Drive | periodic | TBD | speed/rpm invalid |
+| `Ultrasonic_Status` | RX | Ultrasonic | periodic | TBD | sensor invalid |
+| Vision status | RX | HPC | periodic/event | TBD | vision unavailable |
+| `Body_Status` | RX | Gateway | periodic | TBD | body warning |
+| `DTC_Event` | RX | All/Pi | event | N/A | list update |
+| `Body_Command` | TX | Gateway | event | N/A | TX result/log |
 
 ## 10.3 LIN
 
-N/A. H735는 LIN에 직접 연결하지 않는다. Body Gateway를 통해 CAN FD로 통신한다.
-
-## 10.4 API / IPC / File
-
-N/A for Stage 1. 향후 DTC description table을 code-generated/static table/file로 관리할 경우 별도 정의한다.
+N/A. H735는 LIN에 직접 연결하지 않는다.
 
 ---
 
@@ -239,45 +242,95 @@ N/A for Stage 1. 향후 DTC description table을 code-generated/static table/fil
 
 | Requirement | Target | Verification |
 |---|---|---|
-| 주요 차량 데이터 → UI model update | ≤ 100 ms 목표 | Timestamp / log |
-| Touch → UI response | ≤ 150 ms 목표 | Event timestamp |
-| Critical warning indication | ≤ 200 ms 목표 | Fault injection + timestamp |
-| GUI freeze | 정상 시나리오에서 발생하지 않아야 함 | 반복 시험 |
+| CAN RX → Vehicle Model | ≤100 ms 목표 | timestamp |
+| Touch → UI response | ≤150 ms 목표 | event/render timestamp |
+| Critical Warning indication | ≤200 ms 목표 | fault injection |
+| GUI freeze | 0 in normal soak test | soak |
+| CanRxTask event handling | TBD | trace/log |
+| Queue overflow | 0 in expected load | runtime stats |
 
 ---
 
-# 12. Safety / Fail-safe / DTC
+# 12. Execution / RTOS Requirements
 
-| Fault | Detection | Safe / Local Action | DTC Candidate | Recovery |
+## 12.1 Task Model
+
+| Task | Responsibility | Trigger / Period | Priority Direction | Blocking Policy |
 |---|---|---|---|---|
-| CAN communication lost | CAN error / timeout | Invalid/Comm warning 표시 | `HMI_COMM_xxx` 후보 | CAN 복구 후 상태 재수신 |
-| Touch controller fault | init/event failure | Display-only degraded mode | `HMI_TOUCH_xxx` 후보 | 재초기화/재부팅 |
-| Display update fault | render/watchdog 이상 | UI fault 기록 | `HMI_DISPLAY_xxx` 후보 | 재초기화/재부팅 |
-| Unknown DTC code | lookup miss | Raw code라도 표시 | 별도 DTC 불필요 | table update |
+| `CanRxTask` | CAN dequeue/decode | event | High | UI rendering 기다리지 않음 |
+| `VehicleModelTask` | repository/validity/warning | event/10~20 ms 후보 | Normal~High | long blocking 금지 |
+| `GuiTask` | TouchGFX render/input | framework tick | Normal | CAN driver 직접 접근 금지 |
+| `CommandTxTask` | UI Request CAN TX | event | Normal | queue based |
+| `HealthTask` | task/queue/stack health | 100 ms 후보 | Low | watchdog policy 수행 |
 
-Cockpit은 안전 제어의 최종 권한을 갖지 않으므로 통신 이상 시 Motor/Steering을 직접 제어하지 않는다. 해당 안전동작은 VCU가 담당한다.
+## 12.2 RTOS Objects
+
+| Object | Type | Producer | Consumer | Policy |
+|---|---|---|---|---|
+| `CanRxQueue` | Queue | FDCAN ISR/adapter | CanRxTask | overflow count + policy |
+| `ModelUpdateQueue` | Queue/Event | CanRxTask | VehicleModelTask | latest-state-friendly design |
+| `UiCommandQueue` | Queue | GuiTask | CommandTxTask | event command 보존 |
+| `SystemEvents` | Event Flags | Tasks | Health/Model | CAN ready/fault/critical flags |
+
+## 12.3 ISR
+
+FDCAN ISR은:
+- frame metadata 최소 capture
+- queue push 또는 task notify
+- 긴 decode 금지
+- printf 금지
+- TouchGFX 호출 금지
+
+## 12.4 Memory / Health
+
+- Task stack size: TBD after measurement
+- Stack overflow hook: enable candidate
+- queue high-water/overflow counter: required candidate
+- startup 이후 uncontrolled dynamic allocation: avoid
+- HealthTask + IWDG: 적용 후보, 최종 CubeMX 설정 후 확정
 
 ---
 
-# 13. Acceptance Criteria
+# 13. Safety / Fail-safe / DTC
 
-- [ ] H735 부팅 후 Cluster Main이 표시된다.
-- [ ] Dummy Data로 Speed/RPM/Gear/Warning 값 변경을 확인한다.
-- [ ] Touch로 5개 주요 화면을 전환한다.
-- [ ] Dummy ADAS/Parking/DTC 데이터가 각 화면에 표시된다.
-- [ ] Invalid/Timeout 상태가 정상 데이터와 구분된다.
-- [ ] Lighting 설정이 Local GPIO가 아닌 CAN Request 구조로 연결된다.
-- [ ] 실제 CAN 통합 후 주요 RX 메시지가 Data Model에 반영된다.
-- [ ] 주요 Requirement가 `TEST_REPORT.md`의 Test ID와 연결된다.
+| Fault | Detection | Local Action | DTC Candidate | Recovery |
+|---|---|---|---|---|
+| CAN lost | timeout/controller state | invalid/comm warning | `HMI_COMM_xxx` 후보 | bus recovery |
+| Touch fault | init/event health | display-only degraded | `HMI_TOUCH_xxx` 후보 | reinit/reboot |
+| GUI/task health fault | health monitor | warning / watchdog policy | `HMI_TASK_xxx` 후보 | reset/recovery |
+| Queue overflow | counter | data drop policy + health flag | `HMI_QUEUE_xxx` 후보 | tuning/restart |
+| Unknown DTC | lookup miss | raw code 표시 | N/A | table update |
+
+Cockpit은 Motor/Steering 안전 제어의 최종 권한을 갖지 않는다.
 
 ---
 
-# 14. Open Issues / TBD
+# 14. Acceptance Criteria
 
-| ID | Item | Owner | Target Date / Condition |
-|---|---|---|---|
-| TBD-HMI-001 | 실제 CAN ID / DLC / Signal layout | F + B | CAN Matrix 확정 시 |
-| TBD-HMI-002 | H735 CAN FD Transceiver / 실제 pin map | B | Hardware 확정 시 |
-| TBD-HMI-003 | Battery SOC의 실제 owner / 계산 방식 | F + Team | Sensor/VCU 설계 확정 시 |
-| TBD-HMI-004 | DTC Clear Request 형식과 권한 조건 | F + B | Diagnostic protocol 확정 시 |
-| TBD-HMI-005 | 실제 TouchGFX frame/update 성능 목표 재조정 | B | Stage 1 측정 후 |
+- [ ] Cluster Main 정상 표시
+- [ ] Dummy Data로 주요 화면 동작
+- [ ] Touch 화면 전환
+- [ ] CAN RX → Model → UI 흐름 확인
+- [ ] Invalid/Timeout 표시
+- [ ] Critical Warning 우선 표시
+- [ ] Lighting Request CAN TX
+- [ ] FreeRTOS Scheduler 정상 실행
+- [ ] CanRxTask / VehicleModelTask / GuiTask 분리 확인
+- [ ] FDCAN ISR 최소 처리 확인
+- [ ] Queue overflow가 정상 부하에서 발생하지 않음
+- [ ] Task stack high-water 측정
+- [ ] Timing 목표 측정
+- [ ] Health/Watchdog 정책 검토
+
+---
+
+# 15. Open Issues / TBD
+
+- CAN ID / Signal layout
+- FDCAN Transceiver / pin
+- numeric task priority
+- task stack size
+- queue depth
+- DTC Clear protocol
+- Battery SOC Owner
+- Watchdog 최종 정책

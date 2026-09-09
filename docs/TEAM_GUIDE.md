@@ -1,28 +1,88 @@
 # Team Guide
 
-> 처음 보는 팀원이 이 문서 하나로 **내 역할, 필요한 전자기초, 개발 순서**를 이해하는 것을 목표로 한다.
+> 처음 보는 팀원이 이 문서 하나로 **내 역할, 필요한 전자기초, RTOS가 왜 필요한지, 개발 순서**를 이해하는 것을 목표로 한다.
 
 # 1. 프로젝트를 아주 쉽게 보면
 
 ```text
-센서/카메라가 본다        = 인지
+센서/카메라가 본다          = 인지
         ↓
-상황을 해석하고 결정한다   = 판단
+상황을 해석하고 결정한다     = 판단
         ↓
-모터/서보/조명을 움직인다 = 제어
+모터/서보/조명을 움직인다   = 제어
         ↓
-화면에 보여준다            = UI
+화면에 보여준다              = UI
         ↓
 노드끼리 데이터를 주고받는다 = CAN / LIN
         ↓
-고장을 찾고 기록한다       = DTC
+고장을 찾고 기록한다         = DTC
 ```
 
-우리 프로젝트는 이 기능을 한 보드에 몰아넣지 않고 여러 Node로 나눠 구현한다.
+우리 프로젝트는 이 기능을 여러 Node로 나눠 구현한다.
+
+STM32 Node는 가능한 경우 **FreeRTOS**를 사용한다.
+
+```text
+센서 읽기 Task
+제어 Task
+CAN/LIN Task
+UI Task
+진단 Task
+```
+
+처럼 서로 다른 일을 나누고, 중요한 일이 덜 중요한 일 때문에 늦어지지 않게 만드는 것이 목적이다.
+
+Raspberry Pi는 FreeRTOS가 아니라 Linux에서 Service/Process/Thread 구조로 개발한다.
 
 ---
 
-# 2. 6명은 무엇을 하는가
+# 2. RTOS를 아주 쉽게 이해하기
+
+Bare-metal에서는 보통 하나의 큰 `while(1)` 안에 모든 일을 넣기 쉽다.
+
+```text
+while(1)
+ ├ 센서 읽기
+ ├ CAN 확인
+ ├ 모터 제어
+ ├ 화면 갱신
+ └ DTC 확인
+```
+
+기능이 늘어나면 한 기능이 오래 걸릴 때 다른 기능도 같이 늦어진다.
+
+FreeRTOS에서는 일을 Task로 나눈다.
+
+```text
+ControlTask      : 10 ms마다 제어
+CanRxTask        : CAN frame 도착 시 처리
+SensorTask       : 센서 측정
+GuiTask          : 화면 갱신
+DiagnosticTask   : 낮은 우선순위로 상태 확인
+```
+
+중요한 개념은 다섯 개다.
+
+| 개념 | 쉽게 말하면 |
+|---|---|
+| Task | 독립적으로 실행되는 일 |
+| Priority | 무엇을 먼저 실행할지 |
+| Queue | Task끼리 데이터를 안전하게 전달하는 통로 |
+| Semaphore / Notification | 어떤 일이 생겼다고 Task를 깨우는 신호 |
+| Mutex | 한 자원을 동시에 두 Task가 쓰지 못하게 잠그는 것 |
+
+ISR은 센서 Edge나 CAN interrupt가 왔다는 사실만 빠르게 처리하고, 긴 계산은 Task에서 한다.
+
+```text
+Interrupt
+→ timestamp / flag
+→ Task Notification
+→ Task에서 실제 처리
+```
+
+---
+
+# 3. 6명은 무엇을 하는가
 
 ## A — Ultrasonic / 인지
 
@@ -37,19 +97,25 @@ Ultrasonic Sensor
 → CAN FD
 ```
 
-해야 할 일:
-- 센서 1개부터 거리 측정
-- 여러 센서로 확장
-- 잘못된 값/Timeout 검출
-- 거리와 Warning Level을 CAN으로 전달
+### RTOS에서 나누는 예
 
-넘겨주는 값 예:
 ```text
-rear_left_mm = 320
-rear_right_mm = 180
-warning = CRITICAL
-valid = true
+Timer Input Capture ISR
+        ↓ Task Notification
+UltrasonicTask
+        ↓ Queue
+CanTxTask
+
+HealthTask
+→ sensor timeout / task health
 ```
+
+초기 후보:
+- `UltrasonicTask`: 20~50 ms 후보
+- `CanTxTask`: event 또는 status period
+- `HealthTask`: 100 ms 후보
+
+정확한 주기는 실제 센서 응답시간과 차량 요구사항을 보고 확정한다.
 
 ---
 
@@ -64,14 +130,29 @@ CAN FD
 → Cluster Main / ADAS / Parking / DTC / Settings
 ```
 
-해야 할 일:
-- 기본 Cluster: Speed, RPM, Gear, Battery, Warning
-- IVI 메뉴: ADAS, Parking, Diagnostics, Settings
-- Touch 입력과 화면 전환
-- CAN이 아직 없어도 Dummy Data로 먼저 UI 검증
+### RTOS에서 나누는 예
 
-중요:
-> H735가 센서 값을 새로 만드는 것이 아니다. 값의 Owner에게 CAN으로 받는다.
+```text
+FDCAN ISR
+  ↓
+CanRxTask
+  ↓ Queue
+VehicleModelTask
+  ↓
+GuiTask / TouchGFX
+
+Touch Event
+  ↓
+CommandTxTask
+  ↓
+CAN TX
+
+HealthTask
+```
+
+GUI가 바쁘다고 CAN timeout 검출이 멈추거나, CAN frame을 많이 받는다고 TouchGFX가 멈추면 안 된다.
+
+세부 예시는 [`IVI/ARCHITECTURE.md`](IVI/ARCHITECTURE.md)를 참고한다.
 
 ---
 
@@ -82,19 +163,38 @@ CAN FD
 ```text
 VCU Final Command
 → STM32
-├ Motor PWM / Direction → TB6612FNG 후보 → Brushed DC Motor
+├ Motor PWM / Direction → Motor Driver → Brushed DC Motor
 └ Steering PWM → RC Servo
 
 Motor Encoder/Hall
 → RPM Feedback
 ```
 
-해야 할 일:
-- Motor PWM / Direction
-- Encoder/Hall 기반 RPM
-- Servo Center / Left / Right Calibration
-- Command Timeout 시 안전 정지
-- 센서/제어가 안정된 뒤 Speed PID 확장
+### RTOS에서 중요한 부분
+
+```text
+CanRxTask
+   ↓ latest command
+ControlTask  ← Encoder/Feedback
+   ↓
+PWM / Servo Output
+
+StatusTask → CAN
+HealthTask → command timeout / sensor fault
+```
+
+`ControlTask`는 이 Node에서 가장 중요한 Task 중 하나다.
+
+초기 후보:
+- `ControlTask`: 5~10 ms
+- `FeedbackTask`: 5~10 ms 또는 ISR+Task
+- `StatusTask`: 20~50 ms
+- `HealthTask`: 50~100 ms
+
+중요:
+- ControlTask 안에서 느린 `printf` 금지
+- CAN 송신 때문에 ControlTask가 오래 block되지 않게 함
+- Encoder edge ISR에서 PID 계산하지 않음
 
 ---
 
@@ -113,14 +213,37 @@ STM32 LIN Slave
 └ Head / Tail / Brake / Turn / Hazard
 ```
 
-해야 할 일:
-- LIN Slave에서 조도센서/LED 먼저 단독 동작
-- Gateway와 LIN 통신
-- CAN 명령을 LIN 명령으로 변환
-- LIN 상태를 CAN 상태로 변환
-- LIN Node Timeout / Fault 검출
+### Gateway RTOS 예
 
-Gateway는 별도 장치가 아니라 **D가 사용하는 Gateway STM32가 CAN과 LIN 양쪽을 가진다.** LIN 통신을 보여주려면 반대편 LIN Slave MCU는 필요하다.
+```text
+CanRxTask
+   ↓
+GatewayMappingTask
+   ↓
+LinScheduleTask
+   ↓
+LIN
+
+LinRx Event
+→ GatewayMappingTask
+→ CanTxTask
+
+HealthTask
+```
+
+`LinScheduleTask`는 LIN Schedule을 일정하게 실행하는 역할이다.
+
+### LIN Slave RTOS 예
+
+```text
+LinRxTask
+AmbientTask
+LightingTask
+StatusTask
+HealthTask
+```
+
+소형 Slave MCU의 RAM/Flash가 너무 작은 경우만 측정 근거를 가지고 Bare-metal 예외를 검토한다.
 
 ---
 
@@ -141,16 +264,20 @@ Front Camera ─┐
 Rear Camera ──┘
 ```
 
-Front Vision 후보:
-- Lane Detection
-- Object Detection
-- Collision Warning
-- Speed / Steering Request
+Pi는 Linux이므로 FreeRTOS Task를 만들지 않는다.
 
-Rear Vision 후보:
-- Rear Object Detection
-- Object Position
-- Parking Warning
+대신 Software Architecture에는 다음을 적는다.
+
+```text
+front_vision service
+rear_vision service
+can_service
+dtc_manager
+vehicle_manager
+logger
+```
+
+필요하면 Process/Thread/Queue로 분리한다.
 
 중요:
 > Camera Raw Frame은 CAN FD로 보내지 않는다. Pi에서 처리한 결과만 CAN으로 보낸다.
@@ -176,39 +303,45 @@ ECU Fault ──────────┤
               Drive + Steering
 ```
 
-해야 할 일:
-- P/R/N/D
-- Accelerator / Brake / Steering Wheel 입력
-- E-Stop / Safety State
-- Driver / ADAS / Parking 요청 중재
-- CAN Signal Matrix와 Heartbeat/Timeout 통합
-- DTC Code 규칙과 중요 Fault 대응 통합
-
-DTC는 F 혼자 만드는 것이 아니다.
+### RTOS에서 나누는 예
 
 ```text
-각 Node가 자기 Fault 검출
-→ DTC Event
-→ Pi DTC Manager가 저장
-→ H735에서 표시
+DriverInputTask ───────┐
+CanRxTask ─────────────┤
+                       ↓
+                  VcuControlTask
+                       ↓
+                   CanTxTask
+
+SafetyTask
+→ E-Stop / heartbeat / critical fault
+
+DiagnosticTask
+→ DTC / health
 ```
+
+초기 후보:
+- `SafetyTask`: 5~10 ms 또는 event, 가장 높은 Application priority 후보
+- `VcuControlTask`: 10 ms 후보
+- `DriverInputTask`: 10 ms 후보
+- `CanRxTask`: event driven, 높은 priority
+- `CanTxTask`: 20 ms/event 후보
+- `DiagnosticTask`: 100 ms 후보
+
+SafetyTask와 VcuControlTask는 logging/UI 같은 부가 기능 때문에 늦어지지 않게 한다.
 
 ---
 
-# 3. 최소 전자기초
+# 4. 최소 전자기초
 
-전자전공 수준의 회로이론 전체가 필요한 것은 아니다. 아래를 모르면 배선과 디버깅이 힘들어진다.
+## 4.1 전압 / GND
 
-## 3.1 전압 / GND
-
-- MCU Logic Level: 실제 보드 확인
 - 센서 Supply Voltage 확인
 - MCU 입력 허용전압 확인
-- 신호를 주고받는 장치의 GND 기준 확인
+- Logic Level 확인
+- 공통 GND 확인
 
-전원 확인 없이 센서를 연결하지 않는다.
-
-## 3.2 GPIO
+## 4.2 GPIO
 
 사용 예:
 - Gear Button
@@ -217,13 +350,7 @@ DTC는 F 혼자 만드는 것이 아니다.
 - LED
 - Ultrasonic Trigger/Echo
 
-필수 개념:
-- Input / Output
-- Pull-up / Pull-down
-- Active High / Low
-- Debounce
-
-## 3.3 ADC
+## 4.3 ADC
 
 ```text
 Sensor Voltage
@@ -232,36 +359,22 @@ Sensor Voltage
 → Physical Value
 ```
 
-예:
-```text
-Accelerator Pot
-→ ADC 0~4095
-→ Calibrated 0~100 %
-```
-
-Raw 값과 실제 단위를 분리한다.
-
-## 3.4 PWM / Timer
+## 4.4 PWM / Timer
 
 사용 예:
 - DC Motor PWM
 - RC Servo
-- Encoder / Hall 측정
+- Encoder/Hall
 - LED brightness
+- Ultrasonic Echo timing
 
-```text
-STM32 PWM → Motor Driver → Motor
-```
+## 4.5 UART / I2C / SPI
 
-MCU GPIO에서 Motor를 직접 구동하지 않는다.
+- UART: Debug
+- I2C: AS5600 / sensor
+- SPI: 외장 CAN Controller 후보
 
-## 3.5 UART / I2C / SPI
-
-- UART: Debug Log
-- I2C: AS5600, 일부 Sensor
-- SPI: 외장 CAN Controller 등 후보
-
-## 3.6 CAN / CAN FD
+## 4.6 CAN / CAN FD
 
 ```text
 MCU CAN/FDCAN
@@ -271,13 +384,13 @@ MCU CAN/FDCAN
 
 알아야 할 것:
 - CAN ID
-- DLC / Payload
+- Payload
 - Periodic / Event
 - Timeout
 - Heartbeat
 - Termination
 
-## 3.7 LIN
+## 4.7 LIN
 
 ```text
 MCU UART/LIN
@@ -285,18 +398,73 @@ MCU UART/LIN
 → LIN Bus
 ```
 
-기본 구조:
+---
+
+# 5. RTOS 공통 규칙
+
+## Task
+
+Task를 기능 이름만으로 만들지 말고 역할과 실행조건을 분명히 한다.
+
+좋은 예:
 ```text
-LIN Master
-├ Slave A
-└ Slave B
+ControlTask
+Trigger: every 10 ms
+Input: latest speed command, RPM
+Output: PWM
 ```
 
-현재 프로젝트에서는 Body Gateway가 LIN Master 역할을 한다.
+애매한 예:
+```text
+Task1
+Task2
+```
+
+## Queue
+
+```text
+Producer Task
+→ Queue
+→ Consumer Task
+```
+
+CAN RX frame, sensor result, UI command처럼 ownership이 바뀌는 데이터에 적합하다.
+
+## ISR
+
+ISR에서 하지 않는 것:
+- 긴 계산
+- blocking call
+- printf
+- 화면 처리
+- PID 전체 계산
+
+## Mutex
+
+공유 자원이 정말 필요한 경우에만 사용한다.
+
+예:
+- 공용 SPI bus
+- 여러 Task가 같은 CAN TX API를 직접 호출하는 구조
+
+가능하면 한 Task가 자원의 Owner가 되고 Queue로 요청을 받는 구조가 더 단순하다.
+
+## Watchdog
+
+추천 구조:
+
+```text
+Critical Tasks
+→ health flag / heartbeat
+→ HealthTask
+→ all healthy?
+   ├ Yes → IWDG refresh
+   └ No  → watchdog reset 허용 / fault log
+```
 
 ---
 
-# 4. 개발은 이 순서로 한다
+# 6. 개발 순서
 
 ```text
 1. 내 역할 이해
@@ -304,34 +472,38 @@ LIN Master
 3. ARCHITECTURE 작성
 4. Datasheet / Pin / Wiring 확인
 5. Board Bring-up
-6. 입력 또는 출력 하나만 단독 시험
-7. Raw 값 확인
-8. Physical 값 / State로 변환
-9. Fault / Timeout 시험
-10. TEST_REPORT 작성
-11. 그 다음 CAN / LIN 통합
+6. Peripheral 하나 단독 시험
+7. FreeRTOS Scheduler 실행
+8. Task / Queue / ISR 구조로 기능 분리
+9. 정상 기능 시험
+10. Fault / Timeout 시험
+11. RTOS Timing / Stack / Queue 확인
+12. TEST_REPORT 작성
+13. CAN / LIN 통합
 ```
 
-처음부터 전체 보드를 다 연결하지 않는다.
+처음부터 RTOS Task 10개를 만들지 않는다. Hardware가 하나씩 동작하는지 확인한 후 필요한 Task만 추가한다.
 
 ---
 
-# 5. Stage 1 공통 PASS 기준
+# 7. Stage 1 공통 PASS 기준
 
 - [ ] Build / Flash / Debug 가능
-- [ ] Pin/Wiring 실제 구성 기록
-- [ ] Input Raw 값 또는 Dummy Data 확인
-- [ ] 필요한 Physical 값/State 생성
+- [ ] 실제 Pin/Wiring 기록
+- [ ] FreeRTOS Scheduler 정상 시작, MCU Node 해당 시
+- [ ] 각 Task가 정상 실행되는지 확인
+- [ ] Input Raw 또는 Dummy Data 확인
+- [ ] Physical/Logical 값 생성
 - [ ] Output이 있으면 안전한 범위에서 단독 시험
-- [ ] Invalid / Timeout / Disconnect 중 해당 항목 시험
-- [ ] UART Log / Screenshot / 사진 / 영상 등 증거 확보
-- [ ] 다음 단계 CAN/LIN에 필요한 Input/Output 정의
+- [ ] Invalid / Timeout / Disconnect 시험
+- [ ] Task period 또는 event flow 확인
+- [ ] Stack overflow / Queue overflow가 없는지 확인
+- [ ] 다음 단계 CAN/LIN Input/Output 정의
+- [ ] TEST_REPORT에 증거 저장
 
 ---
 
-# 6. 팀원끼리 데이터를 넘길 때
-
-`값 하나 보내면 되겠지`로 끝내지 않는다.
+# 8. 팀원끼리 데이터를 넘길 때
 
 최소 다음을 합의한다.
 
@@ -344,36 +516,49 @@ LIN Master
 | 범위 | TBD after test |
 | 주기 | TBD |
 | Invalid | `valid=false` |
-| Timeout Action | VCU policy에 따라 Warning/Stop |
+| Timeout Action | VCU policy |
+| RTOS Delivery | Queue / latest-value model / event |
+
+CAN Signal과 RTOS Queue는 같은 것이 아니다.
+
+```text
+CAN frame
+→ CanRxTask
+→ Decode
+→ Queue / Repository
+→ Application Task
+```
+
+처럼 Node 내부와 차량 네트워크를 구분한다.
 
 ---
 
-# 7. 막혔을 때 질문 양식
+# 9. 막혔을 때 질문 양식
 
 ```text
 Board:
+RTOS / Bare-metal:
+Task:
+Priority:
+Period / Trigger:
 Sensor / Actuator:
-Power:
 Interface:
-Pin:
 Expected:
 Actual:
 Log:
 Already Tried:
 ```
 
-`안 됩니다`만 적으면 다른 사람이 디버깅하기 어렵다.
-
 ---
 
-# 8. 자기 역할을 이해했는지 확인
-
-아래 다섯 질문에 자기 말로 답할 수 있으면 된다.
+# 10. 자기 역할을 이해했는지 확인
 
 1. 나는 무엇을 입력받는가?
-2. 그 입력으로 무엇을 계산/판단하는가?
-3. 내가 만드는 출력은 무엇인가?
-4. 그 출력을 누구에게 보내는가?
-5. 내 기능이 고장났는지 어떻게 알 수 있는가?
+2. 무엇을 계산/판단하는가?
+3. 어떤 Task가 이 일을 하는가?
+4. 결과를 어디로 넘기는가?
+5. 어떤 Task가 가장 중요하고 왜 그런가?
+6. Interrupt가 오면 ISR과 Task 중 누가 무엇을 하는가?
+7. 내 기능이 멈췄는지 어떻게 감지하는가?
 
-상세 부품, 센서, 데이터 Owner는 [PROJECT_REFERENCE.md](PROJECT_REFERENCE.md)를 참고한다.
+상세 Task 후보와 데이터 Owner는 [PROJECT_REFERENCE.md](PROJECT_REFERENCE.md)를 참고한다.

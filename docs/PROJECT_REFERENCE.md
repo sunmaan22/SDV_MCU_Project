@@ -1,7 +1,7 @@
 # Project Reference
 
-> 현재 프로젝트에서 **어떤 보드가 무엇을 맡고, 어떤 센서/데이터를 소유하는지** 한 곳에서 확인하는 문서다.  
-> 핀 번호, CAN ID, 주기, 임계값은 실제 보드/시험 후 확정하며 미정값은 `TBD`로 둔다.
+> 현재 프로젝트에서 **어떤 보드가 무엇을 맡고, 어떤 센서/데이터를 소유하고, 어떤 RTOS Task 구조를 기본으로 하는지** 한 곳에서 확인하는 문서다.  
+> 핀 번호, CAN ID, 주기, 임계값, FreeRTOS numeric priority는 실제 보드/시험 후 확정하며 미정값은 `TBD`로 둔다.
 
 # 1. 현재 전체 구조
 
@@ -21,24 +21,57 @@ STM32 #4 Body LIN Slave
         └ Lighting
 ```
 
-## Board Mapping
+## Board Mapping / Execution Model
 
-| Node | Hardware | 역할 |
-|---|---|---|
-| A | STM32 #1 + Ultrasonic | Parking distance perception |
-| B | STM32H735 + TouchGFX | Cluster + IVI |
-| C | STM32 #2 + Motor Driver + Motor + Servo | Drive + Steering control |
-| D-Gateway | STM32 #3 + CAN/LIN Transceiver | CAN FD ↔ LIN Gateway, LIN Master |
-| D-Slave | STM32 #4 + LIN Transceiver | Ambient + Lighting LIN Slave |
-| E | Raspberry Pi | Front/Rear Camera Vision, HPC services |
-| F | STM32 #5 | VCU, Driver Input, Safety, CAN Integration |
-| Diagnostics | Raspberry Pi service | DTC History / Logger |
+| Node | Hardware | 역할 | 실행 환경 |
+|---|---|---|---|
+| A | STM32 #1 + Ultrasonic | Parking distance perception | FreeRTOS |
+| B | STM32H735 + TouchGFX | Cluster + IVI | FreeRTOS + TouchGFX |
+| C | STM32 #2 + Motor Driver + Motor + Servo | Drive + Steering control | FreeRTOS |
+| D-Gateway | STM32 #3 + CAN/LIN Transceiver | CAN FD ↔ LIN Gateway, LIN Master | FreeRTOS |
+| D-Slave | STM32 #4 + LIN Transceiver | Ambient + Lighting LIN Slave | FreeRTOS 기본 |
+| E | Raspberry Pi | Front/Rear Camera Vision, HPC services | Linux |
+| F | STM32 #5 | VCU, Driver Input, Safety, CAN Integration | FreeRTOS |
+| Diagnostics | Raspberry Pi service | DTC History / Logger | Linux service |
 
-> 소형 STM32의 실제 FDCAN 지원 여부는 사용 보드가 확정되면 확인한다. 지원하지 않을 경우 Classic CAN 또는 외장 CAN FD Controller 사용 여부를 별도 결정한다.
+> STM32는 FreeRTOS + CMSIS-RTOS2 API를 기본안으로 한다. 실제 MCU 자원이 너무 작은 경우만 Architecture Decision을 남기고 예외를 검토한다.
 
 ---
 
-# 2. Sensor / Input List
+# 2. RTOS 공통 설계 기준
+
+```text
+ISR
+→ 최소 처리
+→ Task Notification / Queue
+→ Task에서 실제 계산
+```
+
+기본 원칙:
+- periodic Task: `osDelayUntil()` / `vTaskDelayUntil()` 계열 사용 권장
+- event Task: Queue / Task Notification으로 wake-up
+- Task 간 전역변수 직접 공유 최소화
+- Mutex보다 single-owner + Queue 구조 우선
+- Control/Safety Task에서 blocking log 금지
+- Static allocation 또는 startup 이후 heap 사용 최소화 권장
+- Stack watermark / Queue high-water / overrun을 시험
+- IWDG + HealthTask 구조 권장
+
+## 우선순위 방향
+
+```text
+Safety / Control
+> Critical Communication RX
+> Sensor / State / Gateway
+> UI / Periodic Status
+> Diagnostics / Logging
+```
+
+정확한 숫자는 Node별 Timing Test 후 결정한다.
+
+---
+
+# 3. Sensor / Input List
 
 | 영역 | 입력 / 센서 | Owner | Interface 후보 | 상태 |
 |---|---|---|---|---|
@@ -59,9 +92,7 @@ STM32 #4 Body LIN Slave
 
 ---
 
-# 3. Data Owner 원칙
-
-같은 데이터를 여러 Node가 따로 만들어서는 안 된다.
+# 4. Data Owner 원칙
 
 | 데이터 | Owner | 주요 Consumer |
 |---|---|---|
@@ -75,9 +106,19 @@ STM32 #4 Body LIN Slave
 | DTC History DB | Raspberry Pi DTC Manager | H735 / Debug tools |
 | 화면 값 | 원본 Node | H735는 Subscriber |
 
+Node 내부에서도 한 데이터의 writer를 가능하면 하나로 둔다.
+
+예:
+```text
+CanRxTask
+→ decode
+→ VehicleRepository single writer
+→ GuiTask read snapshot
+```
+
 ---
 
-# 4. 역할별 Input → Process → Output → Fault
+# 5. 역할별 Input → Process → Output → RTOS
 
 ## A. Ultrasonic
 
@@ -89,18 +130,21 @@ Target  : VCU / H735 / HPC
 Fault   : timeout, invalid range, sensor unavailable
 ```
 
-명세 Requirement 예:
-- `REQ-US-001`: 거리값을 정의된 단위로 제공해야 한다.
-- `REQ-US-002`: 유효하지 않은 측정은 `valid=false`로 구분해야 한다.
-- `REQ-US-003`: Warning Level을 생성해야 한다.
+### RTOS 구조 후보
 
-Architecture 핵심:
+| Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
+|---|---|---|---|
+| Timer Capture ISR | Echo edge | ISR | timestamp 저장 후 Task notify |
+| `UltrasonicTask` | 20~50 ms 후보 | Normal/High | trigger, distance 계산, validation |
+| `CanTxTask` | event / status period | Normal | status CAN 송신 |
+| `HealthTask` | 100 ms 후보 | Low | sensor/task health |
+
 ```text
-Ultrasonic Driver
-→ Distance Calculation
-→ Validation/Filtering
-→ Parking State
-→ CAN Service
+Echo ISR
+→ Notification
+→ UltrasonicTask
+→ Measurement Queue / latest state
+→ CanTxTask
 ```
 
 ---
@@ -109,20 +153,24 @@ Ultrasonic Driver
 
 ```text
 Input   : CAN Vehicle / ADAS / Parking / DTC data, Touch
-Process : Data Model → UI State → Screen Rendering
+Process : Data Model → Warning/Validity → UI State → Rendering
 Output  : Cluster/IVI 화면, User Request
-Target  : Driver / 필요한 Request는 CAN
-Fault   : CAN timeout, invalid display data, UI state error
+Target  : Driver / CAN Request
+Fault   : CAN timeout, invalid data, UI task fault
 ```
 
-화면:
-- Cluster Main: Speed, RPM, Gear, Battery, Warning
-- ADAS
-- Parking
-- Diagnostics / DTC
-- Settings
+### RTOS 구조 후보
 
-H735는 Motor PWM이나 Sensor physical value를 직접 만들지 않는다.
+| Task / ISR | Trigger / Period | Priority 방향 | 역할 |
+|---|---|---|---|
+| FDCAN ISR | frame arrival | ISR | frame enqueue / task notify |
+| `CanRxTask` | event | High | CAN decode / model update request |
+| `VehicleModelTask` | event / 10~20 ms 후보 | Normal/High | repository, validity, warning state |
+| `GuiTask` | TouchGFX tick | Normal | TouchGFX rendering |
+| `CommandTxTask` | UI event | Normal | Body/DTC request CAN TX |
+| `HealthTask` | 100 ms 후보 | Low | task/queue/stack health |
+
+상세 예시는 [`IVI/ARCHITECTURE.md`](IVI/ARCHITECTURE.md)를 기준으로 한다.
 
 ---
 
@@ -130,24 +178,29 @@ H735는 Motor PWM이나 Sensor physical value를 직접 만들지 않는다.
 
 ```text
 Input   : Final Speed/Steering Request, Encoder/Hall
-Process : Command validation → Motor/Servo mapping → feedback control
+Process : Command validation → feedback/control → Motor/Servo mapping
 Output  : Motor PWM/DIR, Servo PWM, RPM/Drive Status
-Target  : Actuator + VCU/H735/HPC
-Fault   : command timeout, encoder invalid, output fault candidate
+Fault   : command timeout, encoder invalid, control output fault
 ```
 
-하드웨어 후보:
-```text
-STM32 → TB6612FNG 후보 → Brushed DC Motor
-STM32 → PWM → RC Servo
-Motor → Encoder/Hall → STM32
-```
+### RTOS 구조 후보
 
-초기에는 Motor/Servo를 낮은 출력의 고정된 시험환경에서 단독 검증하고, 전체 차량 통합은 이후 단계에서 진행한다.
+| Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
+|---|---|---|---|
+| Encoder ISR | edge/input capture | ISR | count/timestamp + notify |
+| `CanRxTask` | event | High | latest VCU command update |
+| `ControlTask` | 5~10 ms 후보 | Highest application | speed/steering control, PWM update |
+| `FeedbackTask` | 5~10 ms 후보/event | High | RPM/feedback 계산 |
+| `StatusTask` | 20~50 ms 후보 | Normal | Drive_Status 송신 |
+| `HealthTask` | 50~100 ms 후보 | Low/Normal | command timeout / task health |
+
+ControlTask는 UART printf, blocking CAN TX, 느린 진단 처리에 의존하지 않는다.
 
 ---
 
 ## D. Lighting + Ambient / LIN-CAN
+
+### Gateway
 
 ```text
 CAN FD
@@ -159,61 +212,51 @@ Gateway STM32
 └ Gateway Fault Monitor
 ↕ LIN
 Body LIN Slave
-├ Ambient Sensor
-├ Lighting State
-└ Lamp Output
 ```
 
-CAN → LIN 예:
-```text
-BODY_COMMAND.HeadLamp = ON
-→ Gateway Mapping
-→ LIN Lamp_Command
-→ LIN Slave
-→ Head Lamp ON
-```
+| Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
+|---|---|---|---|
+| CAN/LIN ISR | bus event | ISR | notification/queue |
+| `CanRxTask` | event | High | CAN command RX |
+| `LinScheduleTask` | slot period TBD | High | LIN master schedule |
+| `GatewayMappingTask` | event | Normal/High | CAN↔LIN signal mapping |
+| `CanTxTask` | event / periodic | Normal | Body_Status TX |
+| `HealthTask` | 100 ms 후보 | Low | LIN node timeout / gateway health |
 
-LIN → CAN 예:
-```text
-Ambient Sensor
-→ LIN Ambient_Status
-→ Gateway
-→ CAN BODY_STATUS.Ambient
-```
+### LIN Slave
 
-Gateway MCU는 별도의 세 번째 MCU가 필요한 것이 아니다. **STM32 #3이 CAN FD Node이면서 LIN Master/Gateway 역할을 함께 맡고, STM32 #4가 LIN Slave가 된다.**
+| Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
+|---|---|---|---|
+| LIN ISR | frame event | ISR | wake LinRxTask |
+| `LinRxTask` | event | High | LIN command/status handling |
+| `AmbientTask` | 50~100 ms 후보 | Normal | ambient sampling/filter |
+| `LightingTask` | event / 10~20 ms 후보 | Normal/High | lamp state/output |
+| `StatusTask` | schedule event | Normal | slave status 준비 |
+| `HealthTask` | 100 ms 후보 | Low | sensor/output/task health |
 
 ---
 
 ## E. HPC + Camera Vision
 
-개발:
+Pi는 RTOS가 아니라 Linux다.
+
 ```text
 Pi #1 + Front Camera → Front Vision
 Pi #2 + Rear Camera  → Rear Vision
 ```
 
-최종 목표:
+최종:
 ```text
-Front CSI Camera ─┐
-                  ├→ Raspberry Pi HPC
-Rear USB Camera ──┘
+front_vision service ─┐
+rear_vision service ──┤
+can_service ──────────┤→ vehicle_manager
+DTC manager ──────────┤
+logger ────────────────┘
 ```
 
-Front 결과 후보:
-- lane_offset
-- lane_angle
-- object_detected
-- collision_level
-- speed_request
-- steering_request
+Architecture에는 Process/Thread, Queue, service dependency, restart 정책을 기록한다.
 
-Rear 결과 후보:
-- rear_object_detected
-- object_position
-- vision_warning
-
-Raw frame은 Pi 내부에서만 처리하고 CAN에는 의미 있는 결과만 전달한다.
+Raw Camera frame은 Pi 내부에서 처리하고 CAN에는 semantic/control result만 보낸다.
 
 ---
 
@@ -225,16 +268,25 @@ ADAS Request
 Ultrasonic Warning
 ECU Heartbeat/Fault
         ↓
-Input Validation
-        ↓
 Vehicle State / Gear / Mode
         ↓
 Safety & Arbitration
         ↓
 Final Speed / Steering Request
-        ↓
-CAN FD
 ```
+
+### RTOS 구조 후보
+
+| Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
+|---|---|---|---|
+| GPIO/ADC/Peripheral ISR | event | ISR | 최소 capture |
+| `CanRxTask` | event | High | ADAS/US/Drive/Body status 수신 |
+| `DriverInputTask` | 10 ms 후보 | High/Normal | Gear/Pedal/Steering input |
+| `SafetyTask` | 5~10 ms/event 후보 | Highest application | E-Stop, heartbeat, critical fault |
+| `VcuControlTask` | 10 ms 후보 | High | mode/state/arbitration |
+| `CanTxTask` | 20 ms/event 후보 | Normal/High | final command/state TX |
+| `DiagnosticTask` | 100 ms/event | Low | DTC/status integration |
+| `HealthTask` | 100 ms 후보 | Low | task health + watchdog coordination |
 
 우선순위 기본 방향:
 ```text
@@ -244,24 +296,74 @@ Critical Fault / E-Stop
 > Normal Driver / Mode Request
 ```
 
-실제 정책과 임계값은 시험 후 확정한다.
-
-DTC:
-```text
-Local Node detects fault
-→ DTC Event over CAN
-→ Pi DTC Manager
-→ Active / History / First Seen / Last Seen / Count
-→ H735 Diagnostics UI
-```
+RTOS Priority와 차량 Arbitration Priority는 다른 개념이다. 둘을 문서에서 혼동하지 않는다.
 
 ---
 
-# 5. CAN / LIN Interface 방향
+# 6. Task 간 통신 기본 예
 
-CAN ID와 bit layout은 아직 확정 전이면 `TBD`로 둔다. 먼저 **Signal의 의미, Owner, Consumer, Unit, Timeout**을 확정한다.
+## ISR → Task
 
-예시 Signal Contract:
+```text
+Hardware Interrupt
+→ xTaskNotifyFromISR / CMSIS equivalent
+→ Task wakes
+```
+
+## Producer → Consumer
+
+```text
+CanRxTask
+→ Queue
+→ Application Task
+```
+
+## Latest-value 데이터
+
+속도 명령처럼 최신값만 중요하면 Queue 깊이를 무한히 늘리는 대신 single latest-value 구조 또는 overwrite queue를 검토한다.
+
+## Event Flags
+
+예:
+```text
+BIT_CAN_READY
+BIT_SENSOR_VALID
+BIT_ESTOP
+BIT_FAULT
+```
+
+상태 동기화에 사용할 수 있다.
+
+---
+
+# 7. Watchdog / Health Monitoring
+
+MCU Node 권장 구조:
+
+```text
+Critical Task A ─ health flag ┐
+Critical Task B ─ health flag ├→ HealthTask
+CanRxTask       ─ health flag ┘      ↓
+                              all healthy?
+                              ├ Yes → IWDG refresh
+                              └ No  → fault / no refresh
+```
+
+HealthTask가 단순히 무조건 watchdog을 갱신하면 Task deadlock을 놓칠 수 있다.
+
+검토할 항목:
+- task heartbeat
+- queue overflow
+- stack watermark
+- control loop overrun
+- communication timeout
+- scheduler alive
+
+---
+
+# 8. CAN / LIN Interface 방향
+
+CAN ID와 bit layout은 확정 전이면 `TBD`로 둔다.
 
 | Signal | Owner | Consumer | Unit | Cycle | Timeout |
 |---|---|---|---|---|---|
@@ -284,9 +386,9 @@ LIN 후보:
 
 ---
 
-# 6. Stage 1 최소 산출물
+# 9. Stage 1 최소 산출물
 
-각 담당자는 자기 기능에서:
+각 담당자는:
 
 ```text
 SPECIFICATION.md
@@ -296,15 +398,16 @@ TEST_REPORT.md
 
 를 만든다.
 
-작성 형식은 `docs/templates/`를 사용한다.
-
-Stage 1에서 가장 중요한 것은 기능 개수를 늘리는 것이 아니라:
+MCU Node의 Stage 1 완료 질문:
 
 ```text
-Input이 믿을 만한가?
-→ Process가 설명 가능한가?
-→ Output이 재현되는가?
-→ Fault를 구분할 수 있는가?
+Peripheral이 단독으로 동작하는가?
+→ Scheduler가 정상 시작하는가?
+→ Task가 의도한 주기/이벤트로 실행되는가?
+→ Queue/Notification 흐름이 정상인가?
+→ 중요한 Task가 deadline을 지키는가?
+→ Stack/Queue overflow가 없는가?
+→ Fault 시 Watchdog/health 정책이 동작하는가?
 ```
 
-를 증명하는 것이다.
+Pi Node는 RTOS 항목 대신 Linux Process/Thread/Service 동작을 기록한다.

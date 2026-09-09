@@ -1,7 +1,7 @@
 # Cluster + IVI Cockpit Test Report
 
-> 목적: `SPECIFICATION.md`의 요구사항을 실제 시험으로 검증하기 위한 예시 문서다.  
-> **현재는 실행 전 계획 상태이므로 실제 측정값을 임의로 채우지 않는다.** 시험 후 `NOT RUN`을 실제 결과로 교체한다.
+> 목적: `SPECIFICATION.md` 요구사항을 실제 시험으로 검증한다.  
+> 현재는 실행 전 계획 상태이므로 실제 측정값은 임의로 채우지 않는다.
 
 ## Document Information
 
@@ -10,22 +10,24 @@
 | Node / Feature | Cluster + IVI Cockpit |
 | Owner | B |
 | Board / Platform | STM32H735 + TouchGFX |
+| Execution Model | FreeRTOS + CMSIS-RTOS2 |
 | Firmware / SW Commit | TBD |
 | Test Date | TBD |
-| Specification Revision | v0.1 |
-| Architecture Revision | v0.1 |
+| Specification Revision | v0.2 |
+| Architecture Revision | v0.2 |
 
 ### Revision History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
-| v0.1 | 2026-09-09 | Team | Initial planned test example |
+| v0.1 | 2026-09-09 | Team | Initial planned test |
+| v0.2 | 2026-09-09 | Team | RTOS timing/stack/queue/watchdog tests added |
 
 ---
 
 # 1. Test Objective
 
-H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 정상 표시하는지 확인한다. 또한 CAN timeout, invalid signal, critical warning 같은 비정상 조건에서도 UI가 멈추지 않고 올바른 상태를 표시하는지 검증한다.
+H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 정상 표시하는지 검증한다. 동시에 FreeRTOS 기반 `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask`가 의도한 구조로 실행되고, CAN burst나 UI load에서도 queue overflow, stack overflow, starvation 없이 주요 Timing 요구사항을 만족하는지 확인한다.
 
 ---
 
@@ -33,169 +35,207 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 
 | Item | Value |
 |---|---|
-| Board / MCU / Pi | STM32H735 board |
-| Sensor / Actuator | N/A, Stage 1은 Dummy Data 사용 |
-| Power | Board specification 기준, 실제 시험 시 기록 |
+| Board | STM32H735 board |
+| RTOS | FreeRTOS, version TBD |
+| API | CMSIS-RTOS2 |
+| UI | TouchGFX |
 | Interface | LCD / Touch / FDCAN |
-| CAN/LIN Bitrate | TBD, CAN Matrix 확정 후 기록 |
-| Camera Resolution/FPS | N/A, H735는 raw camera frame 미수신 |
-| Tool / Debug Interface | STM32CubeIDE / TouchGFX / ST-Link 후보 |
-
-## Wiring / Setup
-
-| Device | Pin / Port | Connection | Note |
-|---|---|---|---|
-| LCD | Board integrated | STM32H735 | board config 사용 |
-| Touch | Board integrated | STM32H735 | board config 사용 |
-| CAN FD Transceiver | TBD | H735 FDCAN | Stage 2 통합 시 작성 |
-
-사진/그림 링크: TBD
+| CAN bitrate | TBD |
+| Debug | STM32CubeIDE / ST-Link / runtime stats 후보 |
+| Watchdog | IWDG policy TBD |
 
 ---
 
 # 3. Requirement Verification Matrix
 
-| Test ID | Requirement ID | Test Method | Expected | Result | PASS/FAIL |
-|---|---|---|---|---|---|
-| T-HMI-001 | REQ-HMI-001 | Dummy/real status 입력 | Speed/RPM/Gear 표시 | NOT RUN | TBD |
-| T-HMI-002 | REQ-HMI-002 | READY/Warning 상태 변경 | 표시 상태 변경 | NOT RUN | TBD |
-| T-HMI-003 | REQ-HMI-003 | Dummy Vision status 입력 | ADAS 화면 갱신 | NOT RUN | TBD |
-| T-HMI-004 | REQ-HMI-004 | Dummy Ultrasonic status 입력 | Parking 거리/Warning 표시 | NOT RUN | TBD |
-| T-HMI-005 | REQ-HMI-005 | Dummy DTC list 입력 | DTC list/detail 표시 | NOT RUN | TBD |
-| T-HMI-006 | REQ-HMI-006 | Touch 화면 전환 | 5개 화면 이동 | NOT RUN | TBD |
-| T-HMI-007 | REQ-HMI-007 | CAN timeout simulation | Invalid/Comm warning 표시 | NOT RUN | TBD |
-| T-HMI-008 | REQ-HMI-008 | Lighting UI event | `Body_Command` TX 요청 | NOT RUN | TBD |
-| T-HMI-009 | REQ-HMI-009 | Architecture/code inspection | Raw camera CAN path 없음 | NOT RUN | TBD |
-| T-HMI-010 | REQ-HMI-010 | Critical warning injection | 현재 화면에서 warning 표시 | NOT RUN | TBD |
-| T-HMI-011 | REQ-HMI-011 | timestamp measurement | ≤100 ms 목표 | NOT RUN | TBD |
-| T-HMI-012 | REQ-HMI-012 | touch timestamp measurement | ≤150 ms 목표 | NOT RUN | TBD |
+| Test ID | Requirement | Expected | Result |
+|---|---|---|---|
+| T-HMI-001 | REQ-HMI-001 | Speed/RPM/Gear 표시 | NOT RUN |
+| T-HMI-002 | REQ-HMI-002 | READY/Warning 표시 | NOT RUN |
+| T-HMI-003 | REQ-HMI-003 | ADAS 상태 표시 | NOT RUN |
+| T-HMI-004 | REQ-HMI-004 | Parking 거리/Warning 표시 | NOT RUN |
+| T-HMI-005 | REQ-HMI-005 | DTC list/detail | NOT RUN |
+| T-HMI-006 | REQ-HMI-006 | Touch 화면 전환 | NOT RUN |
+| T-HMI-007 | REQ-HMI-007 | timeout data invalid 표시 | NOT RUN |
+| T-HMI-008 | REQ-HMI-008 | Body_Command CAN TX | NOT RUN |
+| T-HMI-009 | REQ-HMI-009 | raw camera CAN path 없음 | NOT RUN |
+| T-HMI-010 | REQ-HMI-010 | critical warning 우선 표시 | NOT RUN |
+| T-HMI-011 | REQ-HMI-011 | CAN→Model ≤100 ms 목표 | NOT RUN |
+| T-HMI-012 | REQ-HMI-012 | Touch≤150 ms 목표 | NOT RUN |
+| T-HMI-013 | REQ-HMI-013 | CAN/GUI task 분리 | NOT RUN |
+| T-HMI-014 | REQ-HMI-014 | FDCAN ISR 최소 처리 | NOT RUN |
+| T-HMI-015 | REQ-HMI-015 | Queue/Repository 전달 | NOT RUN |
+| T-HMI-016 | REQ-HMI-016 | load 중 critical warning block 없음 | NOT RUN |
+| T-HMI-017 | REQ-HMI-017 | stack/queue overflow 검증 | NOT RUN |
+| T-HMI-018 | REQ-HMI-018 | HealthTask/watchdog-ready 구조 | NOT RUN |
 
 ---
 
-# 4. Normal Function Test
+# 4. Stage 1 Dummy UI Test
 
-| Test ID | Input / Condition | Expected Output | Actual / Measured | Evidence | Result |
-|---|---|---|---|---|---|
-| T-HMI-001 | speed=24, rpm=1250, gear=D | Cluster에 값 표시 | NOT RUN | TBD | TBD |
-| T-HMI-002 | READY=true, general_warning=false | READY 표시, warning 없음 | NOT RUN | TBD | TBD |
-| T-HMI-003 | ADAS active + object warning | ADAS 화면에 상태 표시 | NOT RUN | TBD | TBD |
-| T-HMI-004 | RL=420 mm, RR=180 mm, warning=CRITICAL | Parking 화면에 우측 critical 표시 | NOT RUN | TBD | TBD |
-| T-HMI-005 | DTC 2개 입력 | list count=2, 상세 진입 가능 | NOT RUN | TBD | TBD |
-| T-HMI-006 | Cluster→ADAS→Parking→Diagnostics→Settings | 각 화면 정상 전환 | NOT RUN | TBD | TBD |
+| Test | Input | Expected | Actual | Result |
+|---|---|---|---|---|
+| Cluster | speed=24, rpm=1250, gear=D | 값 표시 | NOT RUN | TBD |
+| Parking | RR=180 mm, CRITICAL | right critical UI | NOT RUN | TBD |
+| DTC | 2 entries | list/detail | NOT RUN | TBD |
+| Screen Flow | 5개 화면 이동 | hang 없이 전환 | NOT RUN | TBD |
+| Warning Overlay | Settings + CRITICAL injection | warning 우선 표시 | NOT RUN | TBD |
+
+Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 않고 Model update 경로를 통과하게 한다.
 
 ---
 
-# 5. Boundary / Calibration Test
+# 5. CAN Integration Test
 
-H735 Cockpit은 센서 calibration owner가 아니므로 센서 raw calibration 대신 UI 표시 경계를 시험한다.
-
-| Condition | Input | Expected Display | Actual | Note | Result |
+| Message | Direction | Expected | Actual | Timeout Test | Result |
 |---|---|---|---|---|---|
-| Speed zero | 0 | 0 표시 | NOT RUN | | TBD |
-| RPM zero | 0 | 0 표시 | NOT RUN | | TBD |
-| Max display candidate | signal max | layout overflow 없음 | NOT RUN | 실제 range 확정 후 | TBD |
-| Parking warning transition | SAFE→WARNING→CRITICAL | 단계별 UI 변경 | NOT RUN | | TBD |
-| DTC list empty | count=0 | No Active DTC 상태 | NOT RUN | | TBD |
+| `Vehicle_State` | RX | gear/mode update | NOT RUN | planned | TBD |
+| `Drive_Status` | RX | speed/rpm update | NOT RUN | planned | TBD |
+| `Ultrasonic_Status` | RX | distance/warning | NOT RUN | planned | TBD |
+| Vision status | RX | ADAS/Parking update | NOT RUN | planned | TBD |
+| `Body_Status` | RX | lamp/ambient | NOT RUN | planned | TBD |
+| `DTC_Event` | RX | DTC model update | NOT RUN | event | TBD |
+| `Body_Command` | TX | UI request transmitted | NOT RUN | N/A | TBD |
 
 ---
 
 # 6. Fault / Edge Case Test
 
-| Test ID | Fault / Edge Case | Expected Detection | Expected Safe/Recovery Action | Actual | Result |
-|---|---|---|---|---|---|
-| F-HMI-001 | `Drive_Status` timeout | ValidityManager timeout | Speed/RPM invalid + Comm Warning | NOT RUN | TBD |
-| F-HMI-002 | Ultrasonic valid=false | invalid flag | 거리 대신 Sensor Invalid | NOT RUN | TBD |
-| F-HMI-003 | Vision timeout | source timeout | Vision Unavailable 표시 | NOT RUN | TBD |
-| F-HMI-004 | Unknown DTC code | lookup miss | Raw code/source 표시 | NOT RUN | TBD |
-| F-HMI-005 | Touch 연타 | event validation | UI freeze 없이 처리/무시 | NOT RUN | TBD |
-| F-HMI-006 | CAN bus unavailable | CAN error state | Communication Fault 표시 | NOT RUN | TBD |
-| F-HMI-007 | Critical warning while Settings screen | WarningManager priority | Settings 위에 warning 확인 가능 | NOT RUN | TBD |
+| Test ID | Fault / Edge Case | Expected | Actual | Result |
+|---|---|---|---|---|
+| F-HMI-001 | Drive timeout | speed/rpm invalid + warning | NOT RUN | TBD |
+| F-HMI-002 | Ultrasonic valid=false | Sensor Invalid | NOT RUN | TBD |
+| F-HMI-003 | Vision timeout | Vision Unavailable | NOT RUN | TBD |
+| F-HMI-004 | Unknown DTC | raw code/source 표시 | NOT RUN | TBD |
+| F-HMI-005 | Touch 연타 | GUI freeze 없음 | NOT RUN | TBD |
+| F-HMI-006 | CAN unavailable | Comm Fault | NOT RUN | TBD |
+| F-HMI-007 | CanRxQueue overflow injection | counter/health policy | NOT RUN | TBD |
+| F-HMI-008 | GuiTask artificial load | CAN model ingestion 유지 | NOT RUN | TBD |
 
 ---
 
-# 7. Timing / Performance Test
+# 7. RTOS Task Test
+
+## 7.1 Task Inventory
+
+| Task | Expected Trigger / Period | Priority Direction | Observed | Result |
+|---|---|---|---|---|
+| `CanRxTask` | event | High | NOT RUN | TBD |
+| `VehicleModelTask` | event / 10~20 ms 후보 | Normal~High | NOT RUN | TBD |
+| `GuiTask` | TouchGFX tick | Normal | NOT RUN | TBD |
+| `CommandTxTask` | event | Normal | NOT RUN | TBD |
+| `HealthTask` | 100 ms 후보 | Low | NOT RUN | TBD |
+
+## 7.2 Period / Jitter
+
+| Task | Target | Min | Avg | Max | Jitter | Result |
+|---|---:|---:|---:|---:|---:|---|
+| VehicleModelTask periodic mode, 사용 시 | TBD | NOT RUN | NOT RUN | NOT RUN | NOT RUN | TBD |
+| GuiTask effective update | TBD | NOT RUN | NOT RUN | NOT RUN | NOT RUN | TBD |
+| HealthTask | TBD | NOT RUN | NOT RUN | NOT RUN | NOT RUN | TBD |
+
+## 7.3 Stack / Memory
+
+| Task / Item | Configured | High-Water / Minimum Free | Result |
+|---|---:|---:|---|
+| CanRxTask stack | TBD | NOT RUN | TBD |
+| VehicleModelTask stack | TBD | NOT RUN | TBD |
+| GuiTask stack | generated/TBD | NOT RUN | TBD |
+| CommandTxTask stack | TBD | NOT RUN | TBD |
+| HealthTask stack | TBD | NOT RUN | TBD |
+| Heap free | TBD | NOT RUN | TBD |
+
+## 7.4 Queue / Event
+
+| Object | Depth | Max Occupancy | Overflow Test | Result |
+|---|---:|---:|---|---|
+| `CanRxQueue` | TBD | NOT RUN | NOT RUN | TBD |
+| `ModelUpdateQueue` | TBD | NOT RUN | NOT RUN | TBD |
+| `UiCommandQueue` | TBD | NOT RUN | NOT RUN | TBD |
+| `SystemEvents` | flags | N/A | NOT RUN | TBD |
+
+## 7.5 ISR → Task
+
+| Interrupt | Expected ISR Action | Expected Task | Actual | Result |
+|---|---|---|---|---|
+| FDCAN RX | enqueue/notify only | CanRxTask | NOT RUN | TBD |
+| Touch/BSP IRQ | framework event only | GuiTask | NOT RUN | TBD |
+
+Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
+
+---
+
+# 8. Load / Starvation Test
+
+| Scenario | Expected | Actual | Result |
+|---|---|---|---|
+| CAN burst + Cluster rendering | CanRxQueue overflow 0, GUI freeze 0 | NOT RUN | TBD |
+| DTC list update + critical warning | warning path 지연 최소 | NOT RUN | TBD |
+| Touch 연속 입력 + CAN RX | both continue | NOT RUN | TBD |
+| Debug log enabled | timing target 유지 또는 영향 기록 | NOT RUN | TBD |
+
+---
+
+# 9. Timing Test
 
 | Metric | Target | Measured | Method | Result |
 |---|---:|---:|---|---|
-| CAN RX → Vehicle Model update | ≤100 ms 목표 | NOT RUN | RX timestamp / model timestamp | TBD |
-| Critical warning → UI indication | ≤200 ms 목표 | NOT RUN | injection/display timestamp | TBD |
-| Touch → screen response | ≤150 ms 목표 | NOT RUN | touch/render timestamp | TBD |
-| UI freeze during 5 min dummy update | 0회 | NOT RUN | soak test | TBD |
-
-목표값은 실측 후 조정할 수 있으며, 변경 시 Specification도 함께 갱신한다.
+| CAN RX → Vehicle Model | ≤100 ms 목표 | NOT RUN | timestamps | TBD |
+| Critical warning → UI | ≤200 ms 목표 | NOT RUN | injection/display timestamp | TBD |
+| Touch → UI response | ≤150 ms 목표 | NOT RUN | touch/render timestamp | TBD |
+| Queue backlog recovery | TBD | NOT RUN | burst test | TBD |
 
 ---
 
-# 8. Communication Test
+# 10. Health / Watchdog Test
 
-## CAN / CAN FD
+| Scenario | Expected | Actual | Result |
+|---|---|---|---|
+| all task heartbeat healthy | HealthTask healthy | NOT RUN | TBD |
+| CanRxTask heartbeat missing | fault state, watchdog policy 적용 후보 | NOT RUN | TBD |
+| GuiTask heartbeat missing | HMI task fault | NOT RUN | TBD |
+| Queue overflow | health counter 증가 | NOT RUN | TBD |
+| Stack low watermark | warning/diagnostic candidate | NOT RUN | TBD |
 
-| Message / Signal | Direction | Expected | Actual | Timeout Test | Result |
-|---|---|---|---|---|---|
-| `Vehicle_State` | RX | Gear/Mode update | NOT RUN | Planned | TBD |
-| `Drive_Status` | RX | Speed/RPM update | NOT RUN | Planned | TBD |
-| `Ultrasonic_Status` | RX | Distance/Warning update | NOT RUN | Planned | TBD |
-| `Vision_Request` | RX | ADAS/Parking semantic update | NOT RUN | Planned | TBD |
-| `Body_Status` | RX | Lamp/Ambient/LIN health | NOT RUN | Planned | TBD |
-| `DTC_Event` | RX | DTC list update | NOT RUN | N/A/Event | TBD |
-| `Body_Command` | TX | User lighting request 전송 | NOT RUN | N/A | TBD |
-
-## LIN
-
-N/A. H735는 LIN을 직접 사용하지 않는다.
+실제 IWDG reset 시험은 bench 상태에서만 수행하고, 구현 전에는 논리/health flag 검증부터 한다.
 
 ---
 
-# 9. DTC / Diagnostics Test
+# 11. DTC / Diagnostics Test
 
-| Fault | Expected DTC / Status | Pi Manager Stored? | H735 Displayed? | Result |
+| Fault | Expected Status | Pi Stored? | H735 Displayed? | Result |
 |---|---|---|---|---|
-| Ultrasonic sensor timeout | Ultrasonic DTC/status | NOT RUN | NOT RUN | TBD |
-| Drive communication timeout | VCU/HMI communication status 후보 | NOT RUN | NOT RUN | TBD |
-| Body LIN fault | Body/LIN DTC | NOT RUN | NOT RUN | TBD |
-| Camera/Vision fault | HPC Vision fault | NOT RUN | NOT RUN | TBD |
-| Unknown DTC | Raw code 표시 | N/A | NOT RUN | TBD |
+| Ultrasonic timeout | sensor DTC | NOT RUN | NOT RUN | TBD |
+| Body LIN fault | Body DTC | NOT RUN | NOT RUN | TBD |
+| Vision fault | HPC DTC | NOT RUN | NOT RUN | TBD |
+| HMI queue/task fault 후보 | HMI local health/DTC | NOT RUN | NOT RUN | TBD |
 
 ---
 
-# 10. Logs / Evidence
+# 12. Evidence
 
-- UART / Console Log: TBD
-- Screenshot: TBD
-- Wiring Photo: TBD
-- Test Video: TBD
-- CAN Log: TBD
+- UART log: TBD
 - TouchGFX screenshot/video: TBD
+- CAN log: TBD
+- Runtime stats: TBD
+- stack high-water log: TBD
+- queue occupancy log: TBD
+- trace/scope: TBD
 
-Stage 1 예시 로그 형식:
-
-```text
-[HMI][INIT] Display OK
-[HMI][INIT] Touch OK
-[HMI][DUMMY] speed=24 rpm=1250 gear=D
-[HMI][SCREEN] CLUSTER -> PARKING
-[HMI][WARN] PARKING_CRITICAL zone=RR
-```
-
-Stage 2 예시 로그 형식:
+예시 로그:
 
 ```text
-[CAN][RX] Drive_Status rpm=1250 speed=24 valid=1
-[CAN][TIMEOUT] Ultrasonic_Status
-[HMI][INVALID] parking_sensor=1
+[RTOS][TASK] CanRx alive
+[RTOS][QUEUE] CanRxQueue high=4/16
+[RTOS][STACK] GuiTask watermark=TBD
+[CAN][RX] Drive_Status
+[MODEL] speed=24 rpm=1250
+[HMI][WARN] PARKING_CRITICAL
 ```
 
 ---
 
-# 11. Problems and Fixes
-
-| Problem | Root Cause | Fix | Retest Result | Prevention |
-|---|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD |
-
----
-
-# 12. Final Result
+# 13. Final Result
 
 ```text
 RESULT: NOT RUN
@@ -203,19 +243,24 @@ RESULT: NOT RUN
 
 ## PASS 조건
 
-- [ ] Cluster Main 정상 표시
-- [ ] Touch 화면 전환 정상
-- [ ] Dummy/실제 차량 데이터 갱신 정상
-- [ ] ADAS/Parking/DTC 화면 정상
-- [ ] Invalid/Timeout UI 처리 확인
-- [ ] Critical Warning 우선 표시 확인
-- [ ] Body Command CAN TX 확인
+- [ ] 주요 UI 기능 정상
+- [ ] CAN RX/TX 정상
+- [ ] timeout/invalid 정상
+- [ ] CanRx/Model/Gui/Command/Health Task 정상
+- [ ] ISR 최소 처리 확인
+- [ ] 예상 부하에서 Queue overflow 0
+- [ ] Stack 여유 측정
+- [ ] critical warning load test 통과
 - [ ] Timing 목표 측정
-- [ ] 로그/스크린샷/영상 증거 저장
+- [ ] Health/Watchdog 정책 검증
+- [ ] 증거 저장
 
 ## Remaining Issues
 
-- 실제 CAN ID / Signal layout 확정 필요
-- 실제 FDCAN Transceiver / pin map 확정 필요
-- DTC Clear Request protocol 확정 필요
-- 실제 H735 성능 측정 필요
+- CAN signal layout
+- FDCAN transceiver/pin
+- task numeric priority
+- task stack size
+- queue depth
+- IWDG policy
+- DTC Clear protocol
