@@ -1,7 +1,7 @@
 # Documentation Guide
 
 > 기준: **Architecture v1.2 + RTOS Development Policy / 2026-09-09**  
-> 목적: 문서를 최소화하면서도 각 담당자가 `무엇을 만들지`, `어떻게 나눌지`, `어떤 Task가 언제 돌아야 하는지`까지 같은 기준으로 설계한다.
+> 목적: 문서를 최소화하면서도 각 담당자가 `무엇을 만들지`, `어떻게 나눌지`, `어떤 Task/Service가 언제 돌아야 하는지`까지 같은 기준으로 설계한다.
 
 # 1. 현재 활성 문서
 
@@ -22,6 +22,11 @@ docs/
 │  ├ ARCHITECTURE.md
 │  └ TEST_REPORT.md
 ├ Motor_Steering_Control/
+│  ├ README.md
+│  ├ SPECIFICATION.md
+│  ├ ARCHITECTURE.md
+│  └ TEST_REPORT.md
+├ HPC_Camera_Vision/
 │  ├ README.md
 │  ├ SPECIFICATION.md
 │  ├ ARCHITECTURE.md
@@ -59,6 +64,8 @@ UI
 
 을 서로 방해하지 않게 분리하고, 실행 주기와 우선순위를 설명 가능하게 만드는 것이 목적이다.
 
+Raspberry Pi는 Linux이므로 FreeRTOS 형식을 억지로 적용하지 않는다. 대신 **Service / Process / Thread / IPC / Queue / Health / Restart** 구조를 설계한다.
+
 ## 2.2 Node별 적용
 
 | 담당 | Node | 실행 환경 |
@@ -68,7 +75,7 @@ UI
 | C | Drive + Steering STM32 | FreeRTOS |
 | D | Body Gateway STM32 | FreeRTOS |
 | D | Body LIN Slave STM32 | FreeRTOS 기본, MCU 자원 부족 시 예외 검토 |
-| E | Raspberry Pi Vision/HPC | Linux, RTOS 미적용 |
+| E | Raspberry Pi Vision/HPC | Linux Service / Process / Thread |
 | F | VCU STM32 | FreeRTOS |
 
 작은 LIN Slave도 프로젝트 기본안은 FreeRTOS 사용으로 잡는다. 다만 최종 MCU가 너무 작은 경우 RAM/Flash 측정 결과를 근거로 Bare-metal 예외를 허용할 수 있다. 예외는 `ARCHITECTURE.md`의 Architecture Decision에 이유를 남긴다.
@@ -106,9 +113,24 @@ FreeRTOS numeric priority는 각 Node의 Task 수와 실제 측정 후 정한다
 
 ---
 
-# 4. 각 담당자가 작성할 문서
+# 4. Linux HPC 공통 설계 규칙
 
-각 기능 폴더에는 아래 세 파일만 둔다.
+Raspberry Pi Vision/HPC는 다음을 중심으로 본다.
+
+1. Camera Capture와 무거운 Vision Processing이 서로 불필요하게 block되지 않게 한다.
+2. Frame/Result Queue는 bounded 구조를 사용한다.
+3. backlog가 생기면 오래된 frame을 계속 처리하기보다 **최신성(Freshness)** 을 우선한다.
+4. CAN interface는 가능하면 한 Service가 소유하고 다른 기능은 IPC로 요청한다.
+5. Front/Rear Vision은 독립 개발/시험 가능하도록 분리한다.
+6. Process crash, Camera disconnect, CAN failure를 Health 상태로 만들고 recovery/restart 정책을 둔다.
+7. FPS, processing latency, CPU, memory, thermal, queue occupancy를 실제 측정한다.
+8. Raw Camera Frame은 CAN FD로 전송하지 않는다.
+
+---
+
+# 5. 각 담당자가 작성할 문서
+
+각 기능 폴더에는 아래 세 파일을 기준으로 둔다.
 
 ```text
 SPECIFICATION.md
@@ -116,21 +138,22 @@ ARCHITECTURE.md
 TEST_REPORT.md
 ```
 
-- `SPECIFICATION.md`: 무엇을 해야 하는가, Timing/RTOS 요구사항 포함
-- `ARCHITECTURE.md`: Component + Task + ISR + Queue + Runtime 구조
-- `TEST_REPORT.md`: 기능 검증 + Timing/Jitter/Stack/Queue/Watchdog 검증
+- `SPECIFICATION.md`: 무엇을 해야 하는가, Timing/RTOS/Linux 실행 요구사항 포함
+- `ARCHITECTURE.md`: Component + Task/Service + ISR/IPC + Runtime 구조
+- `TEST_REPORT.md`: 기능 검증 + Timing/Resource/Health 검증
 
 현재 채운 예시:
 
 - **A / Ultrasonic Perception:** [`Ultrasonic_Perception/`](Ultrasonic_Perception/)
 - **B / Cluster + IVI:** [`IVI/`](IVI/)
 - **C / Motor + Steering Control:** [`Motor_Steering_Control/`](Motor_Steering_Control/)
+- **E / HPC + Camera Vision:** [`HPC_Camera_Vision/`](HPC_Camera_Vision/)
 
 각 예시의 `TBD`, `후보`, `NOT RUN`은 실제 부품 선정/구현/시험 후 담당자가 채운다.
 
 ---
 
-# 5. 기능 명세서 기준
+# 6. 기능 명세서 기준
 
 `FUNCTIONAL_SPECIFICATION_TEMPLATE.md`는 다음을 포함한다.
 
@@ -144,58 +167,64 @@ TEST_REPORT.md
 - UI/UX Reference
 - Hardware/CAN/LIN/API Interface
 - Timing / Performance
-- **Execution / RTOS Requirements**
+- Execution / RTOS 또는 Linux Service Requirements
 - Safety / Fail-safe / DTC
 - Acceptance Criteria
 - Revision / TBD
 
-MCU 기능의 경우 `RTOS Task가 무엇인지` 자체보다 먼저 **왜 Task 분리가 필요한지와 주기/Deadline 요구사항**을 명세한다.
+MCU 기능은 Task와 Timing 요구사항을, Linux HPC 기능은 Process/Service/Thread/IPC/Restart 요구사항을 명확히 적는다.
 
 ---
 
-# 6. Software Architecture 기준
+# 7. Software Architecture 기준
 
-`SOFTWARE_ARCHITECTURE_TEMPLATE.md`는 기존 Context/Component/Runtime/Deployment View에 더해 RTOS Node에서 다음을 반드시 다룬다.
+`SOFTWARE_ARCHITECTURE_TEMPLATE.md`의 공통 관점:
+
+- Context / Scope
+- Building Block / Component
+- Runtime
+- Deployment
+- Interface Contract
+- Data / State
+- Quality / Risk
+- Architecture Decision
+- Requirement Traceability
+
+RTOS Node에서는 추가로:
 
 - Task Model
 - Task Priority와 Period/Trigger
 - ISR → Task 연결
-- Queue / Task Notification / Event / Mutex
-- Shared Resource Owner
-- Watchdog / Health Monitoring
-- Stack / Heap 정책
-- Deadline / Overrun 처리
-- Priority inversion / starvation 위험
-- Requirement → Component/Task → Test Traceability
+- Queue / Notification / Event / Mutex
+- Watchdog / Stack / Heap
 
-즉 MCU Architecture는 아래 두 그림이 모두 있어야 한다.
+Linux HPC Node에서는 추가로:
 
-```text
-Component View
-무엇이 무엇을 책임지는가?
-```
+- Service / Process / Thread
+- IPC / Queue
+- Shared resource owner
+- Supervisor / Restart
+- Frame/Result freshness
+- CPU / Memory / Thermal / FPS / Latency
 
-```text
-RTOS / Runtime View
-어떤 Task가 언제 실행되고 어떻게 데이터를 넘기는가?
-```
+즉 설계서에는 **무엇으로 나눴는지**와 **실행 중 어떻게 협력하는지**가 둘 다 보여야 한다.
 
 ---
 
-# 7. 문서 작성 규칙
+# 8. 문서 작성 규칙
 
 1. 같은 내용을 여러 파일에 복붙하지 않는다.
 2. 값이 미정이면 `TBD`로 둔다.
 3. Candidate period는 `10 ms 후보`처럼 확정값과 구분한다.
 4. ISR에서 긴 연산, blocking I/O, printf를 하지 않는다.
-5. Task table에 Priority만 적고 이유가 없으면 설계가 덜 끝난 것이다.
-6. RTOS를 사용해도 Hard Real-Time loop의 Deadline을 자동으로 보장해주는 것은 아니다. 실제 측정한다.
-7. Pi는 Linux이므로 FreeRTOS 문서 형식을 억지로 적용하지 않는다. 대신 Process/Thread/Queue/Service 구조를 Architecture에 적는다.
+5. Task/Service 이름만 적고 책임과 입력/출력이 없으면 설계가 덜 끝난 것이다.
+6. RTOS를 사용해도 Deadline을 자동으로 보장해주는 것은 아니다. 실제 측정한다.
+7. Linux를 사용해도 Process를 많이 쪼갠다고 좋은 Architecture가 되는 것은 아니다. Failure isolation과 IPC 비용을 같이 본다.
 8. 설계 결정이 중요하면 ADR에 남긴다.
 
 ---
 
-# 8. Legacy
+# 9. Legacy
 
 - `archive/README_2026-09-08_legacy.md`
 - `archive/legacy_v1.2_before_full_sync_2026-09-09/`
