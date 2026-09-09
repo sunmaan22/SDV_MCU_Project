@@ -2,282 +2,824 @@
 
 # SDV MCU Project
 
-**5 ECU로 구현하는 모빌리티 SDV 시스템**
+**6인 팀으로 구현하는 Mini SDV E/E Architecture**
 
-CAN·LIN·RTOS 기반 벤치 검증부터 RC카 통합까지
+Raspberry Pi 4 기반 Central HPC · STM32 분산 ECU · CAN FD Backbone · ADAS · Parking Assist · IVI · Cluster · DTC · Motor/Steering Control
 
-![기간: 4주](https://img.shields.io/badge/DURATION-4_WEEKS-334155?style=flat-square)
-![팀: 6명](https://img.shields.io/badge/TEAM-6_MEMBERS-334155?style=flat-square)
-![구성: 5 ECU](https://img.shields.io/badge/ARCHITECTURE-5_ECUs-334155?style=flat-square)
-![상태: 계획 단계](https://img.shields.io/badge/STATUS-PLANNING-D97706?style=flat-square)
+![Status](https://img.shields.io/badge/STATUS-ARCHITECTURE_UPDATE-D97706?style=flat-square)
+![Team](https://img.shields.io/badge/TEAM-6_MEMBERS-334155?style=flat-square)
+![HPC](https://img.shields.io/badge/HPC-Raspberry_Pi_4-A22846?style=flat-square&logo=raspberrypi&logoColor=white)
+![Backbone](https://img.shields.io/badge/PROJECT_BACKBONE-CAN_FD-0F766E?style=flat-square)
+![IVI](https://img.shields.io/badge/IVI-STM32H735_TouchGFX-03234B?style=flat-square)
 
-[기술 스택](#tech-stack) · [시스템 구성](#ecu-architecture) · [4주 로드맵](#roadmap) · [상세 개발 계획](docs/WEEKLY_PLAN.md)
+[프로젝트 개요](#1-프로젝트-개요) · [실차와의 차이](#2-실제-sdv-차량과-프로젝트-아키텍처의-차이) · [시스템 구조](#3-프로젝트-e-e-아키텍처) · [역할 분담](#8-6인-역할-분담) · [4주 계획](#9-4주-개발-계획)
 
 </div>
 
 ---
 
-> **상태:** 초기 계획 / 구현·시험 완료 전  
-> **작성 기준:** 제공 명세 `mobility_project_spec_v0.9.md` (본문 제목은 v0.8), 2026-09-08  
-> 아래 내용은 해당 명세를 정리한 개발 계획입니다. 상세 보드 모델, 프로토콜 수치, 부품 적합성 및 시험 기준은 착수 시 확정합니다.
-
-<a id="tech-stack"></a>
-
-## 기술 스택
-
-> 제공 명세에 따른 **사용 예정 스택**입니다. 세부 모델·버전과 실제 구현 여부는 개발 진행에 맞춰 갱신합니다.
-
-### Embedded & RTOS
-
-![STM32](https://img.shields.io/badge/STM32-03234B?style=for-the-badge&logo=stmicroelectronics&logoColor=white)
-![ESP32](https://img.shields.io/badge/ESP32-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
-![RTOS](https://img.shields.io/badge/RTOS-2563EB?style=for-the-badge)
-
-| 스택 | 적용 위치 | 역할 |
-|---|---|---|
-| **STM32 × 4** | 공조/모터·ADAS·IVI·배터리 게이트웨이 | 센서 수집, 제어, 상태 표시 및 ECU 간 연동 |
-| **ESP32 × 1** | 텔레매틱스 | WiFi 웹 대시보드와 CAN 명령·상태 중계 |
-| **RTOS** | ECU 펌웨어 | 통신·센서·제어·표시 작업의 주기와 우선순위 관리 |
-| **PWM · ADC · GPIO** | 구동 및 센서 인터페이스 | 팬·모터·서보 출력, 서미스터 입력, 디지털 입출력 |
-
-RTOS 배포판, 펌웨어 언어, IDE·SDK 및 보드 세부 모델은 아직 선정 전입니다.
-
-### Network & Interface
-
-![CAN](https://img.shields.io/badge/CAN-0F766E?style=for-the-badge)
-![LIN](https://img.shields.io/badge/LIN-0891B2?style=for-the-badge)
-![WiFi](https://img.shields.io/badge/WiFi-0284C7?style=for-the-badge)
-![TouchGFX](https://img.shields.io/badge/TouchGFX-7C3AED?style=for-the-badge)
-
-| 스택 | 연결 구간 | 역할 |
-|---|---|---|
-| **CAN** | 5 ECU 공통 버스 | 목표 제어값·구동 상태·온도·거리·모드 전달 |
-| **LIN** | 배터리 게이트웨이 ↔ CDS/안개등 노드 | 조도 폴링, 자동 안개등 명령·상태 전달 |
-| **WiFi · Web Dashboard** | 휴대폰 ↔ ESP32 | 목표 속도·조향 입력, 모드 전환, 상태 확인 |
-| **TouchGFX** | STM32 IVI | 팬 PWM·RPM·온도·거리·안개등·모드 시각화 |
-
-LIN은 Phase 1부터 개발하며, 2주차 체크포인트에서 진행 상태에 따라 후순위로 전환할 수 있습니다. 웹 프레임워크와 상세 통신 규격은 미정입니다.
-
-### Sensing & Actuation
-
-| 구분 | 구성 | 적용 단계 |
-|---|---|---|
-| **거리 감지** | 초음파 센서 | Phase 1 벤치 → Phase 2 차량 전방 |
-| **온도 측정** | 서미스터 + ADC | Phase 1 벤치 → Phase 2 배터리팩 |
-| **자동 등화** | CDS + LIN 슬레이브 + LED | Phase 1 개발, 유지 시 Phase 2 장착 |
-| **벤치 구동** | EZ 모터 R300 5V 팬 + PWM 구동 회로 | Phase 1 |
-| **차량 구동·조향** | 브러시드 모터 + TB6612FNG 후보 + 서보 | Phase 2, 정격 적합성 확인 필요 |
-| **주행 상태 측정** | 로터리 엔코더 또는 자석+홀센서 | Phase 2, 부품 선정 필요 |
-| **전원** | USB 파워뱅크 → 배터리 + UBEC 기반 3레일 | Phase 1 → Phase 2 |
-
-<details>
-<summary><strong>선택 확장 · Vision Stack</strong> — Phase 1/2 완료 후 검토</summary>
-
-<br>
-
-![Raspberry Pi 4](https://img.shields.io/badge/Raspberry_Pi_4-A22846?style=for-the-badge)
-![IMX500](https://img.shields.io/badge/AI_Camera-IMX500-7C3AED?style=for-the-badge)
-![SPI CAN](https://img.shields.io/badge/SPI_CAN-MCP2515-0F766E?style=for-the-badge)
-
-| 구성 | 역할 | 상태 |
-|---|---|---|
-| Raspberry Pi 4 + AI Camera(IMX500) | 정지 표지판·신호등 인식 | 명세상 보유 |
-| MCP2515 SPI-CAN HAT | 비전 결과의 CAN 전달 | 추가 조달 |
-| 사전학습 객체 탐지 모델 + 색상 판별 | 표지판·신호등 종류 및 적/녹 판단 | 모델·지원 클래스·판별 방식 검증 필요 |
-| 독립 5V/3A 전원 | 비전 장치 전원 공급 | 구성 검증 필요 |
-
-기본 4주 필수 범위에 포함하지 않습니다.
-
-</details>
+> **현재 문서 버전:** Architecture v1.0 — 2026-09-09  
+> **이전 계획 보존:** [2026-09-08 README Legacy](docs/archive/README_2026-09-08_legacy.md)  
+> 본 프로젝트는 실제 도로 차량용 제어기가 아니라 **저속 RC/모형 모빌리티 플랫폼에서 SDV의 E/E 구조와 데이터 흐름을 축소 구현하는 교육·연구용 프로젝트**이다.
 
 ---
 
-## 1. 목표와 진행 방식
+# 1. 프로젝트 개요
 
-- **기간 / 인원:** 4주 / 6명. 비전공자 다수이며 팀 전원이 CAN·RTOS 기초를 숙지한 조건입니다.
-- **최종 플랫폼:** SCY 16101/16102/16103/16201 중 브러시드 버전 RC카, 1/16 스케일·4WD를 계획합니다.
-- **핵심 기술:** CAN, LIN, RTOS, 멀티 ECU, TouchGFX IVI, ESP32 WiFi 웹 대시보드.
-- **Phase 1 (1~2주차):** RC카 없이 5 ECU와 LIN 서브네트워크, CAN 통신·RTOS·핵심 제어 로직을 벤치에서 검증합니다.
-- **Phase 2 (3~4주차):** 검증한 시스템을 RC카에 장착하고 구동·조향 전환과 전원 재설계를 수행합니다. 엔코더·회피 로직·표시 필드 확장도 이 단계의 구현·시험 작업에 포함합니다.
-- **Phase 3 (선택):** Phase 1/2 완료 후 여유가 있을 때만 비전 인식을 추가합니다.
+본 프로젝트의 목표는 단순히 RC카에 센서와 화면을 붙이는 것이 아니라, 실제 SDV(Software Defined Vehicle)의 핵심 구조인 **Central Compute + Distributed Real-Time ECU + Vehicle Network + HMI + Diagnostics**를 소형 하드웨어로 재현하는 것이다.
 
-<a id="ecu-architecture"></a>
+주요 기능은 다음과 같다.
 
-## 2. ECU 구성과 6인 역할 분담
+- **Central HPC:** Raspberry Pi 4
+- **ADAS:** 전방 Raspberry Pi Camera 기반 차선/객체 인식
+- **Parking Assist:** 후방 카메라 + ToF/초음파 거리 센서
+- **VCU / Safety Arbitration:** 주행 모드와 제어 요청의 최종 중재
+- **Motor + Steering Control:** STM32 기반 실시간 폐루프 제어
+- **Body / Lighting:** 전조등, 후미등, 브레이크등, 방향지시등 등
+- **Instrument Cluster:** 속도, RPM, 배터리, 온도, 기어, 경고등 표시
+- **IVI:** STM32H735 + TouchGFX 기반 ADAS/주차/DTC/차량 설정 UI
+- **DTC:** ECU별 고장 감지, 중앙 로그, IVI 상세 표시
+- **Vehicle Network:** CAN FD 공통 Backbone
 
-A~F는 역할 식별자이며 실제 팀원 이름은 추후 연결합니다.
+프로젝트의 핵심 데이터 흐름은 아래 세 가지다.
 
-| 담당 | ECU / 보드 | Phase 1: 벤치 | Phase 2: RC카 |
-|---|---|---|---|
-| A·B (2명) | 공조 → 모터+조향 / STM32 | EZ 모터 R300 5V 팬 PWM 제어, CAN 목표값 수신, 통신 두절 시 정지, ADAS 비상정지 처리 | 브러시드 모터·서보 제어, 엔코더 RPM·odom, 회피 로직, 후방 LED 확장 |
-| C (1명) | ADAS / STM32 | 초음파 거리 측정, 장애물·비상정지 프레임 송신, **CAN 규격 및 통합 리드** | 차량 전방 장착 및 거리·정지 동작 재검증 |
-| D (1명) | IVI / STM32 + TouchGFX | 팬 PWM·온도·거리·안개등·자율주행 모드 표시 | RPM·속도·조향 표시 확장 |
-| E (1명) | 배터리(온도)+LIN 게이트웨이 / STM32 | 서미스터 ADC·온도 CAN 송신, LIN 마스터 폴링·안개등 판단·명령, 결과 CAN 전달 | 배터리팩·등화 위치에 장착 및 재검증 |
-| F (1명) | 텔레매틱스 / ESP32 + CAN | 폰 웹 대시보드, 목표 팬 속도 입력, 수동/자율 토글 | 목표 조향각 및 차량 상태 필드 확장 |
+```text
+[ADAS 제어]
+Front Camera
+→ Raspberry Pi 4 HPC
+→ CV / ADAS 판단
+→ CAN FD
+→ VCU
+→ Drive & Steering ECU
+→ Motor / Steering Actuator
+```
 
-**LIN 통합 슬레이브 노드 1개(CDS+안개등)는 위 5 ECU와 별도로 구성**합니다. 슬레이브 MCU·구동 회로는 명세에 특정되지 않아 1주차에 선정합니다.
+```text
+[차량 상태 표시]
+Local ECU / Sensor
+→ CAN FD
+→ Instrument Cluster / IVI
+→ Driver HMI
+```
 
-## 3. 네트워크 구조
+```text
+[진단]
+Sensor / ECU Fault
+→ Local ECU DTC
+→ CAN FD
+→ Raspberry Pi DTC Manager
+→ CAN FD
+→ STM32H735 IVI
+```
 
-**WiFi로 명령을 입력하고, CAN으로 5 ECU를 연결하며, LIN으로 조도·안개등을 제어합니다.**
+---
+
+# 2. 실제 SDV 차량과 프로젝트 아키텍처의 차이
+
+이 프로젝트는 **SDV의 논리 구조는 모사하지만, 실제 차량의 고속 Ethernet Zonal Backbone을 CAN FD Backbone으로 단순화**한다.
+
+## 2.1 실제 최신 SDV 차량의 일반적인 Zonal Architecture
+
+실제 차량에서는 센서와 액추에이터를 차량의 물리적 위치에 따라 Zone Controller에 연결하고, Zone Controller와 중앙 컴퓨터 사이를 Automotive Ethernet으로 연결하는 방향이 일반적이다.
+
+```mermaid
+flowchart LR
+    S1["Local Sensors / Actuators"] -->|"LIN / CAN FD / SENT / GPIO"| Z1["Front Zone ECU"]
+    S2["Local Sensors / Actuators"] -->|"LIN / CAN FD / SENT / GPIO"| Z2["Rear Zone ECU"]
+
+    Z1 <==>|"Automotive Ethernet"| ETH{{"Ethernet Backbone"}}
+    Z2 <==>|"Automotive Ethernet"| ETH
+    ETH <==>|"100/1000BASE-T1 or higher"| HPC["Central Vehicle Computer / HPC"]
+
+    CAM["Camera"] -->|"SerDes / Ethernet / CSI-class high bandwidth"| ADAS["ADAS / AD Compute"]
+    RADAR["Radar"] -->|"Ethernet / High-speed link"| ADAS
+    LIDAR["LiDAR"] -->|"Ethernet"| ADAS
+    ADAS <==>|"Ethernet"| HPC
+```
+
+### 실제 차량에서의 역할
+
+- **LIN:** 단순·저속 Body Sensor/Actuator
+- **CAN / CAN FD:** 지역 내부 실시간 ECU, Powertrain/Chassis 제어 신호
+- **Automotive Ethernet:** Zone ↔ Central HPC의 고속 Backbone
+- **SerDes / Ethernet:** Camera, LiDAR, Imaging Radar 등 대용량 ADAS 데이터
+- **Central/ADAS HPC:** CV, Point Cloud, Sensor Fusion, Planning, Vehicle Application
+- **Zone ECU:** Local I/O, Gateway, Network Aggregation, 일부 실시간 처리
+
+특히 Camera 영상이나 LiDAR Point Cloud 같은 대용량 데이터는 일반적인 Zone MCU에서 CV 연산한 뒤 CAN으로 보내는 방식이 아니라, 고속 링크를 통해 ADAS HPC로 직접 전달하거나 Zone의 Ethernet Switch만 통과시켜 전달한다.
+
+## 2.2 본 프로젝트의 축소 구조
+
+예산, 보드 수, 개발 기간과 교육 목적을 고려해 Ethernet Zonal Backbone을 직접 구현하지 않고 **CAN FD 하나를 공통 차량 Backbone으로 사용**한다.
+
+```mermaid
+flowchart LR
+    CAMF["Front ADAS Camera"] -->|"CSI"| PI["Raspberry Pi 4\nCentral HPC"]
+    CAMR["Rear Parking Camera"] -->|"USB"| PI
+
+    PI <==>|"CAN FD"| CAN{{"Project CAN FD Backbone"}}
+
+    CAN <--> VCU["VCU / Safety ECU"]
+    CAN <--> DRIVE["Drive + Steering ECU"]
+    CAN <--> BODY["Body / Lighting ECU"]
+    CAN <--> PARK["Parking ECU"]
+    CAN <--> CLUSTER["Instrument Cluster ECU"]
+    CAN <--> IVI["STM32H735\nTouchGFX IVI"]
+```
+
+## 2.3 차이점 요약
+
+| 항목 | 실제 SDV / Zonal 차량 | 본 프로젝트 |
+|---|---|---|
+| 중앙 연산 | Automotive-grade HPC / ADAS SoC | **Raspberry Pi 4** |
+| 차량 Backbone | **Automotive Ethernet** | **CAN FD** |
+| Zone 구조 | Front/Rear/Left/Right Zone ECU | 기능별 STM32 ECU로 단순화 |
+| Zone 내부 네트워크 | CAN FD / LIN / SENT / GPIO | CAN FD + GPIO/ADC/PWM/I2C/SPI |
+| ADAS 영상 경로 | Camera → SerDes/Ethernet → ADAS HPC | **Front Pi Camera → CSI → Pi 4** |
+| 후방 영상 경로 | Camera → 고속 영상망 / ADAS·Parking ECU | **Rear USB Camera → Pi 4** |
+| 대용량 영상 | Ethernet/SerDes | Pi 내부에서만 처리, CAN FD로 전송하지 않음 |
+| 제어 데이터 | Ethernet + CAN FD | **CAN FD** |
+| Hard Real-Time | 전용 MCU/ECU | **STM32** |
+| IVI | Cockpit/Infotainment SoC | **STM32H735 + TouchGFX** |
+| Cluster | 전용 Cluster ECU | **STM32 + TFT** |
+| Diagnostics | UDS/DoIP, 중앙 진단 서비스 | CAN FD 기반 DTC + UDS 일부 개념 모사 |
+
+### 프로젝트에서 의도적으로 단순화하는 부분
+
+실차의 구조:
+
+```text
+Sensor / Actuator
+    ↓
+Zone ECU
+    ↓
+Automotive Ethernet Backbone
+    ↓
+Central HPC
+```
+
+프로젝트 구조:
+
+```text
+STM32 ECU / Sensor
+    ↓
+CAN FD Backbone
+    ↓
+Raspberry Pi 4 HPC
+```
+
+따라서 본 프로젝트에서 **CAN FD는 실차의 Ethernet Backbone 역할까지 함께 수행**한다.
+
+향후 확장 단계에서는 Raspberry Pi와 Zonal Gateway 사이에 Automotive Ethernet 또는 일반 Ethernet을 추가하여 아래 구조로 발전시킬 수 있다.
+
+```text
+Local Sensor / ECU
+→ CAN FD / LIN
+→ Zone Controller
+→ Ethernet
+→ Central HPC
+```
+
+---
+
+# 3. 프로젝트 E/E 아키텍처
+
+## 3.1 전체 시스템
 
 ```mermaid
 flowchart TB
-    PHONE(["휴대폰 · 웹 대시보드<br/>목표 속도 / 조향 · 모드 선택"])
+    FCAM["Front ADAS Camera\nRaspberry Pi Camera"] -->|"CSI"| HPC
+    RCAM["Rear Parking Camera\nUSB Camera"] -->|"USB"| HPC
 
-    subgraph CORE["차량 네트워크 · 5 ECU"]
-        direction TB
-        TEL["텔레매틱스 ECU · F<br/>ESP32<br/>웹 명령 ↔ 차량 상태"]
-        CAN{{"CAN BUS<br/>목표값 · 구동 상태 · 온도 · 거리 · 모드"}}
-
-        DRIVE["구동 ECU · A / B<br/>STM32<br/>Phase 1 팬 → Phase 2 모터·조향"]
-        ADAS["ADAS ECU · C<br/>STM32<br/>초음파 거리 · 비상정지"]
-        IVI["IVI ECU · D<br/>STM32 + TouchGFX<br/>차량 상태 시각화"]
-        GW["배터리 + LIN 게이트웨이 · E<br/>STM32 · LIN Master<br/>온도 송신 · 조도 판단"]
-
-        TEL <--> CAN
-        CAN <--> DRIVE
-        CAN <--> ADAS
-        CAN <--> IVI
-        CAN <--> GW
+    subgraph CENTRAL["Central Compute"]
+        HPC["Raspberry Pi 4 HPC\nADAS / Parking Vision / DTC Manager / Logger"]
     end
 
-    subgraph BODY["LIN 서브네트워크 · 5 ECU 외 별도 노드"]
-        direction TB
-        SLAVE["LIN Slave · 통합 노드<br/>CDS 조도 응답 · 안개등 명령 실행"]
+    CAN{{"CAN FD Backbone"}}
+    HPC <--> CAN
+
+    subgraph ECUS["Distributed Real-Time ECUs"]
+        VCU["STM32 #1\nVCU / Safety"]
+        DRIVE["STM32 #2\nDrive + Steering ECU"]
+        PARK["STM32 #3\nParking ECU"]
+        BODY["STM32 #4\nBody / Lighting ECU"]
+        CLUSTER["STM32 #5\nInstrument Cluster"]
     end
 
-    PHONE <-->|"WiFi · 명령 / 상태"| TEL
-    GW -->|"LIN · 조도 폴링 / 등화 명령"| SLAVE
-    SLAVE -->|"LIN · 조도 응답"| GW
+    IVI["STM32H735\nTouchGFX IVI"]
 
-    classDef client fill:#EFF6FF,stroke:#2563EB,color:#1E3A8A,stroke-width:2px;
-    classDef bus fill:#CCFBF1,stroke:#0F766E,color:#134E4A,stroke-width:3px;
-    classDef control fill:#FFF7ED,stroke:#EA580C,color:#7C2D12,stroke-width:2px;
-    classDef display fill:#F5F3FF,stroke:#7C3AED,color:#4C1D95,stroke-width:2px;
-    classDef gateway fill:#ECFDF5,stroke:#059669,color:#064E3B,stroke-width:2px;
-    classDef lin fill:#ECFEFF,stroke:#0891B2,color:#164E63,stroke-width:2px;
+    CAN <--> VCU
+    CAN <--> DRIVE
+    CAN <--> PARK
+    CAN <--> BODY
+    CAN <--> CLUSTER
+    CAN <--> IVI
 
-    class PHONE,TEL client;
-    class CAN bus;
-    class DRIVE,ADAS control;
-    class IVI display;
-    class GW gateway;
-    class SLAVE lin;
-    style CORE fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#0F172A;
-    style BODY fill:#F0FDFA,stroke:#0891B2,stroke-width:1px,color:#164E63;
+    DRIVE --> MOTOR["Drive Motor"]
+    DRIVE --> STEER["Steering Servo / Motor"]
+    PARK --> DIST["ToF / Ultrasonic Sensors"]
+    BODY --> LIGHTS["Head / Tail / Brake / Turn Lights"]
 ```
 
-| 연결 | 담당 범위 | 대표 데이터 흐름 |
+## 3.2 보드 구성
+
+| 노드 | 예정 하드웨어 | 핵심 역할 |
 |---|---|---|
-| **WiFi · 사용자 인터페이스** | 휴대폰 ↔ ESP32 | 목표 속도·조향·모드 입력 / 차량 상태 확인 |
-| **CAN · ECU 공통 네트워크** | 텔레매틱스·구동·ADAS·IVI·게이트웨이 | 제어 명령 / 비상정지 / 센서·구동 상태 |
-| **LIN · 센서 및 등화** | 게이트웨이 ↔ CDS·안개등 슬레이브 | 조도 폴링·응답 / 안개등 ON·OFF 명령 |
+| Central HPC | **Raspberry Pi 4** | ADAS, Parking Vision, DTC Manager, Logging |
+| VCU | 소형 STM32 #1 | Mode, Arbitration, Safety, Heartbeat 감시 |
+| Drive + Steering ECU | 소형 STM32 #2 | Motor speed control, Steering control, Encoder feedback |
+| Parking ECU | 소형 STM32 #3 | ToF/Ultrasonic 거리 측정 및 Parking status |
+| Body / Lighting ECU | 소형 STM32 #4 | Head/Tail/Brake/Turn/Hazard light 제어 |
+| Instrument Cluster | 소형 STM32 #5 + TFT | Speed, RPM, SOC, Temperature, Gear, Warning |
+| IVI | **STM32H735 + TouchGFX** | ADAS/Parking/DTC/Vehicle Settings UI |
 
-**주요 동작 경로**
+> **CAN FD 하드웨어 주의:** Raspberry Pi에는 CAN FD가 내장되어 있지 않으므로 CAN FD 지원 인터페이스가 필요하다. `MCP2515`는 Classic CAN용이므로 CAN FD 목표에서는 `MCP2518FD`, `TCAN4550`, 또는 USB-CAN FD 계열을 검토한다. 소형 STM32 역시 실제 사용 보드가 FDCAN peripheral을 지원하는지 착수 시 확인한다. 지원하지 않는 경우 Classic CAN으로 fallback하되 상위 메시지 설계는 유지한다.
 
-- **구동 제어:** 휴대폰 → WiFi → 텔레매틱스 → CAN → 팬/모터·조향 ECU.
-- **비상정지:** 초음파 → ADAS → CAN → 팬/모터 정지, IVI 상태 표시.
-- **자동 안개등:** CDS → LIN 응답 → 게이트웨이 판단 → LIN 명령 → 안개등. 게이트웨이는 결과를 CAN으로 전달해 IVI에 표시합니다.
+---
 
-> **단계별 적용:** Phase 1은 팬 제어, Phase 2는 모터·조향 및 차량 상태 필드를 사용합니다. LIN은 2주차 체크포인트에서 유지 여부를 결정합니다. 선택 비전 ECU는 기본 5 ECU 구성에 포함하지 않습니다.
+# 4. Raspberry Pi 4 HPC와 카메라 구조
 
-## 4. 통신 및 제어 동작
+Pi 4는 프로젝트의 Central HPC 역할을 수행하며 차량 전방 쪽에 배치한다. 물리적으로 전방에 있어도 논리적으로는 전체 차량 기능을 모으는 Central Compute이다.
 
-| 메시지 계열 | 송신 | Phase 1 데이터 | Phase 2 확장 | 주요 수신 |
-|---|---|---|---|---|
-| 목표 제어값 | 텔레매틱스 | 목표 팬 속도값 | 목표 차량 속도·조향각 | 공조/모터, IVI |
-| 구동 상태 | 공조/모터 | 현재 PWM 듀티 | RPM·속도(odom)·조향 정보 | IVI, 텔레매틱스 |
-| 배터리 상태 | 배터리+LIN | 온도 | 유지 | IVI, 텔레매틱스 |
-| 안개등 상태 | 배터리+LIN | ON/OFF | 유지 | IVI |
-| 장애물/비상정지 | ADAS | 거리·비상정지 플래그 | 유지 | 공조/모터, IVI |
-| 자율주행 모드 | 텔레매틱스 | 수동/자율 플래그 | 유지 | 공조/모터, IVI |
+## 4.1 전방 ADAS Camera
 
-위 표는 메시지의 의미를 정리한 것으로 CAN ID·DLC·바이트 배치는 아직 미정입니다. **C가 1주차 초반에 공통 규격을 확정·배포**하며, Phase 2 확장 필드·단위·유효성 표현을 처음부터 합의해 호환성을 유지합니다.
+```text
+Front Pi Camera
+   ↓ CSI
+Raspberry Pi 4
+   ↓
+OpenCV / AI Inference
+   ↓
+Lane / Object / Risk
+   ↓
+CAN FD
+   ↓
+VCU
+```
 
-- **비상정지:** 초음파 거리 임계값 미만 → ADAS 프레임 송신 → 팬 또는 구동 모터 정지. Phase 2 후방 LED 블링크는 확장 항목입니다.
-- **통신 두절:** 목표 제어 프레임을 정해진 시간 동안 받지 못하면 팬/모터를 정지합니다.
-- **자동 안개등:** LIN 조도 응답 → 마스터 임계값 판단 → LIN ON/OFF 명령 → 상태 CAN 전달.
-- **수동/자율:** 텔레매틱스 토글로 ADAS 기반 목표 속도 오버라이드 여부를 선택합니다. 비상정지의 모드별 적용·우선순위·해제 조건은 1주차에 명확히 정의합니다.
-- **RTOS:** Phase 1부터 통신·센서·제어·표시 작업을 구성하고, 4주차에 주기·우선순위·공유 데이터 처리를 안정화합니다.
+주요 기능 후보:
 
-## 5. 하드웨어와 전원 계획
+- Lane Detection
+- Lane Offset / Lane Angle
+- Object Detection
+- Forward Collision Warning
+- 저속 ADAS Steering Request
+- 저속 Speed / Stop Request
 
-아래는 명세의 구성안이며 부품 적합성 검증 완료를 의미하지 않습니다.
+영상 자체는 CAN FD로 보내지 않는다.
 
-| 단계 | 전원 구성안 | 확인할 항목 |
+```text
+Raw Camera Image  → Pi 내부 처리
+ADAS Result       → CAN FD 송신
+```
+
+예시 결과 데이터:
+
+```text
+ADAS_STATE       = ACTIVE
+LANE_OFFSET      = -42 mm
+LANE_ANGLE       = +3.1 deg
+OBJECT_TYPE      = PERSON
+OBJECT_DISTANCE  = 1200 mm
+COLLISION_LEVEL  = WARNING
+STEERING_REQUEST = +4.5 deg
+SPEED_REQUEST    = 0.35 m/s
+```
+
+## 4.2 후방 Parking Camera
+
+Raspberry Pi 4 Model B의 CSI 포트 수를 고려해 기본 구성은 다음과 같이 잡는다.
+
+```text
+Front Camera = Raspberry Pi CSI Camera
+Rear Camera  = USB Camera
+```
+
+동시에 두 Vision 기능을 풀로드로 동작시키지 않고 **기어/모드에 따라 전환**한다.
+
+```text
+D / ADAS Mode
+→ Front Camera Active
+→ ADAS Service Active
+→ Rear Parking Vision Idle
+
+R Mode
+→ Front ADAS Pause
+→ Rear Camera Active
+→ Parking Vision Active
+```
+
+상태 전환:
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> DRIVE: Gear D
+    DRIVE --> REVERSE: Gear R
+    REVERSE --> DRIVE: Gear D
+    DRIVE --> IDLE: Gear P/N
+    REVERSE --> IDLE: Gear P/N
+
+    DRIVE: Front Camera + ADAS
+    REVERSE: Rear Camera + Parking Vision
+```
+
+향후 동일한 CSI 카메라 2대를 사용하고 싶다면 Camera MUX를 검토할 수 있지만, 1차 구현은 CSI + USB 조합을 우선한다.
+
+---
+
+# 5. ECU별 기능
+
+## 5.1 VCU / Safety ECU
+
+VCU는 ADAS나 IVI가 직접 모터를 제어하지 못하게 하고 모든 상위 요청을 중재한다.
+
+입력 예시:
+
+- Driver / Mode Request
+- ADAS Speed Request
+- ADAS Steering Request
+- Parking Obstacle Status
+- ECU Heartbeat
+- DTC / Fault State
+- Gear `P / R / N / D`
+
+출력 예시:
+
+- Final Speed Request
+- Final Steering Request
+- Drive Enable
+- Emergency Stop
+- Vehicle Mode
+
+우선순위 예시:
+
+```text
+FAULT / Emergency Stop
+        >
+Parking Critical Stop
+        >
+ADAS Safety Request
+        >
+Driver / Normal Request
+```
+
+## 5.2 Drive + Steering ECU
+
+Raspberry Pi가 PWM을 직접 만들지 않고 STM32가 Hard Real-Time 제어를 담당한다.
+
+```text
+VCU
+ ↓ Target Speed / Steering
+Drive + Steering ECU
+ ├─ Motor Encoder → Speed PID → PWM → Motor Driver
+ └─ Steering Feedback → Steering PID → PWM → Servo/Motor
+```
+
+주요 상태:
+
+- Motor RPM
+- Vehicle Speed
+- Steering Command
+- Steering Feedback
+- Motor Temperature
+- Control Fault
+
+## 5.3 Parking ECU
+
+Parking ECU는 영상이 아니라 **거리 센서의 저수준 실시간 측정**을 담당한다.
+
+```text
+FL / FR / RL / RR ToF or Ultrasonic
+            ↓
+       Parking ECU
+            ↓
+Distance / Warning Level
+            ↓
+          CAN FD
+```
+
+Pi의 Rear Camera Vision과 결합하여 상위 Parking Assist를 구성한다.
+
+## 5.4 Body / Lighting ECU
+
+담당 기능:
+
+- Head Lamp
+- Tail Lamp
+- Brake Lamp
+- Turn Signal
+- Hazard
+- Auto Light 상태
+
+입력은 CAN FD Vehicle State와 필요 시 조도 센서로 구성한다.
+
+## 5.5 Instrument Cluster ECU
+
+Cluster에는 운전 중 즉시 필요한 정보만 표시한다.
+
+- Vehicle Speed
+- Motor RPM
+- Battery SOC
+- Battery / Motor Temperature
+- Gear `P/R/N/D`
+- READY
+- Turn Indicator
+- Headlamp
+- ADAS Active
+- General Warning / Fault Lamp
+
+DTC 상세 코드는 Cluster에 모두 표시하지 않고 아래처럼 단순 경고만 표시한다.
+
+```text
+⚠ Steering System Fault
+⚠ Parking Sensor Fault
+```
+
+## 5.6 STM32H735 TouchGFX IVI
+
+IVI는 상세 상태와 사용자 인터랙션을 담당한다.
+
+화면 구성:
+
+1. Home / Vehicle Status
+2. ADAS Status
+3. Parking Assist
+4. Diagnostics / DTC
+5. Vehicle / Lighting Settings
+
+IVI는 차량 제어의 최종 권한을 가지지 않는다. 버튼 입력은 Request로 CAN FD에 송신하고 VCU 또는 해당 ECU가 실행 여부를 결정한다.
+
+---
+
+# 6. DTC / Diagnostics
+
+각 ECU는 자신의 센서와 제어 상태를 자체 진단한다.
+
+예시:
+
+| ECU | DTC 예시 | 조건 |
 |---|---|---|
-| Phase 1 | 5V USB 파워뱅크로 보드·팬 공급, 공통 GND | 전체 및 기동 전류, 팬 구동 회로, LIN 슬레이브 포함 전원 예산, 각 트랜시버 공급전압 |
-| Phase 2 모터 | 7.4V·1300mAh·10C 배터리 → TB6612FNG VM → 브러시드 모터 | 모터 기동·스톨 전류와 드라이버 정격 적합성 |
-| Phase 2 서보 | UBEC 5~6V·3A급 후보 → 서보 | 실제 서보 전압·전류 요구 |
-| Phase 2 로직 | 별도 UBEC/5V 레귤레이터 → ECU·CAN/LIN 회로 | 보드별 입력 조건, 전원 강하·리셋·통신 영향 |
+| Drive | `DRIVE_001` | Encoder Timeout |
+| Drive | `DRIVE_002` | Motor Overtemperature |
+| Steering | `STEER_001` | Steering Feedback Invalid |
+| Parking | `PARK_001` | Rear ToF Timeout |
+| Body | `BODY_001` | Lamp Output Fault |
+| VCU | `VCU_001` | ECU Heartbeat Timeout |
+| HPC | `HPC_001` | Camera Service Fault |
 
-서보와 로직 레일은 분리하고 GND는 공통으로 구성할 계획입니다. 구체 배선과 정격은 선정한 부품 데이터시트 및 측정 결과로 확정합니다.
+진단 흐름:
 
-**추가 조달 계획**
+```text
+Local ECU Fault Detection
+        ↓
+DTC Event over CAN FD
+        ↓
+Raspberry Pi DTC Manager
+        ↓
+Timestamp / History / Active State
+        ↓
+CAN FD
+        ↓
+STM32H735 IVI
+```
 
-- Phase 1: CDS, 안개등 대용 LED, LIN 트랜시버 모듈 2개.
-- Phase 2: 브러시드 RC카, UBEC 2개, 로터리 엔코더 또는 자석+홀센서, 후방 적색 LED.
-- 보유·누락 확인: STM32 보드 4개, ESP32 1개, TouchGFX 디스플레이, CAN 인터페이스·배선·종단, 초음파·서미스터, 팬 구동부, LIN 슬레이브 MCU, TB6612FNG 및 서보.
+Cluster는 Warning 수준만 표시하고 IVI는 상세 DTC를 표시한다.
 
-<a id="roadmap"></a>
+선택 확장:
 
-## 6. 4주 일정
+- UDS `0x19 ReadDTCInformation` 개념 모사
+- UDS `0x14 ClearDiagnosticInformation` 개념 모사
+- DTC 발생 횟수 / First Seen / Last Seen 저장
+- Fault Injection 시험
 
-| 주차 | 핵심 목표 | 완료 기준 |
-|---|---|---|
-| 1주차 | CAN 규격 우선 확정, 6명 역할별 Phase 1 착수, 부품 발주 | 공통 규격 배포, 담당 ECU 기본 구동·통신 확인 |
-| 2주차 | Phase 1 전체 벤치 통합 및 LIN 체크포인트 | 5 ECU 시연, LIN 성공 여부 및 후순위 전환 결정 |
-| 3주차 | Phase 2 구동·조향 전환, 전원 재설계·장착, 확장 기능 구현 | RC카 기본 구동·조향·정지와 ECU 연동 검증 |
-| 4주차 | RTOS 안정화, 회귀 시험, 최종 시연·문서 | 필수 시험 통과와 재현 가능한 시연 자료 |
+---
 
-역할별 작업·산출물·진행 기록은 [4주 상세 계획](docs/WEEKLY_PLAN.md)을 참고합니다.
+# 7. CAN FD Backbone 설계
 
-## 7. 우선순위와 완료 기준
+## 7.1 메시지 설계 원칙
 
-**필수:** Phase 1의 5 ECU와 Phase 2 RC카 구동·조향·전원 통합.  
-**LIN:** Phase 1부터 추진하되 2주차 체크포인트에서 막히면 후순위로 전환하고 배터리 ECU의 온도 기능을 유지합니다.  
-**확장:** 후방 비상정지 LED. 비전 인식은 Phase 1/2 완료 후에만 착수합니다.
+CAN ID와 Signal Matrix는 개발 시작 전에 고정한다.
 
-### Phase 1
+초기 예시:
 
-- [ ] 5 ECU가 CAN으로 통신하고 RTOS 기반 담당 기능이 동작한다.
-- [ ] 폰에서 목표값을 입력하면 팬이 반응하고 상태가 표시된다.
-- [ ] 장애물 감지 및 목표 프레임 두절 시 팬이 정지한다.
-- [ ] 온도·거리·팬 PWM·모드가 IVI에 표시된다.
-- [ ] LIN 조도 폴링·안개등 제어·CAN 상태 전달을 검증한다.
-- [ ] LIN을 후순위로 전환했다면 미완료 기능과 조정 범위를 기록한다.
+| CAN ID | Message | Tx | Rx | Cycle |
+|---:|---|---|---|---:|
+| `0x100` | Vehicle_State | VCU | All | 20 ms |
+| `0x110` | ADAS_Request | HPC | VCU, IVI | 50 ms |
+| `0x120` | Drive_Status | Drive ECU | VCU, Cluster, IVI, HPC | 20 ms |
+| `0x130` | Steering_Status | Drive ECU | VCU, Cluster, IVI, HPC | 20 ms |
+| `0x200` | Parking_Status | Parking ECU | VCU, IVI, HPC | 50~100 ms |
+| `0x210` | Body_Status | Body ECU | Cluster, IVI, HPC | 100 ms |
+| `0x220` | Body_Command | VCU / IVI | Body ECU | Event |
+| `0x230` | Cluster_Aux_Status | VCU | Cluster | 100 ms |
+| `0x300` | DTC_Event | All | HPC, IVI | Event |
+| `0x310` | ECU_Heartbeat | All | VCU, HPC | 100~500 ms |
+| `0x320` | Diagnostic_Request | IVI / HPC | Target ECU | Event |
+| `0x321` | Diagnostic_Response | Target ECU | IVI / HPC | Event |
 
-LIN 미완료 시에는 원래 Phase 1 전체 완료로 표기하지 않고 **5 ECU 필수 범위 완료 / LIN 보류**로 구분합니다.
+> 위 ID는 초기 설계안이며 실제 DLC, Signal bit position, Scale, Offset, Endianness, Timeout은 1주차에 확정한다.
 
-### Phase 2 및 최종 검증
+## 7.2 Heartbeat / Fail-safe
 
-- [ ] 차량 모터·조향, 엔코더 RPM·odom 및 모드별 로직을 구현·검증한다.
-- [ ] 전원 3레일 구성과 구동 중 MCU 리셋·통신 영향을 확인한다.
-- [ ] 비상정지·통신 두절·복구와 IVI/웹 확장 필드를 검증한다.
-- [ ] 유지한 LIN 기능은 차량 장착 후 다시 시험한다.
-- [ ] RTOS 동작·제어 주기·응답 시간을 합의한 수치와 비교한다.
-- [ ] 결선도, 툴체인, 빌드·다운로드 안내, 시험 결과와 시연 자료를 정리한다.
+모든 핵심 ECU는 주기적으로 Heartbeat를 송신한다.
 
-## 8. 착수 시 확정할 사항
+```text
+Drive ECU Heartbeat Lost
+        ↓
+VCU detects timeout
+        ↓
+MODE_FAULT
+        ↓
+Final Speed Request = 0
+        ↓
+DTC VCU_COMM_xxx
+```
 
-- 실제 날짜, A~F 실명, STM32·ESP32 세부 모델, RTOS·툴체인 버전.
-- CAN 비트레이트·ID·DLC·엔디언·단위·송신 주기·타임아웃·확장 필드 규칙.
-- LIN 속도·PID·체크섬·스케줄·슬레이브 MCU 및 트랜시버 전원 조건.
-- 거리·조도 임계값, 정지/복구 조건, 제어 우선순위, 자율 회피 시나리오.
-- 엔코더 분해능·장착 위치·RPM/odom 환산식. 조향각 센서가 없다면 명령각/추정각을 실제 측정각과 구분하는 표시 방식.
-- RC카 모터·서보 규격, 드라이버·전원 정격, 부품 도착 일정.
-- 명세의 헤드라이트/안개등 혼용은 현재 **CDS 연동 안개등**으로 정리하며, 별도 헤드라이트 기능 여부는 확정 필요.
+## 7.3 CAN에 보내지 않을 데이터
 
-## 9. Phase 3 — 비전 인식 (선택)
+다음 데이터는 CAN FD에 Raw 형태로 송신하지 않는다.
 
-Raspberry Pi 4 + AI Camera(IMX500), MCP2515 SPI-CAN HAT 및 독립 5V/3A 전원 구성안을 사용합니다. Pi와 카메라는 명세상 보유 장비이며 CAN HAT은 추가 조달 대상입니다.
+- Camera Frame
+- Video Stream
+- 고해상도 Image Buffer
+- Large Point Cloud
 
-정지 표지판·신호등 인식 결과를 기존 ADAS 비상정지와 별도 메시지로 전달하고, IVI에서 계획된 정지와 장애물 정지를 구분합니다. 사용 모델·지원 클래스와 신호등 색상 판별 방식은 착수 시 검증하며, 정지 유지 시간과 재출발 조건도 시험 전에 확정합니다. **기본 4주 필수 일정 및 인원 배치에 포함하지 않습니다.**
+대신 Pi에서 처리 후 의미 있는 결과만 송신한다.
 
-## 문서와 라이선스
+```text
+Image → Object / Lane / Warning / Control Request
+```
 
-- [4주 상세 계획 및 주간 기록](docs/WEEKLY_PLAN.md)
-- [LICENSE](LICENSE)
+---
 
-현재 문서는 계획 단계입니다. 구현 코드와 검증된 실행 안내는 개발 진행에 맞춰 추가합니다.
+# 8. 6인 역할 분담
+
+A~F는 임시 식별자이며 실제 팀원 이름은 추후 교체한다.
+
+| 담당 | 주 담당 | 하드웨어 / SW | 주요 산출물 |
+|---|---|---|---|
+| **A** | **System Architecture / VCU / CAN Integration Lead** | STM32 VCU, CAN FD | CAN Matrix, VCU State Machine, Arbitration, Heartbeat, 전체 통합 |
+| **B** | **Drive + Steering Control** | STM32, Motor Driver, Encoder, Servo/Steering | Speed PID, Steering Control, RPM/Speed Feedback, Fail-safe |
+| **C** | **ADAS / Central HPC** | Raspberry Pi 4 + Front Pi Camera | Camera Pipeline, Lane/Object Detection, ADAS Request, HPC service 관리 |
+| **D** | **Parking Assist** | STM32 Parking ECU + Rear USB Camera | ToF/Ultrasonic, R-mode camera service, Parking Warning/Fusion |
+| **E** | **IVI / Diagnostics UI** | STM32H735 + TouchGFX | IVI 화면, CAN Receive Model, ADAS/Parking/DTC UI, DTC Clear UI |
+| **F** | **Body / Lighting + Instrument Cluster** | STM32 Body ECU + STM32 Cluster + TFT | Lighting Control, Speed/RPM/SOC Cluster, Warning Lamps |
+
+## 공동 담당 규칙
+
+- **A:** CAN ID, Signal 이름, 주기, Timeout의 최종 통합 책임
+- **C + D:** Raspberry Pi 프로세스와 Camera Resource 충돌 방지
+- **A + B:** VCU ↔ Drive/Steering Safety Interface
+- **D + E:** Parking Sensor/Camera 결과를 IVI 표현으로 연결
+- **E + F:** Cluster와 IVI에 표시할 정보의 중복/구분 정의
+- **전원·배선·차량 장착:** 전원 예산과 GND/통신 배선은 전원 담당 1명을 별도 지정하지 않고 A 중심 공동 검토
+
+### HMI 역할 구분
+
+| Instrument Cluster | IVI |
+|---|---|
+| Speed / RPM | ADAS 상세 상태 |
+| Battery SOC | Parking Assist 상세 |
+| Temperature | DTC 상세 코드 |
+| Gear | Vehicle Settings |
+| READY / Warning | Lighting Settings |
+| Turn / Lamp Indicator | Diagnostic Clear / History |
+
+---
+
+# 9. 4주 개발 계획
+
+범위가 넓기 때문에 **각자 기능을 따로 완성한 뒤 마지막에 합치는 방식이 아니라, 1주차부터 CAN 계약을 고정하고 매주 통합 가능한 단위로 개발**한다.
+
+## Week 1 — Architecture Freeze & Bring-up
+
+### 공통
+
+- [ ] 전체 E/E Architecture 확정
+- [ ] 실제 보드 FDCAN 지원 여부 확인
+- [ ] CAN FD bitrate 및 CAN Matrix v0.1 확정
+- [ ] 전원 구조 / 공통 GND / 종단저항 설계
+- [ ] Repository folder / branch / coding convention 확정
+
+### 역할별
+
+- **A:** VCU State Machine, Heartbeat 규격, CAN Matrix
+- **B:** Motor/Steering 개별 PWM 및 Encoder/Feedback 확인
+- **C:** Front Camera capture 및 ADAS baseline FPS 측정
+- **D:** 거리센서 4채널 및 Rear USB Camera capture 확인
+- **E:** H735 TouchGFX 기본 화면 + CAN RX skeleton
+- **F:** Lighting output + Cluster TFT 기본 계기판
+
+### Week 1 완료 조건
+
+```text
+모든 노드가 단독 구동
++
+CAN 송수신 최소 2노드 성공
++
+Front / Rear Camera 각각 Frame 획득
+```
+
+## Week 2 — Functional ECU Development
+
+- **A:** `P/R/N/D`, `MANUAL/ADAS/PARK/FAULT` State Machine
+- **B:** Speed PID + Steering closed-loop
+- **C:** Lane / Object Detection과 ADAS result 생성
+- **D:** Parking distance level + R-mode Parking Vision
+- **E:** Vehicle / ADAS / Parking / DTC 화면 동적 연결
+- **F:** Auto/Manual light + Cluster CAN Signal 표시
+
+공통:
+
+- [ ] Heartbeat
+- [ ] Timeout
+- [ ] DTC Event
+- [ ] 기본 Logging
+
+## Week 3 — End-to-End Integration
+
+### ADAS Path
+
+```text
+Front Camera
+→ HPC
+→ ADAS_Request
+→ VCU
+→ Drive/Steering
+→ Vehicle Motion
+```
+
+### Parking Path
+
+```text
+Gear R
+→ VCU Vehicle_State
+→ Pi Rear Camera 활성화
+→ Parking ECU 거리값
+→ Parking Assist
+→ IVI
+```
+
+### HMI Path
+
+```text
+Drive / VCU / Body
+→ CAN FD
+→ Cluster + IVI
+```
+
+### DTC Path
+
+```text
+Sensor Disconnect
+→ Local DTC
+→ Pi DTC Manager
+→ IVI Warning
+→ VCU Fail-safe if critical
+```
+
+Week 3에는 기능 추가보다 **통신 지연, 데이터 유효성, Mode 충돌, 복구 동작**을 우선한다.
+
+## Week 4 — Vehicle Integration & Validation
+
+- [ ] RC/모형차 최종 장착
+- [ ] D → R 카메라 전환 시험
+- [ ] ADAS Steering/Stop 저속 시험
+- [ ] Parking distance warning 시험
+- [ ] Cluster/IVI 동시 표시 시험
+- [ ] Lighting / Brake / Turn signal 시험
+- [ ] ECU unplug / sensor fault injection
+- [ ] Heartbeat timeout fail-safe
+- [ ] DTC clear / recovery
+- [ ] 주행 중 CAN log 저장
+- [ ] 최종 Demo Scenario 반복 시험
+
+### 최종 측정 항목
+
+- ADAS inference FPS
+- ADAS sensing → CAN request latency
+- CAN request → actuator response latency
+- Gear R → Rear first frame latency
+- Parking sensor update period
+- ECU heartbeat timeout / recovery time
+- DTC detection → IVI indication latency
+
+---
+
+# 10. 최종 Demo Scenario
+
+```text
+1. Power ON
+   ↓
+2. ECU Heartbeat 확인
+   ↓
+3. Cluster READY / IVI System Normal
+   ↓
+4. Gear D
+   ↓
+5. Front Camera + ADAS 활성화
+   ↓
+6. Lane Detection → Steering Request → VCU → Steering Control
+   ↓
+7. 전방 장애물 인식 → Speed Reduce / Stop Request
+   ↓
+8. Body ECU → Brake Lamp / Turn Signal 연동
+   ↓
+9. Gear R
+   ↓
+10. Front ADAS Pause + Rear Camera 활성화
+   ↓
+11. Parking ECU ToF + Rear Vision → Parking Warning
+   ↓
+12. Cluster Warning + IVI Parking 화면
+   ↓
+13. Sensor 또는 ECU Fault Injection
+   ↓
+14. DTC 발생 → Pi 저장 → IVI 상세 표시
+   ↓
+15. Critical Fault이면 VCU FAULT / Motor Stop
+```
+
+이 시나리오가 정상적으로 반복되면 단순 RC카가 아니라 다음 구조를 실제 하드웨어로 보여줄 수 있다.
+
+> **Central HPC + Distributed ECU + CAN FD Vehicle Network + ADAS + Parking + VCU + Drive/Steering + Body + Cluster + IVI + Diagnostics**
+
+---
+
+# 11. 우선순위
+
+## Must Have
+
+- [ ] CAN/CAN FD 전체 통신
+- [ ] VCU State / Safety Arbitration
+- [ ] Motor + Steering Control
+- [ ] Front Camera ADAS 최소 1개 기능
+- [ ] Rear Parking Camera mode switching
+- [ ] Parking distance sensors
+- [ ] Body Lighting
+- [ ] Instrument Cluster
+- [ ] H735 TouchGFX IVI
+- [ ] ECU Heartbeat + DTC
+
+## Should Have
+
+- [ ] Lane + Object Detection 동시 처리
+- [ ] DTC History
+- [ ] UDS 일부 서비스 개념 모사
+- [ ] Parking Sensor + Vision Fusion
+- [ ] Auto Light
+
+## Could Have
+
+- [ ] Ethernet Zone Gateway 추가
+- [ ] Rear Camera 영상의 IVI 고속 전송
+- [ ] OTA 구조 실험
+- [ ] SOME/IP 또는 DDS 기반 Service-Oriented 실험
+- [ ] Linux service/container 기반 HPC application 분리
+
+---
+
+# 12. 프로젝트가 재현하는 SDV 핵심 개념
+
+이 프로젝트에서 가장 중요한 것은 센서 개수가 아니라 **역할 분리와 데이터 흐름**이다.
+
+```text
+High-performance perception
+        → Raspberry Pi HPC
+
+Safety arbitration
+        → STM32 VCU
+
+Hard real-time control
+        → STM32 Drive/Steering ECU
+
+Local sensing / body control
+        → STM32 Parking / Body ECU
+
+Driver critical information
+        → Instrument Cluster
+
+Detailed HMI / Diagnostics
+        → STM32H735 TouchGFX IVI
+```
+
+실제 SDV와의 가장 큰 물리적 차이는 다음 한 줄로 정리한다.
+
+> **Actual SDV: Zonal ECUs + Automotive Ethernet Backbone + Central HPC**  
+> **This Project: Functional STM32 ECUs + CAN FD Backbone + Raspberry Pi 4 HPC**
+
+이 차이를 숨기지 않고 명시하는 것이 프로젝트의 설계 의도다. 이후 Ethernet Zone Controller를 추가할 경우 현재 CAN 기반 ECU를 그대로 Edge/Local Network로 유지하면서 실제 Zonal 구조에 한 단계 더 가까워질 수 있다.
+
+---
+
+## Repository Notes
+
+- 이전 아키텍처 README는 [`docs/archive/README_2026-09-08_legacy.md`](docs/archive/README_2026-09-08_legacy.md)에 보존한다.
+- 실제 팀원 이름이 확정되면 A~F를 이름으로 교체한다.
+- CAN Matrix, DTC Table, Pin Map은 구현 시작과 함께 별도 문서로 분리한다.
+- 하드웨어 모델 및 트랜시버는 실제 보유 부품 확인 후 확정한다.
+
+## License
+
+[LICENSE](LICENSE)
