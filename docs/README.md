@@ -1,82 +1,43 @@
 # Documentation Index
 
-현재 문서는 **Architecture v1.2** 기준이다.
+> 기준: **Architecture v1.2 / 2026-09-09 full docs sync**  
+> 처음 참여한 팀원은 이 문서에서 시작한다.
 
-프로젝트를 처음 보는 팀원은 어려운 ECU 이름부터 외우지 말고 아래 한 줄부터 이해한다.
+## 1. 프로젝트를 한 줄로
 
 ```text
 인지 → 판단 → 제어
-       +
+      +
 UI / 통신 / 진단
 ```
 
-현재 역할은 다음과 같다.
+현재 6인 역할은 다음과 같다.
 
-| 담당 | 쉬운 역할 | 주요 Node |
-|---|---|---|
-| A | 초음파로 주변 거리 보기 | STM32 #1 Ultrasonic Perception |
-| B | 운전자에게 정보 보여주기 | STM32H735 Cluster + IVI |
-| C | 모터와 조향 실제로 움직이기 | STM32 #2 Drive + Steering |
-| D | 조명/조도 + LIN/CAN 연결 | STM32 #3 Gateway + STM32 #4 LIN Slave |
-| E | 카메라 영상 보고 상황 판단 | Raspberry Pi Front/Rear Vision |
-| F | 최종 차량 판단 + DTC + CAN 통합 | STM32 #5 VCU + Diagnostics |
+| 담당 | 역할 | 쉽게 말하면 | 주요 하드웨어 |
+|---|---|---|---|
+| A | Ultrasonic / 인지 | 장애물까지 거리를 잰다 | STM32 #1 + Ultrasonic |
+| B | Cluster + IVI / UI | 차량 상태와 경고를 보여준다 | STM32H735 + TouchGFX |
+| C | Motor + Steering / 제어 | 실제 모터와 조향 서보를 움직인다 | STM32 #2 + TB6612FNG 후보 + DC Motor + RC Servo |
+| D | Lighting + Ambient / LIN-CAN | 조도와 조명을 제어하고 LIN과 CAN을 이어준다 | STM32 #3 Gateway + STM32 #4 LIN Slave |
+| E | HPC + Camera Vision / 인지·판단 | 카메라 영상을 보고 차선·물체·주차 상황을 판단한다 | Raspberry Pi + Front/Rear Camera |
+| F | VCU + DTC + CAN Integration / 최종 판단 | 운전자·ADAS·주차 요청을 합쳐 최종 명령을 만들고 통신/고장 규칙을 관리한다 | STM32 #5 + Pi Diagnostics 협업 |
 
-최종 구조:
+## 2. 읽는 순서
 
-```text
-Front / Rear Camera
-       ↓
-Raspberry Pi Vision / HPC
-       ↕ CAN FD
-
-Ultrasonic / Drive / VCU / Body Gateway / H735
-                       │
-                      LIN
-                       │
-                Body LIN Slave
-```
-
-개발 중에는 Front Vision과 Rear Vision을 Raspberry Pi 두 대에서 병렬 개발할 수 있고, 최종 차량에서는 한 Pi로 통합하는 것을 목표로 한다.
-
----
-
-# 처음 참여한 팀원 읽는 순서
-
-## 1단계 — 내 역할부터 이해
-
-1. **[팀 역할 쉬운 설명](TEAM_ROLE_EASY_GUIDE.md)**
-
-이 문서에서 먼저 확인한다.
-
-```text
-나는 무엇을 입력받는가?
-나는 무엇을 계산/판단하는가?
-나는 어떤 값을 만들어 누구에게 보내는가?
-내 기능이 고장나면 어떻게 아는가?
-```
-
-## 2단계 — 필요한 기초 공부
-
+1. [팀 역할 쉬운 설명](TEAM_ROLE_EASY_GUIDE.md)
 2. [전자공학 선행학습](ELECTRONICS_PREREQUISITES_FOR_SW_TEAM.md)
-3. [Architecture 작성 & Stage 1 Guide](BEGINNER_ARCHITECTURE_STAGE1_GUIDE.md)
+3. [Architecture 작성 + Stage 1 Guide](BEGINNER_ARCHITECTURE_STAGE1_GUIDE.md)
 4. [Sensor List](SENSOR_LIST.md)
-
-## 3단계 — 내 문서 작성
-
 5. [Node별 명세/Architecture 예시](NODE_SPEC_ARCHITECTURE_EXAMPLES.md)
-6. [Node Specification Template](templates/NODE_SPECIFICATION_TEMPLATE.md)
-7. [ECU / Node Architecture Template](templates/ECU_ARCHITECTURE_TEMPLATE.md)
-8. [Stage 1 Test Report Template](templates/STAGE1_TEST_REPORT_TEMPLATE.md)
+6. [4주 개발 계획](WEEKLY_PLAN.md)
 
-## 4단계 — 일정과 통합
+## 3. 작성용 Template
 
-9. [4주 개발 계획](WEEKLY_PLAN.md)
+- [Node Specification Template](templates/NODE_SPECIFICATION_TEMPLATE.md)
+- [Node Architecture Template](templates/ECU_ARCHITECTURE_TEMPLATE.md)
+- [Stage 1 Test Report Template](templates/STAGE1_TEST_REPORT_TEMPLATE.md)
 
----
-
-# 팀원이 자기 담당 Node에서 만들어야 하는 문서
-
-각자 최소 다음 3개를 작성한다.
+각 담당자는 개발 시작 시 최소 다음 세 파일을 자기 기능 폴더에 작성한다.
 
 ```text
 SPECIFICATION.md
@@ -84,55 +45,58 @@ ARCHITECTURE.md
 STAGE1_TEST_REPORT.md
 ```
 
-### Specification
-
-"내 기능이 무엇을 해야 하는가"를 적는다.
-
-예:
+## 4. 핵심 시스템 구조
 
 ```text
-초음파 ECU는 거리값을 mm 단위로 계산해야 한다.
-센서 응답이 없으면 Invalid 상태를 만들어야 한다.
+Front Camera ─┐
+              ├→ Raspberry Pi Vision/HPC ─┐
+Rear Camera ──┘                           │
+                                          │ CAN FD
+Ultrasonic → STM32 #1 ────────────────────┤
+                                          ├→ STM32 #5 VCU → STM32 #2 Drive/Steer
+STM32H735 Cockpit ←────────────────────────┤
+                                          │
+STM32 #3 Body Gateway ←────────────────────┘
+        ↕ LIN
+STM32 #4 Body LIN Slave
+        ├ Ambient Sensor
+        └ Lighting
 ```
 
-### Architecture
+### Vision 개발 방식
 
-"그 기능을 어떤 구조로 만들 것인가"를 적는다.
+개발 중에는 Raspberry Pi 두 대를 사용해 병렬 개발할 수 있다.
 
 ```text
-Ultrasonic
-→ Timer / GPIO
-→ Distance Calculation
-→ Validation
-→ Warning Level
-→ CAN Status
+Pi #1 + Front Camera → Front ADAS Vision
+Pi #2 + Rear Camera  → Rear Parking Vision
 ```
 
-### Stage 1 Test Report
+최종 차량에서는 두 서비스를 Raspberry Pi 한 대로 합치는 것을 목표로 한다. Front는 CSI, Rear는 USB Camera 구성을 기본안으로 둔다.
 
-"실제로 연결해봤더니 제대로 동작했는가"를 기록한다.
+## 5. DTC 역할
 
----
+DTC는 F 한 명이 모든 고장을 직접 만드는 기능이 아니다.
 
-# 팀 역할 핵심 경계
+```text
+각 Node → 자기 고장 검출
+          ↓
+      DTC Event
+          ↓ CAN FD
+Pi DTC Manager → Active / History / Timestamp / Count
+          ↓
+STM32H735 → Warning / 상세 DTC 화면
+```
 
-- **A Ultrasonic:** 거리와 Warning을 만든다. Motor를 직접 정지시키지 않는다.
-- **B H735:** 데이터를 받아 보여준다. 차량 최종 제어를 하지 않는다.
-- **C Drive/Steering:** 최종 명령대로 Motor/Servo를 움직인다.
-- **D Body:** LIN Master/Slave와 CAN↔LIN Gateway, Lighting을 맡는다.
-- **E Vision:** Camera Frame을 Pi에서 처리하고 ADAS/Parking Request를 만든다.
-- **F VCU/Diagnostics:** 모든 요청을 보고 최종 안전 판단을 하며 CAN/DTC 규칙을 통합한다.
+F는 DTC Code 규칙, CAN Diagnostic 계약, VCU의 중요 고장 대응을 통합한다.
 
-DTC는 F 혼자 만드는 기능이 아니다. 각 담당자는 자기 Node의 Local Fault Detection을 구현하고 F가 코드/통합 규칙을 관리한다.
+## 6. Legacy
 
----
+전체 문서 동기화 전 버전은 아래에 보존한다.
 
-# Template
+- [`archive/legacy_v1.2_before_full_sync_2026-09-09/`](archive/legacy_v1.2_before_full_sync_2026-09-09/)
+- 기존 초기 README: [`archive/README_2026-09-08_legacy.md`](archive/README_2026-09-08_legacy.md)
 
-- [Node Specification Template](templates/NODE_SPECIFICATION_TEMPLATE.md)
-- [ECU / Node Architecture Template](templates/ECU_ARCHITECTURE_TEMPLATE.md)
-- [Stage 1 Test Report Template](templates/STAGE1_TEST_REPORT_TEMPLATE.md)
-
----
+현재 개발에서는 legacy 문서가 아니라 이 폴더의 최신 문서를 사용한다.
 
 [Main README](../README.md)

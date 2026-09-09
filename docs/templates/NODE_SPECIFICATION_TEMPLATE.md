@@ -1,206 +1,98 @@
 # [NODE NAME] Specification
 
-> 담당자: A / B / C / D / E / F  
-> Board / MCU:  
+> 담당: A / B / C / D / E / F  
+> 역할 분류: 인지 / 판단 / 제어 / UI / 통신 / 진단  
+> Board:  
 > Revision: v0.1  
-> Date:  
-> Related Architecture: `ARCHITECTURE.md`
+> Date:
 
 ---
 
-## 1. Purpose
+## 1. 한 문장 설명
 
-이 Node가 왜 필요한지 2~4문장으로 작성한다.
+> 이 Node는 __________________________________________ 한다.
 
-예:
+## 2. 내가 받는 것
 
-> Body Gateway는 CAN FD Backbone과 LIN Body Subnetwork 사이의 Protocol/Signal Gateway 역할을 한다. CAN Body Command를 LIN Lamp Command로 변환하고 LIN Ambient/Lamp 상태를 CAN Body Status로 변환한다.
+| Input | Source | Interface | Unit / Range | Update |
+|---|---|---|---|---|
+| | | | | |
 
----
+## 3. 내가 만드는 것
 
-## 2. Scope
+| Output | Destination | Interface | Unit / Range | Update |
+|---|---|---|---|---|
+| | | | | |
 
-### 이 Node가 하는 일
+## 4. 하지 않는 일
 
 - 
 - 
 
-### 이 Node가 하지 않는 일
+역할 경계를 명확히 적는다.
 
-- 
-- 
-
-역할 경계를 적어야 데이터 owner 중복을 막을 수 있다.
-
----
-
-## 3. Functional Requirements
-
-Requirement ID는 변경하지 않고 관리한다.
+## 5. Functional Requirements
 
 | ID | Requirement | Priority | Verification |
 |---|---|---|---|
-| REQ-XXX-001 | Node는 ... 해야 한다. | MUST | Test |
-| REQ-XXX-002 | Node는 ... 해야 한다. | MUST | Test |
-| REQ-XXX-003 | Node는 ... 해야 한다. | SHOULD | Test / Inspection |
+| REQ-XXX-001 | | MUST/SHOULD | Test/Inspect |
 
-좋은 Requirement 예:
+Requirement는 `~해야 한다` 형태로 쓴다.
 
-```text
-REQ-PARK-001
-Parking ECU는 각 활성 거리센서 값을 설정된 update period 내에 갱신해야 한다.
-```
+## 6. Hardware Requirements
 
-나쁜 예:
-
-```text
-센서를 잘 읽는다.
-```
-
----
-
-## 4. Input Requirements
-
-| ID | Input | Source | Unit / Range | Required Rate | Invalid Condition |
-|---|---|---|---|---|---|
-| IN-XXX-001 | | | | | |
-
----
-
-## 5. Output Requirements
-
-| ID | Output | Destination | Unit / Range | Rate / Event | Safe Value |
-|---|---|---|---|---|---|
-| OUT-XXX-001 | | | | | |
-
----
-
-## 6. Interface Requirements
-
-### Hardware
-
-| Interface | Requirement |
-|---|---|
-| Power | |
-| GPIO | |
-| ADC | |
-| I2C/SPI/UART | |
-| PWM/Timer | |
-
-### CAN / CAN FD
-
-| Message / Signal | Tx/Rx | Requirement |
+| Item | Requirement | Status |
 |---|---|---|
-| | | |
+| Supply Voltage | | |
+| Logic Level | | |
+| Peripheral | GPIO/ADC/TIM/I2C/CAN/LIN/USB/CSI | |
+| Transceiver/Driver | | |
 
-### LIN — 해당 시
+## 7. Network Requirements
 
-| Frame | Master/Slave Role | Requirement |
-|---|---|---|
-| | | |
+### CAN TX
 
-### Camera / USB / CSI — 해당 시
+| Signal | Meaning | Unit | Cycle/Event | Receiver |
+|---|---|---|---|---|
 
-| Interface | Requirement |
-|---|---|
-| | |
+### CAN RX
 
----
+| Signal | Meaning | Sender | Timeout | Action on Timeout |
+|---|---|---|---|---|
 
-## 7. State / Mode Requirements
+### LIN, 해당 시
 
-| State | 의미 | Entry | Required Behavior |
+| Frame | Master/Publisher | Data | Period | Fault Condition |
+|---|---|---|---|---|
+
+## 8. State / Mode
+
+| State | Entry | Action | Exit |
 |---|---|---|---|
-| INIT | | | |
-| READY | | | |
-| ACTIVE | | | |
-| FAULT | | | |
 
-해당 없는 Node는 삭제한다.
+## 9. Fault / DTC Requirements
 
----
+| Fault | Detection | Local Action | DTC Candidate | Recovery |
+|---|---|---|---|---|
 
-## 8. Safety / Fail-safe Requirements
+## 10. Timing
 
-| ID | Condition | Required Safe Behavior |
+| Function | Target Period / Deadline | Measurement Method |
 |---|---|---|
-| SAFE-XXX-001 | Sensor Invalid | |
-| SAFE-XXX-002 | Communication Timeout | |
-| SAFE-XXX-003 | E-Stop / Critical Fault | |
-
----
-
-## 9. Diagnostic Requirements
-
-| DTC | Fault Condition | Detection | Clear / Recovery |
-|---|---|---|---|
-| XXX_001 | | | |
-
-각 Local ECU는 자기 Sensor/Actuator Fault를 먼저 검출한다.
-
----
-
-## 10. Timing / Performance Requirements
-
-| Metric | Target | Priority |
-|---|---:|---|
-| Sensor update | | MUST / SHOULD |
-| Control period | | |
-| CAN period | | |
-| LIN response | | |
-| Camera FPS | | |
-| UI update | | |
-
-N/A는 삭제한다.
-
----
 
 ## 11. Stage 1 Acceptance Criteria
 
-- [ ] Build / Flash / Run
-- [ ] Peripheral Init
-- [ ] Raw input 확인 또는 N/A
-- [ ] Physical/Logical value 확인
-- [ ] Local output 확인 또는 N/A
-- [ ] Invalid / Disconnect 검출
+- [ ] Board bring-up
+- [ ] Input 정상
+- [ ] Output 정상
+- [ ] Raw/Physical 값 확인
+- [ ] Invalid/Timeout 확인
 - [ ] Recovery 확인
-- [ ] Stage 2 Network Signal 후보 작성
-
-담당 Node 특화 조건:
-
-- [ ] 
-- [ ] 
-
----
+- [ ] 결과 증거 저장
 
 ## 12. Stage 2 Integration Criteria
 
-첫 통합 상대:
-
-```text
-[My Node] ↔ [Target Node]
-```
-
-확인할 항목:
-
-- [ ] Network communication
-- [ ] Signal scale / unit
-- [ ] Timeout
-- [ ] Invalid data
-- [ ] Recovery
-
----
-
-## 13. Open Decisions
-
-| Item | Options | Owner | Due |
-|---|---|---|---|
-| | | | |
-
----
-
-## 14. Revision History
-
-| Rev | Date | Change | Author |
-|---|---|---|---|
-| v0.1 | | Initial | |
+- [ ] CAN/LIN 후보 Signal 정의
+- [ ] Sender/Receiver 합의
+- [ ] Unit/Range 합의
+- [ ] Timeout/Fail-safe 정의
