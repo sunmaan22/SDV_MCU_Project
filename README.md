@@ -28,7 +28,7 @@ Raspberry Pi 4 Vision/HPC · STM32 + FreeRTOS 분산 ECU · CAN FD Backbone · L
 > **Vision 개발:** 개발 중 Front/Rear Camera를 Raspberry Pi 2대로 병렬 개발하고, 최종 차량에서는 Pi 1대로 통합하는 것을 목표로 한다.  
 > **이전 계획 보존:** [Legacy Documentation](docs/archive/)
 
-본 프로젝트는 실제 도로 차량용 제어기가 아니라 **저속 RC/모형 모빌리티 플랫폼에서 SDV의 데이터 흐름, 분산 ECU, RTOS, 차량 네트워크 구조를 축소 구현하는 교육용 프로젝트**다.
+본 프로젝트는 실제 도로 차량용 제어기가 아니라 **저속 RC/모형 모빌리티 플랫폼에서 SDV의 데이터 흐름, 분산 ECU, RTOS, 차량 네트워크 구조를 축소 구현하는 프로젝트**다.
 
 ---
 
