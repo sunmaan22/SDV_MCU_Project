@@ -1,103 +1,108 @@
 # Lighting + Ambient / LIN-CAN Documentation
 
-이 폴더는 **D 담당: Body Gateway + Body LIN Slave + Ambient + Lighting** 역할의 작성 예시다.
+이 폴더는 **D 담당: Body Gateway + Body LIN Slave + Ambient + Lighting**의 기준 문서다.
 
-현재 프로젝트 공통 Template을 실제 역할에 맞춰 채운 상태이며, 실제 MCU 모델/핀/Transceiver/LIN bitrate/CAN ID가 확정되면 `TBD`, `후보`, `NOT RUN` 항목을 실제 값으로 교체한다.
-
-## 문서
-
-1. [SPECIFICATION.md](SPECIFICATION.md)
-   - 무엇을 해야 하는지
-   - Gateway와 LIN Slave의 역할 경계
-   - CAN→LIN / LIN→CAN 기능
-   - Ambient / Lighting 기능
-   - Fault / Timeout / DTC
-   - FreeRTOS 실행 요구사항
-
-2. [ARCHITECTURE.md](ARCHITECTURE.md)
-   - Gateway STM32와 LIN Slave STM32의 SW 구조
-   - CAN/LIN ISR → Task 구조
-   - LIN Schedule
-   - CAN↔LIN Mapping
-   - Lighting/Ambient Task
-   - Queue / Event / Watchdog / Health
-
-3. [TEST_REPORT.md](TEST_REPORT.md)
-   - Ambient 측정
-   - Lamp 출력
-   - LIN Master↔Slave
-   - CAN→LIN / LIN→CAN End-to-End
-   - Timeout / Disconnect / DTC
-   - RTOS Timing / Stack / Queue / Watchdog
-
-## 역할을 아주 쉽게 보면
+## 역할
 
 ```text
-차량 CAN FD
-   ↕
-[Body Gateway STM32]
-CAN ↔ LIN 변환
-LIN Master / Schedule
-   ↕ LIN
-[Body LIN Slave STM32]
-├ Ambient Sensor 읽기
-└ Lighting 출력
-```
-
-CAN에서 조명 요청이 오면:
-
-```text
-H735 / VCU
-→ Body_Command over CAN
-→ Gateway
-→ LIN Lamp_Command
-→ LIN Slave
-→ Lamp Output
-```
-
-반대로 조도값은:
-
-```text
-Ambient Sensor
-→ LIN Slave
-→ Ambient_Status over LIN
-→ Gateway
-→ Body_Status over CAN
-→ H735 / VCU / HPC
-```
-
-## 중요한 역할 경계
-
-- Gateway STM32는 **CAN FD Node + LIN Master + CAN↔LIN Signal Mapper**다.
-- LIN Slave STM32는 **Ambient Sensor와 Lamp Output의 실제 Owner**다.
-- H735가 Lamp GPIO를 직접 제어하지 않는다.
-- VCU/H735는 `Body_Command` 요청만 보낸다.
-- Gateway는 Lamp를 직접 구동하는 대신 LIN으로 명령을 전달한다.
-- LIN Slave는 실제 Lamp 상태와 Local Fault를 보고한다.
-
-## 실행 환경
-
-```text
+VCU Body_Command
+      ↓ CAN FD
 Body Gateway STM32
-→ FreeRTOS + CMSIS-RTOS2 기본
-
+├ CAN RX/TX
+├ CAN↔LIN Mapping
+└ LIN Master / Schedule
+      ↓ LIN
 Body LIN Slave STM32
-→ FreeRTOS 기본
-→ MCU RAM/Flash가 너무 작으면 Architecture Decision을 남기고 예외 검토
+├ Ambient Sensor
+└ Lighting Output
 ```
 
-## 현재 주요 TBD
+## 통합 검토 후 확정된 규칙
 
-- Gateway / Slave 실제 STM32 모델
-- FDCAN 지원 여부
-- CAN FD Transceiver 모델
-- LIN Transceiver 모델
-- LIN bitrate / frame ID / checksum mode
-- LIN Schedule period
-- Ambient Sensor 모델/Interface
-- Lamp 회로와 Driver/Transistor 필요 여부
-- Lamp current / voltage
-- CAN ID / DLC / signal layout
-- Task numeric priority / stack / queue depth
+1. `Body_Command`의 최종 Publisher는 **VCU 하나**로 둔다.
+2. H735의 사용자 설정은 `Body_User_Request`로 VCU에 전달한다.
+   - H735 → `Body_User_Request` → VCU → `Body_Command` → Gateway.
+   - H735와 VCU가 같은 `Body_Command`를 동시에 publish하지 않는다.
+3. Gateway는 단순 byte relay가 아니라 **CAN signal ↔ LIN signal mapping**을 담당한다.
+4. LIN Master schedule owner는 Gateway다. Slave가 임의 주기로 bus를 주도하지 않는다.
+5. Ambient/Lamp 실제 데이터 Owner는 LIN Slave다.
+6. Gateway는 LIN node timeout과 mapping fault를 검출하고 `Body_Status`와 필요 시 공통 `DTC_Event`로 알린다.
+7. CAN 장애가 LIN task 전체를 막거나, LIN 장애가 CAN node 전체를 막지 않게 실행경로를 분리한다.
+8. Lamp/LED 부하가 MCU GPIO 허용전류를 넘는 경우 적절한 driver stage를 사용하며 실제 부하 사양을 먼저 확인한다.
 
-이 값들은 Datasheet와 실제 시험 없이 상상으로 확정하지 않는다.
+## FreeRTOS 기본 구조
+
+### Gateway
+
+```text
+FDCAN ISR → CanRxTask
+                ↓
+        GatewayMappingTask
+                ↓
+        LinScheduleTask
+                ↓ LIN
+
+LIN status → GatewayMappingTask → CanTxTask → Body_Status
+HealthTask → LIN timeout / queue / stack / watchdog
+```
+
+### LIN Slave
+
+```text
+LIN ISR → LinRxTask
+AmbientTask → latest ambient
+LightingTask → lamp output
+StatusTask → LIN response data
+HealthTask → sensor/output/task health
+```
+
+## 지금 개발해야 할 것
+
+- STM32 #4에서 Ambient Sensor 1개를 읽고 raw/converted 값을 확인한다.
+- STM32 #4에서 Lamp/LED output을 GPIO/PWM으로 제어한다.
+- STM32 #3을 LIN Master, STM32 #4를 LIN Slave로 만들어 첫 Master↔Slave frame 교환을 성공시킨다.
+- FreeRTOS Gateway task와 Slave task skeleton을 각각 만든다.
+- `Lamp_Command`, `Ambient_Status`, `Lamp_Status`, `Lamp_Diagnostic`의 local data structure를 만든다.
+- LIN timeout에서 Gateway가 slave invalid를 만들도록 구현한다.
+- 그 다음 CAN dummy `Body_Command` → LIN `Lamp_Command` end-to-end 경로를 구현한다.
+- 반대 방향으로 Ambient → LIN → Gateway → `Body_Status` 경로를 구현한다.
+
+## 반드시 결정해야 할 것
+
+- Gateway/Slave 실제 STM32 모델과 peripheral 지원
+- CAN FD Transceiver / LIN Transceiver 모델
+- LIN bitrate, frame ID, checksum 방식
+- LIN schedule table, slot order, slot period
+- Ambient Sensor 모델과 ADC/I2C interface
+- Ambient 단위와 filtering/calibration
+- Lamp 종류, 동작전압/전류, driver 회로 필요 여부
+- Head/Tail/Brake/Turn/Hazard 중 실제 구현 범위
+- `Body_User_Request`에 허용할 사용자 기능
+- VCU가 만드는 `Body_Command` signal 목록
+- CAN↔LIN mapping table
+- LIN timeout/recovery 조건
+- Gateway/Slave DTC 후보
+- Task priority/period/stack/queue depth
+- 작은 Slave MCU에서 FreeRTOS memory가 충분한지
+
+## Stage 1 PASS
+
+```text
+Slave Ambient read
++ Slave Lamp output
++ Gateway LIN Master
++ Master↔Slave 통신
++ FreeRTOS task 구조
+```
+
+Stage 2 PASS 후보:
+
+```text
+Body_User_Request → VCU Body_Command
+→ Gateway CAN→LIN
+→ Slave Lamp
+
+Ambient → Slave → LIN → Gateway → Body_Status
+```
+
+실제 수치가 정해지면 [SPECIFICATION.md](SPECIFICATION.md), [ARCHITECTURE.md](ARCHITECTURE.md), [TEST_REPORT.md](TEST_REPORT.md)의 `TBD`를 갱신한다.
