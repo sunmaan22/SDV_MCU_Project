@@ -439,7 +439,7 @@ A~F는 임시 식별자다. 역할을 `인지 / 판단 / 제어 / UI / 통신 / 
 - F는 **최종 차량 상태/안전 판단과 DTC/CAN 통합**을 담당한다.
 - 모든 담당자는 자기 Node의 Local Fault Detection을 구현하고, F가 DTC 형식을 통합한다.
 
-자세한 쉬운 설명은 [Team Guide](docs/TEAM_GUIDE.md)를 먼저 읽는다.
+자세한 쉬운 설명은 [팀 역할 쉬운 설명](docs/TEAM_ROLE_EASY_GUIDE.md)을 먼저 읽는다.
 
 ---
 
@@ -487,17 +487,17 @@ A~F는 임시 식별자다. 역할을 `인지 / 판단 / 제어 / UI / 통신 / 
 
 # 10. 개발 문서
 
-문서는 중복을 줄여 아래만 현재 기준으로 사용한다.
+처음 참여한 팀원은 아래 순서로 읽는다.
 
-1. **[Documentation Guide](docs/README.md)**
-2. [Team Guide](docs/TEAM_GUIDE.md)
-3. [Project Reference](docs/PROJECT_REFERENCE.md)
-4. [4주 개발 계획](docs/WEEKLY_PLAN.md)
-5. [Functional Specification Template](docs/templates/FUNCTIONAL_SPECIFICATION_TEMPLATE.md)
-6. [Software Architecture Template](docs/templates/SOFTWARE_ARCHITECTURE_TEMPLATE.md)
-7. [Test Report Template](docs/templates/TEST_REPORT_TEMPLATE.md)
-
-기존 세부 가이드와 이전 템플릿은 `docs/archive/`에 보존한다.
+1. **[팀 역할 쉬운 설명](docs/TEAM_ROLE_EASY_GUIDE.md)**
+2. [전자공학 선행학습 가이드](docs/ELECTRONICS_PREREQUISITES_FOR_SW_TEAM.md)
+3. [Architecture 작성 & Stage 1 Guide](docs/BEGINNER_ARCHITECTURE_STAGE1_GUIDE.md)
+4. [현재 Sensor List](docs/SENSOR_LIST.md)
+5. [Node별 명세서 / Architecture 예시](docs/NODE_SPEC_ARCHITECTURE_EXAMPLES.md)
+6. [4주 개발 계획](docs/WEEKLY_PLAN.md)
+7. [Node Specification Template](docs/templates/NODE_SPECIFICATION_TEMPLATE.md)
+8. [ECU Architecture Template](docs/templates/ECU_ARCHITECTURE_TEMPLATE.md)
+9. [Stage 1 Test Report Template](docs/templates/STAGE1_TEST_REPORT_TEMPLATE.md)
 
 ---
 
