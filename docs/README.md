@@ -26,6 +26,11 @@ docs/
 │  ├ SPECIFICATION.md
 │  ├ ARCHITECTURE.md
 │  └ TEST_REPORT.md
+├ Lighting_Ambient_LIN_CAN/
+│  ├ README.md
+│  ├ SPECIFICATION.md
+│  ├ ARCHITECTURE.md
+│  └ TEST_REPORT.md
 ├ HPC_Camera_Vision/
 │  ├ README.md
 │  ├ SPECIFICATION.md
@@ -147,6 +152,7 @@ TEST_REPORT.md
 - **A / Ultrasonic Perception:** [`Ultrasonic_Perception/`](Ultrasonic_Perception/)
 - **B / Cluster + IVI:** [`IVI/`](IVI/)
 - **C / Motor + Steering Control:** [`Motor_Steering_Control/`](Motor_Steering_Control/)
+- **D / Lighting + Ambient / LIN-CAN:** [`Lighting_Ambient_LIN_CAN/`](Lighting_Ambient_LIN_CAN/)
 - **E / HPC + Camera Vision:** [`HPC_Camera_Vision/`](HPC_Camera_Vision/)
 
 각 예시의 `TBD`, `후보`, `NOT RUN`은 실제 부품 선정/구현/시험 후 담당자가 채운다.
