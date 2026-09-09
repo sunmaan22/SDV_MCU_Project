@@ -36,6 +36,11 @@ docs/
 │  ├ SPECIFICATION.md
 │  ├ ARCHITECTURE.md
 │  └ TEST_REPORT.md
+├ VCU_DTC_CAN_Integration/
+│  ├ README.md
+│  ├ SPECIFICATION.md
+│  ├ ARCHITECTURE.md
+│  └ TEST_REPORT.md
 └ templates/
    ├ FUNCTIONAL_SPECIFICATION_TEMPLATE.md
    ├ SOFTWARE_ARCHITECTURE_TEMPLATE.md
@@ -154,8 +159,9 @@ TEST_REPORT.md
 - **C / Motor + Steering Control:** [`Motor_Steering_Control/`](Motor_Steering_Control/)
 - **D / Lighting + Ambient / LIN-CAN:** [`Lighting_Ambient_LIN_CAN/`](Lighting_Ambient_LIN_CAN/)
 - **E / HPC + Camera Vision:** [`HPC_Camera_Vision/`](HPC_Camera_Vision/)
+- **F / VCU + DTC + CAN Integration:** [`VCU_DTC_CAN_Integration/`](VCU_DTC_CAN_Integration/)
 
-각 예시의 `TBD`, `후보`, `NOT RUN`은 실제 부품 선정/구현/시험 후 담당자가 채운다.
+이제 A~F 전체 역할에 대해 채운 예시가 있다. 각 예시의 `TBD`, `후보`, `NOT RUN`은 실제 부품 선정/구현/시험 후 담당자가 채운다.
 
 ---
 
