@@ -81,7 +81,8 @@ const osThreadAttr_t videoTask_attributes = {
   .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
-
+/* Return address of the last Error_Handler() caller, for post-mortem inspection. */
+volatile uint32_t g_error_handler_caller = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -899,6 +900,16 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
 
+  /* Record where we failed so the halt can be diagnosed without a live
+     debugger (inspect g_error_handler_caller in a crash dump / RAM view). */
+  g_error_handler_caller = (uint32_t)__builtin_return_address(0);
+
+  __disable_irq();
+  /* Halt here. If an IWDG is added later, remove this loop so the watchdog
+     resets the board instead of leaving it stuck. */
+  while (1)
+  {
+  }
   /* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT
