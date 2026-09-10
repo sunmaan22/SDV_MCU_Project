@@ -19,7 +19,7 @@
 [x] Touch 입력 시 UI 정상 반응
 
 NEXT
-[ ] 우리 IVI project에서 board setting 재현
+[x] 우리 IVI project에서 board setting 재현 (OCTOSPI1 NOR + OCTOSPI2 HyperRAM PASS, 2026-09-10)
 [x] FDCAN2 PB5/PB6 추가
 [x] FDCAN2 internal loopback (bench PASS 100/100, 2026-09-10)
 ```
@@ -97,7 +97,7 @@ HealthTask
 ## 구현해야 할 것
 
 - [x] STM32H735G-DK Reference LCD / Touch / TouchGFX bring-up
-- [ ] 우리 IVI project에서 LCD / Touch / HyperRAM / external Flash 설정 재현
+- [x] 우리 IVI project에서 LCD / Touch / HyperRAM / external Flash 설정 재현 (§0.6, OCTOSPI1 NOR + OCTOSPI2 HyperRAM PASS)
 - [~] FDCAN2 loopback / physical CAN test — internal loopback bench PASS (2026-09-10, [TEST_REPORT §0.5](TEST_REPORT.md)), physical CAN 미실시
 - [ ] Cluster / ADAS / Parking / Diagnostics / Settings 5개 화면
 - [ ] DummyDataProvider
@@ -132,7 +132,7 @@ Cluster 필수 항목, signal 목록, Warning 표시 정책, Gear R 화면정책
 ```text
 [x] H735G-DK Reference GUI Bring-up
 [x] Reference LCD / Touch 정상
-[ ] 우리 IVI project board bring-up 재현
+[x] 우리 IVI project board bring-up 재현 (OCTOSPI1 NOR + OCTOSPI2 HyperRAM, §0.6)
 [ ] 5개 화면
 [ ] Dummy Data
 [ ] invalid / critical warning
