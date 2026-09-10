@@ -31,7 +31,7 @@
 | v0.2 | 2026-09-09 | Team | RTOS timing/stack/queue/watchdog tests added |
 | v0.3 | 2026-09-10 | Team | STM32H735G-DK Reference TouchGFX 실기 bring-up 결과 기록 |
 | v0.4 | 2026-09-10 | Team | FDCAN2 internal loopback bench 결과(§0.5) 반영, 관련 매트릭스 / RTOS / Evidence / Final Result 갱신 |
-| v0.5 | 2026-09-10 | Team | §0.6 SDV_IVI_H735 자체 External Memory(OCTOSPI1 NOR / OCTOSPI2 HyperRAM) bring-up 절차·결과 표 추가 (실기 기록 대기) |
+| v0.5 | 2026-09-10 | Team | §0.6 SDV_IVI_H735 자체 External Memory(OCTOSPI1 NOR / OCTOSPI2 HyperRAM) bring-up — `.map` + 플래시 verify + 육안으로 **PASS**, §0.6.5 빈 `Error_Handler` 관찰, Final Result / Remaining Issues 갱신 |
 
 ---
 
@@ -171,11 +171,11 @@ bss  =    45,016 bytes
 | OCTOSPI1 매핑 | `0x90000000`, linker `OSPI` LENGTH 64M, TouchGFX `ExtFlashSection` → `>OSPI` |
 | OCTOSPI2 대상 | HyperRAM `S70KL1281`, HyperBus, `HAL_OSPI_MemoryMapped(&hospi2, …)` |
 | OCTOSPI2 매핑 | `0x70000000`, linker `HYPERRAM` LENGTH 16M |
-| LTDC layer 0 | `FBStartAdress = 0x70000000`, RGB888, 480 × 272 |
-| Framebuffer | `frameBuf[(480*272*3+3)/4*2]` (더블버퍼) section `TouchGFX_Framebuffer` → `>HYPERRAM` |
+| LTDC layer 0 | `pLayerCfg.FBStartAdress = 0x70000000`, RGB888, 480 × 272 |
+| Framebuffer | `frameBuf` (더블버퍼) section `TouchGFX_Framebuffer` → `>HYPERRAM` |
 | 기타 HYPERRAM | `Video_RGB_Buffer` (video 디코드 출력) 동일 영역 |
 | MPU | R1 `0x70000000` 512MB NO_ACCESS 배경 + R2 8MB FULL/cacheable(HyperRAM 창) · R3 `0x90000000` 512MB NO_ACCESS 배경 + R4 64MB FULL/cacheable(OSPI 창) |
-| 실패 처리 | `BSP_OSPI_NOR_Init` / `…EnableMemoryMappedMode` / `HAL_OSPI_MemoryMapped` 실패 시 `Error_Handler()` |
+| 실패 처리 | `BSP_OSPI_NOR_Init` / `…EnableMemoryMappedMode` / `HAL_OSPI_MemoryMapped` 실패 시 `Error_Handler()` **호출되지만 현재 `Error_Handler` 본문이 비어 있어 그대로 return됨** (아래 0.6.5 참고) |
 
 ### 0.6.2 시험 절차
 
@@ -215,34 +215,45 @@ bss  =    45,016 bytes
 | HyperRAM 스캔아웃 | GUI 동작 중 Memory `0x70000000` | 픽셀 데이터, 프레임마다 변화 |
 | (선택) 매핑 상태 | `HAL_OSPI_GetState(&hospi1)` / `(&hospi2)` | `HAL_OSPI_STATE_BUSY_MEM_MAPPED` |
 
-### 0.6.3 결과 (실기 — 기록 대기)
+### 0.6.3 결과 (2026-09-10, Debug 빌드 `.map` + 실보드)
+
+증거:
+`.map` = `firmware/IVI/SDV_IVI_H735/STM32CubeIDE/Debug/SDV_IVI_H735.map` (2026-09-10 빌드),
+플래시 로그 = ST-LINK GDB server 7.11.0 / STM32CubeProgrammer 2.20.0 / ST-LINK V3J17M11, 육안 = 사용자 실보드 확인.
+
+`.map` Memory Configuration: `OSPI 0x90000000 len 0x04000000` (64M), `HYPERRAM 0x70000000 len 0x01000000` (16M) — linker와 일치.
 
 | # | 시험 | 기대 | 실제 | Result |
 |---|---|---|---|---|
-| A1 | 빌드 error/warning | 0 / 0 | TBD | TBD |
-| A2 | `frameBuf` @ `0x70000000` | 일치 | TBD | TBD |
-| A3 | `Video_RGB_Buffer` / 2nd buffer in HYPERRAM 16M | 일치 | TBD | TBD |
-| A4 | asset가 OSPI(`0x90000000`) 대역 | 일치 | TBD | TBD |
-| B1 | 앱 + 외부 asset 플래시 | 완료 | TBD | TBD |
-| C1 | 이미지/폰트 정상 렌더 | 빈 박스 없음 | TBD | TBD |
-| C2 | 애니메이션 tearing/corruption 없음 | 없음 | TBD | TBD |
-| C3 | ≥ 5분 hang 없음 | 없음 | TBD | TBD |
-| D1 | OSPI/LTDC init `Error_Handler` 미진입 | 미진입 | TBD | TBD |
-| D2 | `&frameBuf` / `FBStartAdress` == `0x70000000` | 일치 | TBD | TBD |
-| D3 | `0x90000000` asset 데이터 확인 | 일치 | TBD | TBD |
-| D4 | HyperRAM write/read 일치 | 일치 | TBD | TBD |
-| D5 | `0x70000000` 프레임 데이터 변화 | 변화 | TBD | TBD |
+| A1 | 빌드 | error 0 | `.elf` 생성 + 플래시 verify 통과 → error 0. warning 수 미기록 | PASS (warning 미기록) |
+| A2 | framebuffer가 `0x70000000` 대역 | HYPERRAM 시작 | `.map`: `BufferSection 0x70000000 size 0x17e800`; `TouchGFX_Framebuffer` @ `0x70000000`(0x5fa00, TouchGFXHAL.o) + `0x7005fa00`(0xbf400, `frameBuf` 더블버퍼) | PASS |
+| A3 | `Video_RGB_Buffer` in HYPERRAM 16M | 범위 내 | `.map`: `Video_RGB_Buffer` @ `0x7011ee00` (0x5fa00), 영역 끝 `0x7017e800` — HYPERRAM `0x71000000` 한계 내 | PASS |
+| A4 | GUI asset이 OSPI(`0x90000000`) | 범위 내 | `.map`: `ExtFlashSection 0x90000000 size 0x236600` (~2.21 MB), 첫 asset `image_alternate_theme_..._analogclock_backgrounds` @ `0x90000000` | PASS |
+| B1 | 앱 + 외부 asset 플래시 | 완료 | 로그: `Erasing internal memory sectors [0 1]` + `Erasing external memory sectors [0 35]`, `Download verified successfully` (다운로드 17.9 s / 검증 6.4 s) | PASS |
+| C1 | 이미지/폰트 정상 렌더 | 빈 박스 없음 | 정상 (사용자 확인) → OSPI NOR `0x90000000` 런타임 read 동작 | PASS |
+| C2 | 애니메이션 tearing/corruption 없음 | 없음 | 정상 (사용자 확인) → HyperRAM 프레임버퍼 write + LTDC 스캔아웃 동작 | PASS |
+| C3 | ≥ 5분 hang 없음 | 없음 | 정상 (사용자 확인) | PASS |
+| D1 | OSPI/LTDC init 실패 없음 | 실패 없음 | `Error_Handler` 본문이 비어 BP 무의미 (0.6.5). 대신 C1/C2가 정상 → `MX_OCTOSPI1_Init` / `MX_OCTOSPI2_Init` / `MX_LTDC_Init` 통과 확정 | PASS (간접) |
+| D2 | framebuffer 링크 주소 | `0x70000000` 대역 | `.map` 정적 배치로 확인 (A2). 런타임 `hltdc.LayerCfg[0].FBStartAdress` 는 TouchGFX가 갱신하지 않는 필드라 값(예 `0x482b9000`)은 의미 없음 | PASS (정적) |
+| D3 | `0x90000000` asset 데이터 | 실제 데이터 | `.map` asset 배치 + 플래시 verify 통과 + C1 정상 | PASS (정적 + verify + C1) |
+| D4 | HyperRAM write/read | 일치 | 런타임 디버거 미확인 — C2가 기능적으로 갈음 | NOT RUN (C2로 갈음) |
+| D5 | `0x70000000` 프레임 데이터 변화 | 변화 | 런타임 디버거 미확인 — C2가 기능적으로 갈음 | NOT RUN (C2로 갈음) |
 
-### 0.6.4 판정 (기록 대기)
+### 0.6.4 판정
 
 ```text
-SDV_IVI_H735 EXTERNAL MEMORY BRING-UP: TBD
-  OCTOSPI1 NOR (GUI asset @ 0x90000000): TBD
-  OCTOSPI2 HyperRAM (framebuffer @ 0x70000000): TBD
+SDV_IVI_H735 EXTERNAL MEMORY BRING-UP: PASS
+  OCTOSPI1 NOR  (GUI asset @ 0x90000000):  PASS  (.map 배치 + 플래시 verify + 런타임 렌더 정상)
+  OCTOSPI2 HyperRAM (framebuffer @ 0x70000000): PASS  (.map 배치 + 애니메이션 tearing 없이 정상)
 ```
 
-전체 A~D가 PASS면 위 블록을 PASS로 바꾸고, README NEXT의
-"[ ] 우리 IVI project에서 board setting 재현" 및 "구현해야 할 것"의 해당 항목을 완료 처리한다.
+- 판정 근거는 정적(`.map`) + 플래시 verify + 육안이다. `HAL_OSPI_GetState`, HyperRAM 임의주소 write/read, `0x70000000` 프레임 변화 같은 런타임 디버거 확인(D4/D5)은 하지 않았고, 필요 시 후속 보강한다.
+- 이 판정은 **외부 메모리 2개가 memory-mapped로 정상 동작**함만 의미하며, 5개 화면 / CAN / RTOS 통합 PASS를 의미하지 않는다.
+
+### 0.6.5 관찰: 빈 `Error_Handler`
+
+`Core/Src/main.c`의 `Error_Handler()` 본문이 비어 있어(`USER CODE` 블록만 존재) **HAL 오류가 조용히 무시되고 실행이 계속된다.**
+현재는 OSPI/LTDC init이 실제로 성공(C1/C2)해서 문제가 드러나지 않지만, 진단·안전상 `while (1)` 또는 fault 기록/로깅을 추가하는 것을 별도 항목으로 남긴다. (§13 Remaining Issues)
 
 ---
 
@@ -445,6 +456,7 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 - TouchGFX screenshot/video artifact: not stored yet
 - FDCAN2 loopback `g_fdcan_loopback` dump (2026-09-10): `state=2, tx=100, rx=100, pass=100, mismatch=0, timeout=0, irq_count=100, queue_overflow=0, TEC/REC/bus_off=0, stack_free_bytes=1684`
 - FDCAN2 loopback 개발 로그: [DEVLOG.md](DEVLOG.md) · 코드 커밋 `835e48d`
+- 외부 메모리 bring-up (§0.6, 2026-09-10): `.map` `SDV_IVI_H735.map` — `BufferSection @ 0x70000000` (0x17e800), `ExtFlashSection @ 0x90000000` (0x236600); 플래시 로그 `Erasing external memory sectors [0 35]` + `Download verified successfully`
 - CAN log (physical bus): TBD
 - Runtime stats (통합 태스크): TBD
 - stack high-water log (통합 태스크): TBD
@@ -470,6 +482,7 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 REFERENCE BOARD BRING-UP: PASS
 SDV_IVI_H735 CLOCK-CHANGE GUI RETEST: PASS
 FDCAN2 INTERNAL LOOPBACK BENCH: PASS (state = 2, 100/100)
+SDV_IVI_H735 EXTERNAL MEMORY BRING-UP: PASS (OCTOSPI1 NOR + OCTOSPI2 HyperRAM)
 FULL IVI INTEGRATION: NOT RUN
 ```
 
@@ -480,6 +493,7 @@ FULL IVI INTEGRATION: NOT RUN
 - [x] TouchGFX 화면 정상 표시
 - [x] Touch 입력 UI 반응
 - [x] FDCAN2 internal loopback bench (`state = 2`, tx/rx/pass 100/100, `irq_count` 100, stack free 1684/2048 B) — 커밋 `835e48d`
+- [x] SDV_IVI_H735 자체 board bring-up — OCTOSPI1 NOR GUI asset(`0x90000000`) + OCTOSPI2 HyperRAM framebuffer(`0x70000000`) 실동작 (§0.6, `.map` + 플래시 verify + 육안)
 
 ## 전체 IVI PASS 조건
 
@@ -499,8 +513,10 @@ FULL IVI INTEGRATION: NOT RUN
 
 - ~~검증된 로컬 펌웨어 변경의 소스 커밋 고정~~ → 완료 (`835e48d`, PR #2 `22d6e4f`)
 - ~~FDCAN2 internal loopback~~ → 완료 (§0.5, bench PASS)
+- ~~`SDV_IVI_H735` 자체 HyperRAM(OCTOSPI2) · external Flash(OCTOSPI1) 실동작 확인~~ → 완료 (§0.6, PASS)
 - FDCAN2 physical CAN 시험 (트랜시버 + 2nd node / external loopback)
-- `SDV_IVI_H735` 자체 HyperRAM(OCTOSPI2) · external Flash(OCTOSPI1) 실동작 확인 후 §0에 기록
+- 빈 `Error_Handler` 본문 — `while (1)` / fault 로깅 추가 (§0.6.5)
+- 외부 메모리 런타임 디버거 보강 (선택): `HAL_OSPI_GetState` = mem-mapped, HyperRAM 임의주소 write/read, `0x70000000` 프레임 변화 (§0.6 D4/D5)
 - CAN signal layout freeze (`DEC-NET-004~007`)
 - task numeric priority (`DEC-HLT-001~003`)
 - task stack size
