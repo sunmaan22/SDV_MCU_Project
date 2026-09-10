@@ -3,7 +3,7 @@
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 목적: `SPECIFICATION.md` 요구사항을 실제 시험으로 검증한다.  
-> 현재는 실행 전 계획 상태이므로 실제 측정값은 임의로 채우지 않는다.
+> Reference board bring-up은 2026-09-10에 실제 STM32H735G-DK에서 수행했으며, 이후 SDV IVI 기능 시험은 단계적으로 추가한다.
 
 ## Document Information
 
@@ -11,10 +11,14 @@
 |---|---|
 | Node / Feature | Cluster + IVI Cockpit |
 | Owner | B |
-| Board / Platform | STM32H735 + TouchGFX |
+| Board / Platform | STM32H735G-DK + TouchGFX |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
-| Firmware / SW Commit | TBD |
-| Test Date | TBD |
+| Reference Commit | `f5c3b1ee03992cfd2d98587da270d9b3f9edd82a` |
+| Test Date | 2026-09-10 |
+| STM32CubeIDE | 1.19.0 |
+| STM32CubeMX | 6.15.0 |
+| STM32CubeH7 | V1.10.0 compatibility mode |
+| TouchGFX | 4.21.0 |
 | Specification Revision | v0.2 |
 | Architecture Revision | v0.2 |
 
@@ -24,6 +28,51 @@
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial planned test |
 | v0.2 | 2026-09-09 | Team | RTOS timing/stack/queue/watchdog tests added |
+| v0.3 | 2026-09-10 | Team | STM32H735G-DK Reference TouchGFX 실기 bring-up 결과 기록 |
+
+---
+
+# 0. Reference Board Bring-up Result
+
+MaJerle STM32H735G-DK TouchGFX reference를 실제 보드에 build / flash / run하여 기본 디스플레이 및 터치 동작을 확인했다.
+
+## 0.1 Build / Flash
+
+| Test | Expected | Actual | Result |
+|---|---|---|---|
+| Code generation | 정상 생성 | 완료 | PASS |
+| Build | 0 error | `0 errors, 0 warnings` | PASS |
+| ELF generation | `.elf` 생성 | `STM32H735G-DK.elf` 생성 | PASS |
+| ST-LINK flash/run | firmware 실행 | 정상 다운로드 및 실행 | PASS |
+
+Build size:
+
+```text
+text = 1,039,918 bytes
+data =       304 bytes
+bss  =    45,016 bytes
+```
+
+## 0.2 LCD / Touch 사용자 확인
+
+| Test | Expected | Actual | Result |
+|---|---|---|---|
+| LCD backlight | 정상 점등 | 정상 점등 확인 | PASS |
+| TouchGFX reference screen | 480x272 화면 표시 | 화면 정상 표시 확인 | PASS |
+| Touch input | 터치 시 UI 반응 | UI 정상 반응 확인 | PASS |
+
+현재 확인 범위에서 **Reference LCD / Touch / TouchGFX Bring-up = PASS**로 판정한다.
+
+장시간 안정성 항목인 tearing/flicker 지속 관찰 및 5분 이상 GUI hang 시험은 아직 별도 수행하지 않았다. Reference PASS를 근거로 다음 단계인 우리 IVI project 재현 및 FDCAN2 bring-up으로 진행한다.
+
+## 0.3 Tooling Notes
+
+- Reference `.ioc`는 CubeMX 6.5.0 / STM32CubeH7 V1.10.0 기반이다.
+- 검증 시 CubeIDE 1.19.0 / CubeMX 6.15.0에서 `Continue`를 선택하여 기존 FW_H7 V1.10.0 호환 상태를 유지했다.
+- `X-CUBE-TOUCHGFX 4.21.0` 패키지를 설치했다.
+- FreeRTOS `USE_NEWLIB_REENTRANT`를 활성화한 뒤 code generation을 수행했다.
+- Reference `.cproject`의 TouchGFX library search path에는 원 개발 PC 절대경로가 포함되어 있어, 로컬 `../../Middlewares/ST/touchgfx/lib/core/cortex_m7/gcc` 경로로 수정 후 link 성공했다.
+- CubeIDE의 Windows serial-port provider에서 `org.xml.sax.SAXParseException: Premature end of file` 로그가 관찰되었지만, ST-LINK flash 및 Reference GUI 실행에는 영향을 주지 않았다. 현 단계에서는 IDE tooling warning으로 분리 기록한다.
 
 ---
 
@@ -37,13 +86,13 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 
 | Item | Value |
 |---|---|
-| Board | STM32H735 board |
-| RTOS | FreeRTOS, version TBD |
+| Board | STM32H735G-DK |
+| RTOS | FreeRTOS, reference generated version / final version TBD |
 | API | CMSIS-RTOS2 |
-| UI | TouchGFX |
+| UI | TouchGFX 4.21.0 reference / final project version TBD |
 | Interface | LCD / Touch / FDCAN |
 | CAN bitrate | TBD |
-| Debug | STM32CubeIDE / ST-Link / runtime stats 후보 |
+| Debug | STM32CubeIDE 1.19.0 / ST-Link / runtime stats 후보 |
 | Watchdog | IWDG policy TBD |
 
 ---
@@ -57,13 +106,13 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 | T-HMI-003 | REQ-HMI-003 | ADAS 상태 표시 | NOT RUN |
 | T-HMI-004 | REQ-HMI-004 | Parking 거리/Warning 표시 | NOT RUN |
 | T-HMI-005 | REQ-HMI-005 | DTC list/detail | NOT RUN |
-| T-HMI-006 | REQ-HMI-006 | Touch 화면 전환 | NOT RUN |
+| T-HMI-006 | REQ-HMI-006 | Touch 화면 전환 | REFERENCE TOUCH PASS / IVI UI NOT RUN |
 | T-HMI-007 | REQ-HMI-007 | timeout data invalid 표시 | NOT RUN |
-| T-HMI-008 | REQ-HMI-008 | Body_Command CAN TX | NOT RUN |
+| T-HMI-008 | REQ-HMI-008 | Body_User_Request CAN TX | NOT RUN |
 | T-HMI-009 | REQ-HMI-009 | raw camera CAN path 없음 | NOT RUN |
 | T-HMI-010 | REQ-HMI-010 | critical warning 우선 표시 | NOT RUN |
 | T-HMI-011 | REQ-HMI-011 | CAN→Model ≤100 ms 목표 | NOT RUN |
-| T-HMI-012 | REQ-HMI-012 | Touch≤150 ms 목표 | NOT RUN |
+| T-HMI-012 | REQ-HMI-012 | Touch≤150 ms 목표 | FUNCTIONAL PASS / TIMING NOT RUN |
 | T-HMI-013 | REQ-HMI-013 | CAN/GUI task 분리 | NOT RUN |
 | T-HMI-014 | REQ-HMI-014 | FDCAN ISR 최소 처리 | NOT RUN |
 | T-HMI-015 | REQ-HMI-015 | Queue/Repository 전달 | NOT RUN |
@@ -94,10 +143,10 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 | `Vehicle_State` | RX | gear/mode update | NOT RUN | planned | TBD |
 | `Drive_Status` | RX | speed/rpm update | NOT RUN | planned | TBD |
 | `Ultrasonic_Status` | RX | distance/warning | NOT RUN | planned | TBD |
-| Vision status | RX | ADAS/Parking update | NOT RUN | planned | TBD |
+| `Vision_Status` | RX | ADAS/Parking update | NOT RUN | planned | TBD |
 | `Body_Status` | RX | lamp/ambient | NOT RUN | planned | TBD |
 | `DTC_Event` | RX | DTC model update | NOT RUN | event | TBD |
-| `Body_Command` | TX | UI request transmitted | NOT RUN | N/A | TBD |
+| `Body_User_Request` | TX | UI request transmitted | NOT RUN | N/A | TBD |
 
 ---
 
@@ -124,7 +173,7 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 |---|---|---|---|---|
 | `CanRxTask` | event | High | NOT RUN | TBD |
 | `VehicleModelTask` | event / 10~20 ms 후보 | Normal~High | NOT RUN | TBD |
-| `GuiTask` | TouchGFX tick | Normal | NOT RUN | TBD |
+| `GuiTask` | TouchGFX tick | Normal | Reference GUI running | PARTIAL |
 | `CommandTxTask` | event | Normal | NOT RUN | TBD |
 | `HealthTask` | 100 ms 후보 | Low | NOT RUN | TBD |
 
@@ -161,7 +210,7 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 | Interrupt | Expected ISR Action | Expected Task | Actual | Result |
 |---|---|---|---|---|
 | FDCAN RX | enqueue/notify only | CanRxTask | NOT RUN | TBD |
-| Touch/BSP IRQ | framework event only | GuiTask | NOT RUN | TBD |
+| Touch/BSP IRQ | framework event only | GuiTask | Reference Touch response confirmed | PARTIAL |
 
 Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 
@@ -184,7 +233,7 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 |---|---:|---:|---|---|
 | CAN RX → Vehicle Model | ≤100 ms 목표 | NOT RUN | timestamps | TBD |
 | Critical warning → UI | ≤200 ms 목표 | NOT RUN | injection/display timestamp | TBD |
-| Touch → UI response | ≤150 ms 목표 | NOT RUN | touch/render timestamp | TBD |
+| Touch → UI response | ≤150 ms 목표 | FUNCTIONAL ONLY | visual check | TIMING NOT RUN |
 | Queue backlog recovery | TBD | NOT RUN | burst test | TBD |
 
 ---
@@ -216,8 +265,11 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 
 # 12. Evidence
 
-- UART log: TBD
-- TouchGFX screenshot/video: TBD
+- Reference build log: PASS, `0 errors, 0 warnings`
+- Reference LCD visual confirmation: PASS
+- Reference TouchGFX visual confirmation: PASS
+- Reference Touch input confirmation: PASS
+- TouchGFX screenshot/video artifact: not stored yet
 - CAN log: TBD
 - Runtime stats: TBD
 - stack high-water log: TBD
@@ -240,12 +292,20 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 # 13. Final Result
 
 ```text
-RESULT: NOT RUN
+REFERENCE BOARD BRING-UP: PASS
+FULL IVI INTEGRATION: NOT RUN
 ```
 
-## PASS 조건
+## 완료된 항목
 
-- [ ] 주요 UI 기능 정상
+- [x] STM32H735G-DK Reference Build / Flash
+- [x] LCD 정상 출력
+- [x] TouchGFX 화면 정상 표시
+- [x] Touch 입력 UI 반응
+
+## 전체 IVI PASS 조건
+
+- [ ] 주요 SDV UI 기능 정상
 - [ ] CAN RX/TX 정상
 - [ ] timeout/invalid 정상
 - [ ] CanRx/Model/Gui/Command/Health Task 정상
@@ -257,10 +317,12 @@ RESULT: NOT RUN
 - [ ] Health/Watchdog 정책 검증
 - [ ] 증거 저장
 
-## Remaining Issues
+## Remaining Issues / Next Gate
 
-- CAN signal layout
-- FDCAN transceiver/pin
+- 우리 IVI project에서 Reference board 설정 재현
+- FDCAN2 PB5/PB6 enable
+- FDCAN2 internal loopback
+- CAN signal layout freeze
 - task numeric priority
 - task stack size
 - queue depth
