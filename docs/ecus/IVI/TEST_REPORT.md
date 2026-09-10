@@ -13,12 +13,13 @@
 | Owner | B |
 | Board / Platform | STM32H735G-DK + TouchGFX |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
-| Reference Commit | `f5c3b1ee03992cfd2d98587da270d9b3f9edd82a` |
+| Reference Commit | `f5c3b1ee03992cfd2d98587da270d9b3f9edd82a` (MaJerle reference) |
+| Firmware Commit | `835e48d` feat(ivi): FDCAN2 internal loopback bench test — `main`에 PR #2(`22d6e4f`)로 병합 |
 | Test Date | 2026-09-10 |
 | STM32CubeIDE | 1.19.0 |
-| STM32CubeMX | 6.15.0 |
-| STM32CubeH7 | V1.10.0 compatibility mode |
-| TouchGFX | 4.21.0 |
+| STM32CubeMX | 6.18.0 (SDV_IVI_H735) / 6.15.0 (reference 검증 시) |
+| STM32Cube FW_H7 | V1.13.0 (SDV_IVI_H735) / V1.10.0 compatibility (reference) |
+| TouchGFX | 4.26.1 (SDV_IVI_H735) / 4.21.0 (MaJerle reference) |
 | Specification Revision | v0.2 |
 | Architecture Revision | v0.2 |
 
@@ -29,6 +30,7 @@
 | v0.1 | 2026-09-09 | Team | Initial planned test |
 | v0.2 | 2026-09-09 | Team | RTOS timing/stack/queue/watchdog tests added |
 | v0.3 | 2026-09-10 | Team | STM32H735G-DK Reference TouchGFX 실기 bring-up 결과 기록 |
+| v0.4 | 2026-09-10 | Team | FDCAN2 internal loopback bench 결과(§0.5) 반영, 관련 매트릭스 / RTOS / Evidence / Final Result 갱신 |
 
 ---
 
@@ -108,6 +110,52 @@ bss  =    45,016 bytes
 
 ---
 
+## 0.5 FDCAN2 Internal Loopback Bench Test (2026-09-10)
+
+§0.4의 다음 단계로, `SDV_IVI_H735`에 FDCAN2를 enable하고 FreeRTOS one-shot 벤치 태스크(`CanLoopback`)를 추가하여
+트랜시버/물리 버스 없이 MAC 내부 loopback으로 Classic CAN 프레임 TX→RX 왕복 100회를 반복하고 프레임 무결성과
+에러 카운터를 확인했다. 상세 설계·절차는 [DEVLOG.md](DEVLOG.md) 참조. 아래 bitrate/ID는 bench 값이며 Network Freeze가 아니다.
+
+### 0.5.1 설정
+
+| 항목 | 값 |
+|---|---|
+| Peripheral / 핀 | FDCAN2, PB6 = TX, PB5 = RX, `GPIO_AF9_FDCAN2` |
+| Mode / Frame | `FDCAN_MODE_INTERNAL_LOOPBACK` / `FDCAN_FRAME_CLASSIC` |
+| Kernel clock | `RCC_FDCANCLKSOURCE_HSE` = 25 MHz (시스템 클럭 변경과 무관) |
+| Nominal timing | prescaler 5, TSeg1 7, TSeg2 2, SJW 1 → 500 kbit/s, sample point 80 % |
+| Std filter | index 0, mask, ID1 `0x123`, ID2 `0x7FF` → RX FIFO0; non-matching / remote reject |
+| IRQ | `FDCAN2_IT0_IRQn` (line 0), preempt priority 5 |
+| Bench task | `CanLoopback`, stack 2048 B, priority `osPriorityBelowNormal`, one-shot |
+| 시험 프레임 | std ID `0x123`, DLC 8, payload `53 44 56 <seq[31:0] LE> A5` |
+| 반복 | 100회, 프레임 간 `osDelay(100 ms)` |
+
+### 0.5.2 결과 — `g_fdcan_loopback` (실기 1회 실행, 루프 종료 후 디버거 확인)
+
+환경: STM32H735G-DK, ST-LINK GDB server, `arm-none-eabi-gdb 14.2.90.20240526`.
+
+| 필드 | 값 | Result |
+|---|---:|---|
+| `state` | 2 (PASS) | PASS |
+| `tx_count` / `rx_count` / `pass_count` | 100 / 100 / 100 | PASS |
+| `mismatch_count` | 0 | PASS |
+| `timeout_count` | 0 | PASS |
+| `irq_count` | 100 | PASS (RX FIFO0 new-message IRQ = 프레임당 1회, coalescing 없음) |
+| `queue_overflow` | 0 | PASS |
+| `rx_error` / `api_error` / `last_hal_error` | 0 / 0 / 0 | PASS |
+| `tx_error_counter` (TEC) / `rx_error_counter` (REC) / `bus_off` | 0 / 0 / 0 | PASS |
+| `stack_free_bytes` | 1684 / 2048 B (사용 364 B, 여유 82 %) | PASS |
+
+### 0.5.3 판정
+
+**FDCAN2 INTERNAL LOOPBACK BENCH: PASS (state = 2, 100/100).**
+
+- ISR(`HAL_FDCAN_RxFifo0Callback`)은 카운트 + bounded drain 후 큐 enqueue만 수행하고 헤더/payload 비교는 태스크에서 처리 → `REQ-HMI-014`(FDCAN ISR 최소 처리) 구조를 bench 범위에서 확인.
+- 안전 가드: Mode ≠ `INTERNAL_LOOPBACK` 또는 format ≠ `CLASSIC` 이면 즉시 fail → 실제 버스에 `0x123`을 송신하지 않는다.
+- 이 판정은 **물리 CAN 버스 / 트랜시버 / 노드 간 통신 / 최종 network bitrate·ID를 의미하지 않는다.**
+
+---
+
 # 1. Test Objective
 
 H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 정상 표시하는지 검증한다. 동시에 FreeRTOS 기반 `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask`가 의도한 구조로 실행되고, CAN burst나 UI load에서도 queue overflow, stack overflow, starvation 없이 주요 Timing 요구사항을 만족하는지 확인한다.
@@ -119,12 +167,12 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 | Item | Value |
 |---|---|
 | Board | STM32H735G-DK |
-| RTOS | FreeRTOS, reference generated version / final version TBD |
+| RTOS | FreeRTOS (CubeMX 생성), `configUSE_NEWLIB_REENTRANT = 1` / 최종 수치 TBD |
 | API | CMSIS-RTOS2 |
-| UI | TouchGFX 4.21.0 reference / final project version TBD |
-| Interface | LCD / Touch / FDCAN |
-| CAN bitrate | TBD |
-| Debug | STM32CubeIDE 1.19.0 / ST-Link / runtime stats 후보 |
+| UI | TouchGFX 4.26.1 (SDV_IVI_H735) / 최종 프로젝트 버전 확정 TBD |
+| Interface | LCD / Touch / FDCAN2 (PB6 TX, PB5 RX) |
+| CAN bitrate | 500 kbit/s (bench loopback 값, network freeze 아님) |
+| Debug | STM32CubeIDE 1.19.0 / ST-LINK GDB server / `arm-none-eabi-gdb 14.2.90.20240526` / runtime stats 후보 |
 | Watchdog | IWDG policy TBD |
 
 ---
@@ -146,8 +194,8 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 | T-HMI-011 | REQ-HMI-011 | CAN→Model ≤100 ms 목표 | NOT RUN |
 | T-HMI-012 | REQ-HMI-012 | Touch≤150 ms 목표 | FUNCTIONAL PASS / TIMING NOT RUN |
 | T-HMI-013 | REQ-HMI-013 | CAN/GUI task 분리 | NOT RUN |
-| T-HMI-014 | REQ-HMI-014 | FDCAN ISR 최소 처리 | NOT RUN |
-| T-HMI-015 | REQ-HMI-015 | Queue/Repository 전달 | NOT RUN |
+| T-HMI-014 | REQ-HMI-014 | FDCAN ISR 최소 처리 | BENCH PARTIAL PASS (loopback: ISR enqueue-only, `irq_count` = 100) / 통합 NOT RUN |
+| T-HMI-015 | REQ-HMI-015 | Queue/Repository 전달 | BENCH: ISR→queue→task 경로 PASS (`loopbackQueue`) / Repository 경로 NOT RUN |
 | T-HMI-016 | REQ-HMI-016 | load 중 critical warning block 없음 | NOT RUN |
 | T-HMI-017 | REQ-HMI-017 | stack/queue overflow 검증 | NOT RUN |
 | T-HMI-018 | REQ-HMI-018 | HealthTask/watchdog-ready 구조 | NOT RUN |
@@ -208,6 +256,7 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 | `GuiTask` | TouchGFX tick | Normal | Reference GUI running | PARTIAL |
 | `CommandTxTask` | event | Normal | NOT RUN | TBD |
 | `HealthTask` | 100 ms 후보 | Low | NOT RUN | TBD |
+| `CanLoopback` (bench, 최종 구조 아님) | one-shot, 100회 후 `osThreadExit` | BelowNormal | 100회 완료, `state = 2` | BENCH PASS |
 
 ## 7.2 Period / Jitter
 
@@ -226,6 +275,7 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 | GuiTask stack | generated/TBD | NOT RUN | TBD |
 | CommandTxTask stack | TBD | NOT RUN | TBD |
 | HealthTask stack | TBD | NOT RUN | TBD |
+| `CanLoopback` (bench) stack | 2048 B | 1684 B free (used 364 B) | BENCH PASS |
 | Heap free | TBD | NOT RUN | TBD |
 
 ## 7.4 Queue / Event
@@ -236,12 +286,13 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 | `ModelUpdateQueue` | TBD | NOT RUN | NOT RUN | TBD |
 | `UiCommandQueue` | TBD | NOT RUN | NOT RUN | TBD |
 | `SystemEvents` | flags | N/A | NOT RUN | TBD |
+| `loopbackQueue` (bench) | 8 | `queue_overflow` = 0 | 강제 overflow N/A | BENCH PASS |
 
 ## 7.5 ISR → Task
 
 | Interrupt | Expected ISR Action | Expected Task | Actual | Result |
 |---|---|---|---|---|
-| FDCAN RX | enqueue/notify only | CanRxTask | NOT RUN | TBD |
+| FDCAN RX | enqueue/notify only | CanRxTask | bench: `HAL_FDCAN_RxFifo0Callback` → count + bounded drain + queue put만, 비교는 태스크. `irq_count` = 100, 큐 경로 정상 | BENCH PARTIAL PASS / 최종 `CanRxTask` NOT RUN |
 | Touch/BSP IRQ | framework event only | GuiTask | Reference Touch response confirmed | PARTIAL |
 
 Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
@@ -302,10 +353,12 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 - Reference TouchGFX visual confirmation: PASS
 - Reference Touch input confirmation: PASS
 - TouchGFX screenshot/video artifact: not stored yet
-- CAN log: TBD
-- Runtime stats: TBD
-- stack high-water log: TBD
-- queue occupancy log: TBD
+- FDCAN2 loopback `g_fdcan_loopback` dump (2026-09-10): `state=2, tx=100, rx=100, pass=100, mismatch=0, timeout=0, irq_count=100, queue_overflow=0, TEC/REC/bus_off=0, stack_free_bytes=1684`
+- FDCAN2 loopback 개발 로그: [DEVLOG.md](DEVLOG.md) · 코드 커밋 `835e48d`
+- CAN log (physical bus): TBD
+- Runtime stats (통합 태스크): TBD
+- stack high-water log (통합 태스크): TBD
+- queue occupancy log (통합 태스크): TBD
 - trace/scope: TBD
 
 예시 로그:
@@ -326,6 +379,7 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 ```text
 REFERENCE BOARD BRING-UP: PASS
 SDV_IVI_H735 CLOCK-CHANGE GUI RETEST: PASS
+FDCAN2 INTERNAL LOOPBACK BENCH: PASS (state = 2, 100/100)
 FULL IVI INTEGRATION: NOT RUN
 ```
 
@@ -335,6 +389,7 @@ FULL IVI INTEGRATION: NOT RUN
 - [x] LCD 정상 출력
 - [x] TouchGFX 화면 정상 표시
 - [x] Touch 입력 UI 반응
+- [x] FDCAN2 internal loopback bench (`state = 2`, tx/rx/pass 100/100, `irq_count` 100, stack free 1684/2048 B) — 커밋 `835e48d`
 
 ## 전체 IVI PASS 조건
 
@@ -352,10 +407,12 @@ FULL IVI INTEGRATION: NOT RUN
 
 ## Remaining Issues / Next Gate
 
-- 검증된 로컬 펌웨어 변경의 소스 커밋 고정
-- FDCAN2 internal loopback
-- CAN signal layout freeze
-- task numeric priority
+- ~~검증된 로컬 펌웨어 변경의 소스 커밋 고정~~ → 완료 (`835e48d`, PR #2 `22d6e4f`)
+- ~~FDCAN2 internal loopback~~ → 완료 (§0.5, bench PASS)
+- FDCAN2 physical CAN 시험 (트랜시버 + 2nd node / external loopback)
+- `SDV_IVI_H735` 자체 HyperRAM(OCTOSPI2) · external Flash(OCTOSPI1) 실동작 확인 후 §0에 기록
+- CAN signal layout freeze (`DEC-NET-004~007`)
+- task numeric priority (`DEC-HLT-001~003`)
 - task stack size
 - queue depth
 - IWDG policy

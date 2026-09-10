@@ -98,7 +98,7 @@ HealthTask
 
 - [x] STM32H735G-DK Reference LCD / Touch / TouchGFX bring-up
 - [ ] 우리 IVI project에서 LCD / Touch / HyperRAM / external Flash 설정 재현
-- [ ] FDCAN2 loopback / physical CAN test
+- [~] FDCAN2 loopback / physical CAN test — internal loopback bench PASS (2026-09-10, [TEST_REPORT §0.5](TEST_REPORT.md)), physical CAN 미실시
 - [ ] Cluster / ADAS / Parking / Diagnostics / Settings 5개 화면
 - [ ] DummyDataProvider
 - [ ] VehicleDataRepository
