@@ -31,6 +31,7 @@
 | v0.2 | 2026-09-09 | Team | RTOS timing/stack/queue/watchdog tests added |
 | v0.3 | 2026-09-10 | Team | STM32H735G-DK Reference TouchGFX 실기 bring-up 결과 기록 |
 | v0.4 | 2026-09-10 | Team | FDCAN2 internal loopback bench 결과(§0.5) 반영, 관련 매트릭스 / RTOS / Evidence / Final Result 갱신 |
+| v0.5 | 2026-09-10 | Team | §0.6 SDV_IVI_H735 자체 External Memory(OCTOSPI1 NOR / OCTOSPI2 HyperRAM) bring-up 절차·결과 표 추가 (실기 기록 대기) |
 
 ---
 
@@ -153,6 +154,95 @@ bss  =    45,016 bytes
 - ISR(`HAL_FDCAN_RxFifo0Callback`)은 카운트 + bounded drain 후 큐 enqueue만 수행하고 헤더/payload 비교는 태스크에서 처리 → `REQ-HMI-014`(FDCAN ISR 최소 처리) 구조를 bench 범위에서 확인.
 - 안전 가드: Mode ≠ `INTERNAL_LOOPBACK` 또는 format ≠ `CLASSIC` 이면 즉시 fail → 실제 버스에 `0x123`을 송신하지 않는다.
 - 이 판정은 **물리 CAN 버스 / 트랜시버 / 노드 간 통신 / 최종 network bitrate·ID를 의미하지 않는다.**
+
+---
+
+## 0.6 SDV_IVI_H735 자체 External Memory Bring-up (OCTOSPI1 NOR / OCTOSPI2 HyperRAM)
+
+목적: MaJerle reference가 아닌 우리 `firmware/IVI/SDV_IVI_H735` 프로젝트에서
+**OCTOSPI1 외부 NOR Flash(GUI asset)** 와 **OCTOSPI2 HyperRAM(TouchGFX 프레임버퍼)** 이 실보드에서 동작함을 확인한다.
+확인되면 README NEXT의 "우리 IVI project에서 board setting 재현" 항목을 닫는다.
+
+### 0.6.1 설계 요약 (코드 기준, `main.c` / linker / TouchGFXGeneratedHAL)
+
+| 항목 | 값 |
+|---|---|
+| OCTOSPI1 대상 | Macronix NOR `MX25LM51245G`, OPI + DTR, `BSP_OSPI_NOR_EnableMemoryMappedMode(0)` |
+| OCTOSPI1 매핑 | `0x90000000`, linker `OSPI` LENGTH 64M, TouchGFX `ExtFlashSection` → `>OSPI` |
+| OCTOSPI2 대상 | HyperRAM `S70KL1281`, HyperBus, `HAL_OSPI_MemoryMapped(&hospi2, …)` |
+| OCTOSPI2 매핑 | `0x70000000`, linker `HYPERRAM` LENGTH 16M |
+| LTDC layer 0 | `FBStartAdress = 0x70000000`, RGB888, 480 × 272 |
+| Framebuffer | `frameBuf[(480*272*3+3)/4*2]` (더블버퍼) section `TouchGFX_Framebuffer` → `>HYPERRAM` |
+| 기타 HYPERRAM | `Video_RGB_Buffer` (video 디코드 출력) 동일 영역 |
+| MPU | R1 `0x70000000` 512MB NO_ACCESS 배경 + R2 8MB FULL/cacheable(HyperRAM 창) · R3 `0x90000000` 512MB NO_ACCESS 배경 + R4 64MB FULL/cacheable(OSPI 창) |
+| 실패 처리 | `BSP_OSPI_NOR_Init` / `…EnableMemoryMappedMode` / `HAL_OSPI_MemoryMapped` 실패 시 `Error_Handler()` |
+
+### 0.6.2 시험 절차
+
+**A. 빌드 증거 (`.map` 확인)**
+
+1. `SDV_IVI_H735` Debug 빌드 — error/warning 수 기록.
+2. `.map`에서 다음 심볼 주소 확인:
+   - `frameBuf` == `0x70000000`
+   - 두 번째 버퍼(`frameBuf + sizeof/2`) 가 `0x70000000`~`0x71000000`(16M) 안
+   - `Video_RGB_Buffer` 가 HYPERRAM 16M 안
+   - TouchGFX image/font 데이터가 `ExtFlashSection` / `0x90000000` 대역에 배치
+3. `.map`에 HYPERRAM/OSPI region overflow 경고 없음.
+
+**B. 플래시**
+
+- 앱 → 내부 Flash `0x08000000`.
+- **GUI asset → 외부 OSPI NOR**: STM32CubeProgrammer external loader `MX25LM51245G_STM32H735G-DK`
+  (또는 TouchGFX Designer "Run Target" 이 앱+asset 동시 처리).
+- asset 미플래시 시 이미지가 빈 사각형/placeholder로 표시됨 → 이것이 주요 실패 신호.
+
+**C. 실행 / 육안**
+
+| 확인 | 판정 근거 |
+|---|---|
+| 모든 이미지 / 아이콘 / 폰트가 정상 렌더 (빈 박스 없음) | OSPI NOR `0x90000000` 읽기 정상 |
+| slider 드래그 · analog clock 초침 애니메이션이 tearing / 깨진 라인 없이 부드러움 | HyperRAM 프레임버퍼 + 더블버퍼 swap 정상 |
+| ≥ 5분 연속 실행, hang / freeze 없음 | 메모리 매핑 안정성 |
+
+**D. 디버거 증거**
+
+| 확인 | 방법 | 기대 |
+|---|---|---|
+| OSPI/LTDC init 중 `Error_Handler` 미진입 | `Error_Handler` 에 BP | `MX_OCTOSPI1_Init` / `MX_OCTOSPI2_Init` / `MX_LTDC_Init` 통과 |
+| 프레임버퍼 주소 | Expressions `&frameBuf`, `hltdc.LayerCfg[0].FBStartAdress` | 둘 다 `0x70000000` |
+| OSPI NOR 내용 | Memory `0x90000000` | all `0xFF` / `0x00` 아님, flash한 asset blob 시작과 일치 |
+| HyperRAM R/W | Memory: 미사용 주소(예 `0x70800000`)에 패턴 write 후 read | write == read |
+| HyperRAM 스캔아웃 | GUI 동작 중 Memory `0x70000000` | 픽셀 데이터, 프레임마다 변화 |
+| (선택) 매핑 상태 | `HAL_OSPI_GetState(&hospi1)` / `(&hospi2)` | `HAL_OSPI_STATE_BUSY_MEM_MAPPED` |
+
+### 0.6.3 결과 (실기 — 기록 대기)
+
+| # | 시험 | 기대 | 실제 | Result |
+|---|---|---|---|---|
+| A1 | 빌드 error/warning | 0 / 0 | TBD | TBD |
+| A2 | `frameBuf` @ `0x70000000` | 일치 | TBD | TBD |
+| A3 | `Video_RGB_Buffer` / 2nd buffer in HYPERRAM 16M | 일치 | TBD | TBD |
+| A4 | asset가 OSPI(`0x90000000`) 대역 | 일치 | TBD | TBD |
+| B1 | 앱 + 외부 asset 플래시 | 완료 | TBD | TBD |
+| C1 | 이미지/폰트 정상 렌더 | 빈 박스 없음 | TBD | TBD |
+| C2 | 애니메이션 tearing/corruption 없음 | 없음 | TBD | TBD |
+| C3 | ≥ 5분 hang 없음 | 없음 | TBD | TBD |
+| D1 | OSPI/LTDC init `Error_Handler` 미진입 | 미진입 | TBD | TBD |
+| D2 | `&frameBuf` / `FBStartAdress` == `0x70000000` | 일치 | TBD | TBD |
+| D3 | `0x90000000` asset 데이터 확인 | 일치 | TBD | TBD |
+| D4 | HyperRAM write/read 일치 | 일치 | TBD | TBD |
+| D5 | `0x70000000` 프레임 데이터 변화 | 변화 | TBD | TBD |
+
+### 0.6.4 판정 (기록 대기)
+
+```text
+SDV_IVI_H735 EXTERNAL MEMORY BRING-UP: TBD
+  OCTOSPI1 NOR (GUI asset @ 0x90000000): TBD
+  OCTOSPI2 HyperRAM (framebuffer @ 0x70000000): TBD
+```
+
+전체 A~D가 PASS면 위 블록을 PASS로 바꾸고, README NEXT의
+"[ ] 우리 IVI project에서 board setting 재현" 및 "구현해야 할 것"의 해당 항목을 완료 처리한다.
 
 ---
 
