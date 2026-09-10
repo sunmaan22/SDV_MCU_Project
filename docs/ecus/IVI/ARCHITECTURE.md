@@ -5,6 +5,8 @@
 > 문서 목적: STM32H735 Cockpit을 **어떤 구조로 구현하는지**, TouchGFX와 FreeRTOS Task가 어떻게 협력하는지 설명한다.  
 > 기능 요구사항은 `SPECIFICATION.md`, 검증 결과는 `TEST_REPORT.md`를 기준으로 한다.
 
+> **최상위 구현 기준:** [FINAL_IMPLEMENTATION_SPEC.md](../../system/FINAL_IMPLEMENTATION_SPEC.md). 조명 요청은 `IVI → Body_User_Request → VCU → Body_Command → Body Gateway`를 따른다. IVI는 `Body_Command`를 직접 송신하지 않는다.
+
 ## Document Information
 
 | Item | Value |
@@ -13,7 +15,7 @@
 | Owner | B |
 | Board / Platform | STM32H735 + TouchGFX |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
-| Revision | v0.2 |
+| Revision | v0.3 |
 | Status | Draft |
 | Related Specification | `SPECIFICATION.md` |
 | Related Test | `TEST_REPORT.md` |
@@ -24,6 +26,7 @@
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial filled example |
 | v0.2 | 2026-09-09 | Team | FreeRTOS task/ISR/queue/watchdog architecture added |
+| v0.3 | 2026-09-10 | Team | Lighting request route aligned with final specification: IVI → VCU → Body Gateway |
 
 ---
 
@@ -107,7 +110,8 @@ flowchart LR
     HPC[Pi Vision/HPC] -->|ADAS/Parking Result| HMI
     BODY[Body Gateway] -->|Body Status| HMI
     DTC[Pi DTC Manager] -->|DTC Data| HMI
-    HMI -->|Body Command| BODY
+    HMI -->|Body_User_Request| VCU
+    VCU -->|Body_Command| BODY
     HMI -->|Diagnostic Request| DTC
     DRIVER[Driver/Touch] <--> HMI
 ```
@@ -303,10 +307,13 @@ sequenceDiagram
     participant DRIVER as Driver
     participant GUI as GuiTask
     participant TX as CommandTxTask
+    participant VCU as VCU
     participant GW as Body Gateway
     DRIVER->>GUI: lighting request
     GUI->>TX: UiCommandQueue
-    TX->>GW: Body_Command CAN
+    TX->>VCU: Body_User_Request CAN
+    VCU->>VCU: Request validation / final arbitration
+    VCU->>GW: Body_Command CAN
 ```
 
 ## 8.4 CAN Timeout
@@ -369,7 +376,7 @@ Pin map은 CubeMX/board schematic 확인 후 작성한다.
 
 | Message | Meaning | Trigger | Receiver |
 |---|---|---|---|
-| `Body_Command` | lighting/body request | UI event | Gateway |
+| `Body_User_Request` | lighting/body request | UI event | VCU |
 | Diagnostic Clear Request | DTC clear 후보 | user event | Diagnostics target |
 
 H735는 LIN 직접 사용 없음.
