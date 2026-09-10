@@ -76,6 +76,38 @@ bss  =    45,016 bytes
 
 ---
 
+## 0.4 SDV_IVI_H735 — 클럭 수정 후 GUI 재검증 (2026-09-10)
+
+우리 TouchGFX 4.26.1 프로젝트에서 FDCAN2 핀/초기화 추가 및 클럭 수정 후 GUI를 재검증했다. 근거는 로컬 설정·생성 코드 확인, 사용자가 제공한 ST-LINK 다운로드 로그 및 LCD/Touch 정상 확인이다. 아래 클럭은 설정값이며 계측값이 아니다.
+
+| 항목 | 확인 내용 |
+|---|---|
+| Project | firmware/IVI/SDV_IVI_H735 |
+| CubeMX / FW package | 6.18.0 / STM32Cube FW_H7 V1.13.0 |
+| CPU / HCLK | 500 MHz / 250 MHz (기존 550/275 MHz와 다름) |
+| LTDC | 9.6 MHz |
+| PLL3 | M=25, N=288, P=2, Q=2, R=30, FRACN=0; input range 1–2 MHz, Medium VCO; VCO 288 MHz |
+| OCTOSPI kernel | 200 MHz |
+| FDCAN2 | PB5 RX / PB6 TX, HSE 25 MHz |
+| Debug tools (제공 로그) | ST-LINK GDB server 7.11.0 / STM32CubeProgrammer 2.20.0 / ST-LINK V3J17M11 |
+
+| 시험 | 결과 | 근거 |
+|---|---|---|
+| 코드 생성 및 PLL3/FDCAN 소스 반영 | PASS | .ioc 및 생성 코드 확인 |
+| 내부/외부 메모리 다운로드·검증 | PASS | File download complete; Download verified successfully |
+| LCD 화면 출력 | PASS | 사용자 실보드 확인 |
+| Touch UI 반응 | PASS | 사용자 GUI 재검증 완료 기록 요청 |
+| 장시간 hang/tearing/flicker 및 응답시간 | NOT RUN | 별도 측정 결과 없음 |
+| FDCAN2 loopback / physical CAN | NOT RUN | 아직 송수신 시험 전 |
+
+로그의 다운로드 크기는 2.16 MB, 다운로드 16.010초, 검증 5.765초였다. 이번 빌드의 error/warning 개수는 제공되지 않아 0 errors/0 warnings로 단정하지 않는다.
+
+**클럭 수정 후 GUI 기본 재검증: PASS.** 이 판정은 CAN 통신 또는 전체 IVI 기능 PASS를 의미하지 않는다. 로컬 수정 펌웨어의 커밋 SHA는 아직 고정하지 않았으며, 이 문서 업데이트가 해당 소스 변경의 업로드를 의미하지 않는다.
+
+다음은 FDCAN2 Internal Loopback 설정 → RX/TX FIFO 및 수신 interrupt 준비 → 시험 프레임 송수신·payload 비교다. 현재 확인된 설정은 Classic/Normal, RX FIFO0=0, TX FIFO=0이므로 추가 설정과 시험 코드가 필요하다. 시험용 bitrate/ID는 임시 bench 값으로 관리하며 최종 Network Freeze로 간주하지 않는다.
+
+---
+
 # 1. Test Objective
 
 H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 정상 표시하는지 검증한다. 동시에 FreeRTOS 기반 `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask`가 의도한 구조로 실행되고, CAN burst나 UI load에서도 queue overflow, stack overflow, starvation 없이 주요 Timing 요구사항을 만족하는지 확인한다.
@@ -293,6 +325,7 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 
 ```text
 REFERENCE BOARD BRING-UP: PASS
+SDV_IVI_H735 CLOCK-CHANGE GUI RETEST: PASS
 FULL IVI INTEGRATION: NOT RUN
 ```
 
@@ -319,8 +352,7 @@ FULL IVI INTEGRATION: NOT RUN
 
 ## Remaining Issues / Next Gate
 
-- 우리 IVI project에서 Reference board 설정 재현
-- FDCAN2 PB5/PB6 enable
+- 검증된 로컬 펌웨어 변경의 소스 커밋 고정
 - FDCAN2 internal loopback
 - CAN signal layout freeze
 - task numeric priority
