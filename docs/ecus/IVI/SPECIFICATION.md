@@ -5,6 +5,8 @@
 > 문서 목적: STM32H735 + TouchGFX Cockpit 기능이 **무엇을 해야 하는지** 정의한다.  
 > 구현 구조는 `ARCHITECTURE.md`, 검증 결과는 `TEST_REPORT.md`에서 관리한다.
 
+> **최상위 구현 기준:** [FINAL_IMPLEMENTATION_SPEC.md](../../system/FINAL_IMPLEMENTATION_SPEC.md). 조명 요청은 `IVI → Body_User_Request → VCU → Body_Command → Body Gateway`를 따른다. IVI는 `Body_Command`를 직접 송신하지 않는다.
+
 ## Document Information
 
 | Item | Value |
@@ -26,6 +28,7 @@
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial filled example |
 | v0.2 | 2026-09-09 | Team | FreeRTOS task/timing/health requirements added |
+| v0.3 | 2026-09-10 | Team | Lighting request route aligned with final specification: IVI → VCU → Body Gateway |
 
 ---
 
@@ -91,8 +94,8 @@
 | Actor / Trigger | Driver touch |
 | Preconditions | Settings screen active |
 | Trigger | Lighting toggle/select |
-| Normal Flow | GuiTask → Command Queue → CommandTxTask → CAN Body_Command |
-| Postconditions | Body Gateway가 Request 수신 가능 |
+| Normal Flow | GuiTask → Command Queue → CommandTxTask → Body_User_Request → VCU |
+| Postconditions | VCU가 Body_User_Request를 수신 가능. VCU가 최종 Body_Command를 결정하여 Body Gateway로 전달 |
 
 ---
 
@@ -110,7 +113,9 @@ flowchart TD
     G --> H{User Request?}
     H -->|Yes| I[Command Queue]
     I --> J[CommandTxTask]
-    J --> K[CAN TX]
+    J --> K[Body_User_Request CAN TX]
+    K --> L[VCU]
+    L -->|Body_Command| M[Body Gateway]
 ```
 
 ---
@@ -137,7 +142,7 @@ flowchart TD
 | OUT-HMI-001 | Cluster/IVI Screen | Driver | LCD/TouchGFX | render update | model valid/degraded state |
 | OUT-HMI-002 | Critical Warning | Driver | LCD/TouchGFX | event | warning valid |
 | OUT-HMI-003 | DTC Detail | Driver | LCD/TouchGFX | event | DTC entry valid |
-| OUT-HMI-004 | `Body_Command` | Body Gateway | CAN FD | user event | request valid |
+| OUT-HMI-004 | `Body_User_Request` | VCU | CAN FD | user event | request valid |
 | OUT-HMI-005 | Diagnostic Clear Request 후보 | Diagnostics target | CAN FD | user event | policy satisfied |
 
 ---
@@ -153,7 +158,7 @@ flowchart TD
 | REQ-HMI-005 | DTC 목록과 상세 상태를 표시해야 한다. | MUST | Test | T-HMI-005 |
 | REQ-HMI-006 | Touch로 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 전환해야 한다. | MUST | Test | T-HMI-006 |
 | REQ-HMI-007 | Timeout/Invalid 차량 데이터를 정상 최신값처럼 표시하지 않아야 한다. | MUST | Fault Test | T-HMI-007 |
-| REQ-HMI-008 | Lighting 설정은 GPIO 직접 출력이 아니라 CAN Request로 전송해야 한다. | MUST | Test/Inspect | T-HMI-008 |
+| REQ-HMI-008 | Lighting 설정은 Body_User_Request로 VCU에 전송해야 하며, Body_Command 발행과 Lamp GPIO 직접 제어를 수행하지 않아야 한다. | MUST | Test/Inspect | T-HMI-008 |
 | REQ-HMI-009 | Raw Camera Frame을 CAN으로 수신하도록 설계하지 않아야 한다. | MUST | Inspect | T-HMI-009 |
 | REQ-HMI-010 | Critical Warning은 현재 화면과 무관하게 우선 표시 가능해야 한다. | SHOULD | Test | T-HMI-010 |
 | REQ-HMI-011 | 주요 CAN 데이터는 수신 후 목표 100 ms 이내에 UI Model에 반영해야 한다. | SHOULD | Measure | T-HMI-011 |
@@ -177,7 +182,7 @@ flowchart TD
 | RULE-HMI-002 | Gear R | Parking 정보 접근성 강화 |
 | RULE-HMI-003 | Critical Warning | 일반 화면보다 Warning 우선 |
 | RULE-HMI-004 | CAN Signal timeout | `valid=false` + Comm Warning |
-| RULE-HMI-005 | Lighting 설정 | Command Queue → CAN Request |
+| RULE-HMI-005 | Lighting 설정 | Command Queue → Body_User_Request → VCU |
 | RULE-HMI-006 | DTC Clear | 통합 규격 조건 확인 후 Request |
 | RULE-HMI-007 | GUI load 증가 | CanRxTask/Validity 처리가 starvation되지 않아야 함 |
 
@@ -232,7 +237,7 @@ Raw Rear Camera 영상 자체를 CAN으로 받아 표시하는 것은 현재 범
 | Vision status | RX | HPC | periodic/event | TBD | vision unavailable |
 | `Body_Status` | RX | Gateway | periodic | TBD | body warning |
 | `DTC_Event` | RX | All/Pi | event | N/A | list update |
-| `Body_Command` | TX | Gateway | event | N/A | TX result/log |
+| `Body_User_Request` | TX | VCU | event | N/A | TX result/log |
 
 ## 10.3 LIN
 
