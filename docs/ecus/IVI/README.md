@@ -20,11 +20,11 @@
 
 NEXT
 [ ] 우리 IVI project에서 board setting 재현
-[ ] FDCAN2 PB5/PB6 추가
-[ ] FDCAN2 internal loopback
+[x] FDCAN2 PB5/PB6 추가
+[x] FDCAN2 internal loopback (bench PASS 100/100, 2026-09-10)
 ```
 
-Reference board bring-up의 상세 기록은 [HARDWARE_BRINGUP.md](HARDWARE_BRINGUP.md), 실기 시험 결과는 [TEST_REPORT.md](TEST_REPORT.md)에 기록한다.
+Reference board bring-up의 상세 기록은 [HARDWARE_BRINGUP.md](HARDWARE_BRINGUP.md), 실기 시험 결과는 [TEST_REPORT.md](TEST_REPORT.md), 단계별 구현/디버깅 로그는 [DEVLOG.md](DEVLOG.md)에 기록한다.
 
 ## 구현 시작점
 
