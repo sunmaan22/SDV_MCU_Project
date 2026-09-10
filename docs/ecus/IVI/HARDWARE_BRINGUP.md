@@ -33,21 +33,23 @@ Reference project 확인
 
 - Board: `STM32H735G-DK`
 - MCU: `STM32H735IGK6` 계열
-- STM32CubeMX / CubeIDE 버전 기록
-- STM32CubeH7 package 버전 기록
-- TouchGFX Designer 버전 기록
-- ST-LINK firmware update
-- USB 전원 및 ST-LINK 연결 확인
+- STM32CubeIDE: `1.19.0`
+- STM32CubeMX: `6.15.0`
+- Reference STM32CubeH7 package: `V1.10.0` compatibility mode
+- Reference TouchGFX package: `4.21.0`
+- ST-LINK / USB 연결 확인
 
-외부 reference `.ioc`가 구버전 CubeMX로 생성되어 있으면 처음 열 때 migration 전 원본을 보존한다.
+외부 reference `.ioc`는 CubeMX 6.5.0 / STM32CubeH7 V1.10.0에서 생성되었다. 2026-09-10 bring-up에서는 CubeIDE 1.19.0 / CubeMX 6.15.0에서 **Migrate하지 않고 Continue**하여 기존 STM32CubeH7 V1.10.0 호환 설정으로 검증했다.
 
 PASS 조건:
 
 ```text
-[ ] Board debugger 인식
-[ ] Empty/debug project download 가능
-[ ] 사용한 tool version 기록 완료
+[x] Board debugger 인식
+[x] Reference firmware download / run 가능
+[x] 사용한 tool version 기록 완료
 ```
+
+**Stage 0 Result: PASS (2026-09-10)**
 
 ---
 
@@ -56,6 +58,7 @@ PASS 조건:
 Reference:
 
 - Repository: `MaJerle/touchgfx-cmake-vscode-stm32-simulator`
+- Reviewed commit: `f5c3b1ee03992cfd2d98587da270d9b3f9edd82a`
 - 대상 파일: `STM32H735G-DK.ioc`
 - 자세한 기준은 `REFERENCE_PROJECT.md` 참조
 
@@ -73,19 +76,42 @@ FreeRTOS
 LCD / Touch BSP
 ```
 
-PASS 조건:
+### 2026-09-10 실기 검증 결과
+
+실제 STM32H735G-DK에 Reference firmware를 build / flash / run하여 다음 3개 사용자 확인 항목을 모두 통과했다.
 
 ```text
-[ ] Build 성공
-[ ] Flash 성공
-[ ] 480x272 LCD 정상 출력
-[ ] 화면 깨짐 / tearing / 지속적인 flicker 없음
-[ ] Touch 좌표 정상
-[ ] 화면 전환 가능
-[ ] 5분 이상 GUI hang 없음
+[x] LCD 백라이트 정상 점등
+[x] TouchGFX Reference 화면 정상 표시
+[x] Touch 입력 시 UI 정상 반응
 ```
 
-실패 시 FDCAN이나 SDV 코드를 추가하지 않는다.
+Build 결과:
+
+```text
+Build Finished. 0 errors, 0 warnings.
+text = 1,039,918 bytes
+data =       304 bytes
+bss  =    45,016 bytes
+```
+
+Stage 1 세부 PASS 조건:
+
+```text
+[x] Build 성공
+[x] Flash 성공
+[x] 480x272 LCD 정상 출력
+[ ] 화면 깨짐 / tearing / 지속적인 flicker 없음 장시간 관찰
+[x] Touch 입력 정상 반응
+[x] Touch에 따른 UI 반응 확인
+[ ] 5분 이상 GUI hang 없음 장시간 시험
+```
+
+현재 확인 범위에서는 Reference TouchGFX bring-up을 **PASS**로 판정한다. 장시간 tearing/flicker/hang 시험은 성능·안정성 검증 단계에서 별도로 수행한다.
+
+**Stage 1 Result: PASS (2026-09-10)**
+
+실패 시 FDCAN이나 SDV 코드를 추가하지 않는다는 원칙은 유지한다. 현재 Stage 1이 PASS했으므로 다음 구현 단계는 FDCAN2 bring-up이다.
 
 ---
 
@@ -118,11 +144,11 @@ Reference의 설정에서 다음 항목을 우리 프로젝트 기준으로 가�
 PASS 조건:
 
 ```text
-[ ] Graphics setting 기록
-[ ] External memory setting 기록
-[ ] Clock tree 기록
-[ ] MPU/cache setting 기록
-[ ] 새로 생성한 코드에서도 TouchGFX PASS 유지
+[x] Graphics setting 기준 확보
+[x] External memory setting 기준 확보
+[x] Clock tree 기준 확보
+[x] MPU/cache setting 기준 확보
+[ ] 우리 IVI 프로젝트에서 TouchGFX PASS 재현
 ```
 
 ---
@@ -307,11 +333,11 @@ View / Presenter가 CAN ID 또는 payload bit position을 직접 알지 않도�
 다음 항목을 모두 통과하기 전에는 HMI 기능 구현 완료로 보지 않는다.
 
 ```text
-[ ] LCD PASS
-[ ] Touch PASS
-[ ] External Flash PASS
-[ ] HyperRAM / framebuffer PASS
-[ ] TouchGFX PASS
+[x] Reference LCD PASS
+[x] Reference Touch PASS
+[x] Reference TouchGFX PASS
+[ ] 우리 IVI 프로젝트 External Flash PASS 재현
+[ ] 우리 IVI 프로젝트 HyperRAM / framebuffer PASS 재현
 [ ] FDCAN2 internal loopback PASS
 [ ] FDCAN2 physical CAN PASS
 [ ] CanRxTask PASS
