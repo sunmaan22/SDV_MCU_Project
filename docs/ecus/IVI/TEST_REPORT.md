@@ -20,8 +20,8 @@
 | STM32CubeMX | 6.18.0 (SDV_IVI_H735) / 6.15.0 (reference 검증 시) |
 | STM32Cube FW_H7 | V1.13.0 (SDV_IVI_H735) / V1.10.0 compatibility (reference) |
 | TouchGFX | 4.26.1 (SDV_IVI_H735) / 4.21.0 (MaJerle reference) |
-| Specification Revision | v0.2 |
-| Architecture Revision | v0.2 |
+| Specification Revision | v0.3 (조명 요청 경로 정합성 반영, 기능 시험 미실시) |
+| Architecture Revision | v0.3 (조명 요청 경로 정합성 반영, 기능 시험 미실시) |
 
 ### Revision History
 
@@ -330,6 +330,17 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 | `Body_User_Request` | TX | UI request transmitted | NOT RUN | N/A | TBD |
 
 ---
+
+## 5.1 Lighting Request 경로 검증 기준 (v0.3)
+
+최상위 명세에 따라 `IVI → Body_User_Request → VCU → Body_Command → Body Gateway` 경로를 검증한다.
+
+- IVI Touch 이벤트가 UiCommandQueue와 CommandTxTask를 거쳐 VCU 대상 Body_User_Request로 송신되는지 확인한다.
+- IVI가 Body_Command를 직접 송신하지 않는지 확인한다.
+- 통합 시험에서 VCU가 최종 Body_Command를 발행하고 Gateway가 수신하는지 확인한다.
+- CAN ID·DLC·payload는 최상위 명세에서 FROZEN된 값을 사용한다.
+
+**상태: NOT RUN.** 문서 정합성 수정이며 기존 bring-up 결과를 위 기능의 PASS 근거로 사용하지 않는다.
 
 # 6. Fault / Edge Case Test
 
