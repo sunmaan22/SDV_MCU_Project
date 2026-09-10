@@ -1,0 +1,39 @@
+# CubeMX
+.mxproject
+backup_*.ioc
+
+# TouchGFX
+TouchGFX/*_backup.touchgfx
+TouchGFX/build/
+TouchGFX/config/
+TouchGFX/generated/
+TouchGFX/simulator/
+TouchGFX/target.config
+Middlewares/ST/touchgfx/
+Middlewares/ST/touchgfx_components/
+Middlewares/ST/touchgfx_backup*/
+gcc/components.mk
+
+# IAR
+EWARM/settings/
+EWARM/SDV_IVI_H735/
+EWARM/SDV_IVI_H735.dep
+EWARM/SDV_IVI_H735.ewt
+EWARM/SDV_IVI_H735.ipcf
+EWARM/*.custom_argvars
+
+# CubeIDE
+STM32CubeIDE/.settings/
+STM32CubeIDE/Debug/
+STM32CubeIDE/Release/
+
+# Keil
+MDK-ARM/RTE/
+MDK-ARM/SDV_IVI_H735/
+MDK-ARM/DebugConfig/
+MDK-ARM/*.lst
+MDK-ARM/*.out
+MDK-ARM/*vguix.*
+
+# CMake
+build/*
