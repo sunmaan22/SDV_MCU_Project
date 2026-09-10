@@ -1,11 +1,24 @@
 # IVI / Cluster Cockpit Documentation
 
-[프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
+[프로젝트 홈](../../../README.md) · [문서 안내](../../README.md)
 
-> **최상위 구현 기준:** [`../FINAL_IMPLEMENTATION_SPEC.md`](../../system/FINAL_IMPLEMENTATION_SPEC.md)  
+> **최상위 구현 기준:** [`FINAL_IMPLEMENTATION_SPEC.md`](../../system/FINAL_IMPLEMENTATION_SPEC.md)  
 > CAN Signal / Warning 정책 / HMI 입력 범위 / RTOS 최종값은 Project Owner가 `FROZEN`한 값만 사용한다.
 
 이 폴더는 **B 담당: STM32H735 + TouchGFX Cluster/IVI**의 하위 구현 문서다.
+
+## 구현 시작점
+
+처음 보드를 bring-up할 때는 아래 순서로 확인한다.
+
+1. [STM32H735G-DK Hardware Bring-up](HARDWARE_BRINGUP.md)
+2. [STM32H735G-DK IVI Pin Map](PIN_MAP.md)
+3. [TouchGFX Reference Project 기준](REFERENCE_PROJECT.md)
+4. [기능 명세](SPECIFICATION.md)
+5. [소프트웨어 아키텍처](ARCHITECTURE.md)
+6. [시험 기록](TEST_REPORT.md)
+
+외부 TouchGFX 예제 프로젝트를 최종 코드로 복사하지 않고, H735G-DK의 LCD / Touch / OCTOSPI / HyperRAM / MPU / TouchGFX 설정을 검증하는 reference로 사용한다. Reference GUI가 보드에서 정상 동작한 뒤 FDCAN2와 SDV application task를 추가한다.
 
 ## 고정 역할
 
@@ -31,6 +44,22 @@ H735는 상태를 표시하고 사용자 요청을 만든다. 최종 차량 제�
 - DTC History canonical source는 Pi DTC Manager다.
 - CAN decode와 TouchGFX rendering은 분리한다.
 
+## Hardware / Peripheral 기준
+
+```text
+STM32H735G-DK
+├ LTDC RGB888        → LCD
+├ DMA2D              → TouchGFX accelerator
+├ OCTOSPI1           → external Flash / GUI assets
+├ OCTOSPI2 HyperBus  → HyperRAM / framebuffer
+├ I2C4 + BSP         → Touch
+├ FDCAN2 PB5/PB6     → SDV CAN backbone 후보
+├ SWD                → Debug
+└ FreeRTOS CMSIS-V2  → application tasks
+```
+
+H735에 Ultrasonic TRIG/ECHO, accelerator/brake ADC, motor PWM, servo PWM, LIN, lamp output을 직접 연결하지 않는다. 해당 기능은 각 ECU가 처리하고 IVI에는 CAN logical message로 전달한다.
+
 ## FreeRTOS 구조
 
 ```text
@@ -48,6 +77,8 @@ HealthTask
 
 ## 구현해야 할 것
 
+- STM32H735G-DK LCD / Touch / HyperRAM / external Flash bring-up
+- FDCAN2 loopback / physical CAN test
 - Cluster / ADAS / Parking / Diagnostics / Settings 5개 화면
 - DummyDataProvider
 - VehicleDataRepository
@@ -79,7 +110,9 @@ Cluster 필수 항목, signal 목록, Warning 표시 정책, Gear R 화면정책
 ## Stage 1 PASS
 
 ```text
-5개 화면
+H735G-DK Reference GUI Bring-up
++ LCD / Touch 정상
++ 5개 화면
 + Dummy Data
 + invalid / critical warning
 + FreeRTOS task 분리
