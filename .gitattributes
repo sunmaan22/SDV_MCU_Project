@@ -1,0 +1,64 @@
+# Normalize all text files to LF in the repository and in the working tree.
+# STM32CubeIDE / arm-none-eabi-gcc / TouchGFX all handle LF fine, and this
+# stops CRLF churn on Windows (core.autocrlf) from showing vendor files as
+# modified.
+* text=auto eol=lf
+
+# --- Explicit text (redundant with text=auto, kept for clarity) ---
+*.c      text eol=lf
+*.h      text eol=lf
+*.cpp    text eol=lf
+*.hpp    text eol=lf
+*.cc     text eol=lf
+*.inc    text eol=lf
+*.s      text eol=lf
+*.S      text eol=lf
+*.asm    text eol=lf
+*.ld     text eol=lf
+*.md     text eol=lf
+*.txt    text eol=lf
+*.json   text eol=lf
+*.xml    text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.cfg    text eol=lf
+*.mk     text eol=lf
+*.cmake  text eol=lf
+Makefile text eol=lf
+
+# --- STM32CubeIDE / CubeMX / TouchGFX project files (text) ---
+*.ioc        text eol=lf
+*.cproject   text eol=lf
+*.project    text eol=lf
+*.launch     text eol=lf
+*.extSettings text eol=lf
+*.mxproject  text eol=lf
+*.touchgfx   text eol=lf
+*.part       text eol=lf
+*.stldr      binary
+
+# --- Binary: never touch ---
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.bmp   binary
+*.ico   binary
+*.svg   text eol=lf
+*.bin   binary
+*.hex   binary
+*.elf   binary
+*.map   binary
+*.a     binary
+*.o     binary
+*.lib   binary
+*.pdf   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.zip   binary
+*.7z    binary
+*.gz    binary
+*.mp4   binary
+*.mov   binary
