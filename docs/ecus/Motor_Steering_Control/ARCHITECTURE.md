@@ -1,5 +1,7 @@
 # Motor + Steering Control Software Architecture
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: Drive + Steering ECU를 **어떤 Software Component와 FreeRTOS Task로 구현하는지**, 왜 그렇게 나눴는지, 실제 실행 시 어떤 순서로 협력하는지 설명한다.  
@@ -11,7 +13,7 @@
 |---|---|
 | Node / System | Motor + Steering Control ECU |
 | Owner | C |
-| Board / Platform | STM32 #2 + Motor Driver + Brushed DC Motor + RC Servo |
+| Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
 | Revision | v0.1 |
 | Status | Draft |
@@ -373,7 +375,7 @@ sequenceDiagram
 
 | HW / Runtime Node | Software / RTOS | Interface | Electrical Note |
 |---|---|---|---|
-| STM32 #2 | FreeRTOS control SW | FDCAN/Timer/GPIO | actual model TBD |
+| STM32 #2 | FreeRTOS control SW | FDCAN/Timer/GPIO | STM32G431KB; 실제 보드 revision/핀맵 확인 필요 |
 | Motor Driver | MotorDriverIF | PWM/DIR/Enable | TB6612FNG 후보, current fit 확인 |
 | Brushed DC Motor | actuator | driver output | voltage/current TBD |
 | Encoder/Hall | feedback | timer/input capture | logic level/PPR TBD |

@@ -1,5 +1,7 @@
 # Motor + Steering Control Test Report
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 목적: `SPECIFICATION.md`의 요구사항을 실제 시험으로 검증하고, FreeRTOS 기반 제어 Node의 기능뿐 아니라 **ControlTask timing, ISR→Task, Stack, Queue, Watchdog/Health**까지 확인한다.  
@@ -11,7 +13,7 @@
 |---|---|
 | Node / Feature | Motor + Steering Control ECU |
 | Owner | C |
-| Board / Platform | STM32 #2 + Motor Driver + Brushed DC Motor + RC Servo |
+| Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
 | Firmware / SW Commit | TBD |
 | Test Date | TBD |
@@ -38,7 +40,7 @@ Drive + Steering ECU가 VCU의 최종 Command를 받아 Motor/Servo 출력으로
 
 | Item | Value |
 |---|---|
-| Board / MCU | STM32 #2, exact model TBD |
+| Board / MCU | STM32G431KB (STM32 #2), 구매 모델 확정 / 실기 NOT RUN |
 | RTOS | FreeRTOS version TBD |
 | CMSIS-RTOS API | CMSIS-RTOS2 |
 | Motor | TBD |

@@ -1,5 +1,7 @@
 # Motor + Steering Control Functional Specification
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: Drive + Steering ECU가 **무엇을 해야 하는지** 정의한다.  
@@ -15,7 +17,7 @@
 | Role | 제어 |
 | Status | Draft |
 | Priority | MUST |
-| Board / Platform | STM32 #2 + Motor Driver + Brushed DC Motor + RC Servo |
+| Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
 | Related Architecture | `ARCHITECTURE.md` |
 | Related Test | `TEST_REPORT.md` |
@@ -378,7 +380,7 @@ TB6612FNG 자체에서 Fault Pin이 제공되는 것으로 가정하지 않는�
 
 | ID | Item | Owner | Target Date / Condition |
 |---|---|---|---|
-| TBD-DRV-001 | STM32 #2 실제 모델 / FDCAN 지원 | C/F | Board 확인 |
+| TBD-DRV-001 | STM32G431KB 모델 동결; 보드 FDCAN 핀/배선 검증 잔여 | C/F | DEC-HW-002; Gate A |
 | TBD-DRV-002 | Motor 모델 / Voltage / Rated Current / Stall Current | C | Motor 선정 |
 | TBD-DRV-003 | TB6612FNG 사용 확정 여부 | C | Motor spec 비교 후 |
 | TBD-DRV-004 | Encoder/Hall 모델 / CPR/PPR | C | Sensor 선정 |

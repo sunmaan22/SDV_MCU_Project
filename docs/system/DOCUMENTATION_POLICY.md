@@ -110,7 +110,11 @@ Raspberry Pi HPC
 
 # 6. Owner Freeze 순서
 
-코드 작성 전 Project Owner가 아래 순서로 `FINAL_IMPLEMENTATION_SPEC.md`를 채운다.
+Project Owner는 의존하는 구현을 확정하기 전에 해당 범위의 `FINAL_IMPLEMENTATION_SPEC.md`를 채운다.
+전체를 동결하기 위한 bring-up/mock/RTOS skeleton/계측용 bench 코드는 먼저 작성할 수 있다.
+Bench 값은 `BENCH ONLY / NOT FROZEN`으로 분리한다. 아래 목록은 결정 범위이며,
+실제 동결 시점과 gate는 [최상위 명세 §7.1](FINAL_IMPLEMENTATION_SPEC.md#71-단계별-동결-시점)을 따른다.
+`FROZEN`은 설계 결정 상태이고 `PASS`는 시험 결과이므로 서로 대신하지 않는다.
 
 ```text
 1. Hardware Freeze

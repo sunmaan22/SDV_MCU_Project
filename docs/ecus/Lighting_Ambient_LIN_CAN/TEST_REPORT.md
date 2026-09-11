@@ -1,5 +1,7 @@
 # Lighting + Ambient / LIN-CAN Test Report
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 목적: `SPECIFICATION.md`의 Requirement를 실제 시험으로 검증한다. 현재는 실행 전 계획 상태이므로 측정값은 임의로 채우지 않고 `NOT RUN` / `TBD`로 둔다.
@@ -10,7 +12,7 @@
 |---|---|
 | Node / Feature | Lighting + Ambient / LIN-CAN |
 | Owner | D |
-| Board / Platform | Gateway STM32 + LIN Slave STM32 |
+| Board / Platform | Gateway STM32G431KB + LIN Slave STM32G431KB |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
 | Firmware / SW Commit | TBD |
 | Test Date | TBD |
@@ -35,8 +37,8 @@ Gateway의 CAN↔LIN 변환, LIN Master↔Slave 통신, Ambient sensing, Lightin
 
 | Item | Value |
 |---|---|
-| Gateway MCU | TBD |
-| LIN Slave MCU | TBD |
+| Gateway MCU | STM32G431KB, 구매 모델 확정 / 실기 NOT RUN |
+| LIN Slave MCU | STM32G431KB, 구매 모델 확정 / 실기 NOT RUN |
 | RTOS | FreeRTOS version TBD |
 | CMSIS-RTOS API | v2 예정 |
 | CAN FD Transceiver | TBD |

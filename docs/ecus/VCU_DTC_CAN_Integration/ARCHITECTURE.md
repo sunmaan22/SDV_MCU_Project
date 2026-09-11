@@ -1,5 +1,7 @@
 # VCU + DTC + CAN Integration Software Architecture
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: VCU가 Driver Input, CAN Request, Fault를 어떤 FreeRTOS 구조로 받아 최종 차량 명령으로 만드는지 설명한다.
@@ -10,7 +12,7 @@
 |---|---|
 | Node / System | VCU + DTC + CAN Integration |
 | Owner | F |
-| Board / Platform | STM32 #5 |
+| Board / Platform | STM32G431KB (STM32 #5) |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
 | Revision | v0.1 |
 | Status | Draft |

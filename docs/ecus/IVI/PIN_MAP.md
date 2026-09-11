@@ -152,17 +152,21 @@ Camera DCMI
 
 특히 `PF14`, `PF15`, `PG2`, `PH6`은 CubeMX 화면만 보고 free GPIO로 판단하지 않는다.
 
-## 9. 현재 IVI Pin Freeze 후보
+## 9. IVI 기반 부분 동결 — 2026-09-11
 
-| 항목 | 후보값 | 상태 |
+| 항목 | 확정값 | 상태 |
 |---|---|---|
-| IVI MCU | STM32H735G-DK / STM32H735IGKx | 적용 기준 |
-| SDV CAN peripheral | FDCAN2 | 후보 Freeze |
-| SDV CAN RX | PB5 | 후보 Freeze |
-| SDV CAN TX | PB6 | 후보 Freeze |
-| Touch | Board BSP / I2C4 | 유지 |
-| Display | LTDC RGB888 | 유지 |
-| Asset memory | OCTOSPI1 | 유지 |
-| Framebuffer memory | OCTOSPI2 HyperRAM | 유지 |
+| IVI MCU | STM32H735G-DK / STM32H735IGKx | FROZEN: DEC-HW-021 |
+| SDV CAN peripheral | FDCAN2 | FROZEN: DEC-HW-022 (설계 배정) |
+| SDV CAN RX | PB5 | FROZEN: DEC-HW-022 (핀 예약) |
+| SDV CAN TX | PB6 | FROZEN: DEC-HW-022 (핀 예약) |
+| Touch | Board BSP / I2C4 | FROZEN: DEC-HW-023 |
+| Display | LTDC RGB888 | FROZEN: DEC-HW-023 |
+| Asset memory | OCTOSPI1 NOR @ 0x90000000 | FROZEN: DEC-HW-023 |
+| Framebuffer memory | OCTOSPI2 HyperRAM @ 0x70000000 | FROZEN: DEC-HW-023 |
+
+근거와 범위는 [Freeze Review](../../system/FREEZE_REVIEW_2026-09-11.md)를 따른다.
+Internal loopback PASS는 외부 PB5/PB6 배선·트랜시버 통신 PASS가 아니다. 외부 CAN 검증은 남아 있다.
+외부 메모리 역할/주소 동결을 전체 MPU/cache/clock/RTOS 성능 동결로 확대하지 않는다.
 
 CAN bitrate, BRS, ID, DLC, timeout은 `FINAL_IMPLEMENTATION_SPEC.md`의 Network Freeze를 따른다.

@@ -4,6 +4,12 @@
 
 > 원칙: **단독 Bring-up → RTOS Task 구조 → 작은 통신 통합 → 전체 Backbone → 차량 통합** 순서로 간다.
 
+> 2026-09-11 부분 동결: B는 H735G-DK, A/C/D Gateway/D Slave/F는 STM32G431KB 기반 구매 보드로 확정했다.
+> Week 1의 Hardware Layer 확정 전에 Gate A, Week 2 첫 ECU pair 통합 전에 Gate B,
+> 실제 VCU/Drive 출력 제어 확정 전에 Gate C, Week 2 부하 계측 후 Week 3 통합 baseline 전에 Gate D를 닫는다.
+> 주차 경과는 동결 근거가 아니다. 계측용 bench/skeleton은 OPEN 값으로 가능하며 최종 상수와 구분한다.
+> 상세 조건: [최상위 명세 §7.1](../system/FINAL_IMPLEMENTATION_SPEC.md#71-단계별-동결-시점).
+
 # 역할
 
 | 담당 | 역할 | 실행 환경 |

@@ -1,5 +1,7 @@
 # Ultrasonic Perception Functional Specification
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: Ultrasonic Perception ECU가 **무엇을 측정하고 어떤 상태를 제공해야 하는지** 정의한다.  
@@ -15,7 +17,7 @@
 | Role | 인지 / Parking Distance Perception |
 | Status | Draft |
 | Priority | MUST |
-| Board / Platform | STM32 #1 + Ultrasonic Sensor Array |
+| Board / Platform | STM32G431KB (STM32 #1) + Ultrasonic Sensor Array |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
 | Related Architecture | `ARCHITECTURE.md` |
 | Related Test | `TEST_REPORT.md` |
