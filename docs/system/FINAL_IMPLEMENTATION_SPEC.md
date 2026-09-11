@@ -2,11 +2,15 @@
 
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
-> **Status:** OWNER FREEZE REQUIRED  
+> **Status:** PARTIAL FREEZE — 2026-09-11 / Implementation Baseline v1.0 미도달
 > **Decision Authority:** Project Owner  
 > **Purpose:** 코드 작성 직전 모든 공통 Hardware / CAN / LIN / RTOS / State / DTC 값을 한 곳에서 확정하는 최종 명세서
 
 이 문서는 프로젝트의 **최상위 구현 계약(Source of Truth)** 이다.
+
+2026-09-11 Owner의 “H735 제외 STM 보드는 G431KB 구매 완료, 근거가 있으면 freeze” 지시에 따라
+`DEC-HW-001~005`, `DEC-HW-021~023`만 이번에 동결했다. 구매 결정과 기존 H735 시험 기록을 근거로 하며,
+새 실기 시험을 수행한 것은 아니다. 상세 근거와 다음 동결 조건은 [Freeze Review](FREEZE_REVIEW_2026-09-11.md)를 따른다.
 
 ```text
 FINAL_IMPLEMENTATION_SPEC.md
@@ -116,11 +120,11 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 
 | ID | Decision | Final Value | Status |
 |---|---|---|---|
-| `DEC-HW-001` | A Ultrasonic STM32 모델 | OWNER INPUT | OPEN |
-| `DEC-HW-002` | C Drive STM32 모델 | OWNER INPUT | OPEN |
-| `DEC-HW-003` | D Gateway STM32 모델 | OWNER INPUT | OPEN |
-| `DEC-HW-004` | D LIN Slave STM32 모델 | OWNER INPUT | OPEN |
-| `DEC-HW-005` | F VCU STM32 모델 | OWNER INPUT | OPEN |
+| `DEC-HW-001` | A Ultrasonic STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
+| `DEC-HW-002` | C Drive STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
+| `DEC-HW-003` | D Gateway STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
+| `DEC-HW-004` | D LIN Slave STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
+| `DEC-HW-005` | F VCU STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
 | `DEC-HW-006` | CAN FD Transceiver 모델 | OWNER INPUT | OPEN |
 | `DEC-HW-007` | LIN Transceiver 모델 | OWNER INPUT | OPEN |
 | `DEC-HW-008` | Pi CAN FD Interface | OWNER INPUT | OPEN |
@@ -136,6 +140,15 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | `DEC-HW-018` | Brake Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-019` | Steering Input Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-020` | E-Stop 입력 방식 | OWNER INPUT | OPEN |
+| `DEC-HW-021` | B IVI 보드 | STM32H735G-DK | FROZEN |
+| `DEC-HW-022` | B CAN peripheral / 핀 예약 | FDCAN2, PB5 RX / PB6 TX (설계 배정; 외부 통신 검증 미완료) | FROZEN |
+| `DEC-HW-023` | B Display / Touch / 외부 메모리 역할 | LTDC RGB888 / BSP I2C4 touch / OCTOSPI1 NOR asset @ 0x90000000 / OCTOSPI2 HyperRAM framebuffer @ 0x70000000 | FROZEN |
+
+동결 범위:
+- G431KB는 **MCU 모델 선택** 동결이다. NUCLEO 정품 여부, 제조사/보드 revision/실장 MCU 전체 품번은 구매 실물과 회로도로 기록한다. NUCLEO-G431KB 핀맵을 다른 G431KB 보드에 자동 적용하지 않는다.
+- 모델 선택은 자원·배선 적합성 시험 PASS를 뜻하지 않는다. G431KB의 역할별 Pin/Timer/ADC/UART/FDCAN 배정, 메모리 예산과 실기 검증은 Gate A/D에 남는다.
+- B의 핀 예약은 현재 `.ioc` 및 [PIN_MAP](../ecus/IVI/PIN_MAP.md) 기준이다. Internal loopback은 PB5/PB6의 외부 전기 경로를 검증하지 않는다.
+- `DEC-HW-023`은 메모리 역할/주소 기반 동결이다. 전체 MPU/cache 설정, 모든 clock/timing, GUI frame budget, RTOS stack/queue 수치는 동결하지 않는다.
 
 ## 3.2 Network Freeze
 
@@ -391,7 +404,7 @@ Linux E Node는 다음을 Freeze한다.
 ## Gate A: Hardware Ready
 
 코드의 Hardware Layer를 확정하기 전에:
-- [ ] 모든 STM32 모델 확정
+- [x] 모든 STM32 모델 확정 (2026-09-11: A/C/D Gateway/D Slave/F G431KB, B H735G-DK)
 - [ ] FDCAN 지원 확인
 - [ ] CAN/LIN Transceiver 확정
 - [ ] Sensor/Actuator 모델 확정
@@ -427,6 +440,30 @@ VCU/Drive 제어 코드 작성 전에:
 - [ ] blocking logging 제거 확인
 
 `Gate B`가 끝나기 전에는 담당자가 임의의 CAN ID나 bit position을 코드에 영구 상수로 박지 않는다.
+
+## 7.1 단계별 동결 시점
+
+동결은 전 항목을 한 번에 완료하는 행사가 아니다. **의존하는 구현을 확정하기 직전**, 해당 범위의 값과 검증 근거를 동결한다.
+`FROZEN`은 선택한 설계 계약이며 `TEST PASS`와 별개다. Gate A~D는 현재 모두 미완료다.
+
+| 시점 | 동결 범위 | 완료 조건 |
+|---|---|---|
+| 지금 | 구매 모델 + 검증된 B 기반 | 위 Hardware 8개 결정; 기존 §1/§2 역할·실행 원칙 유지 |
+| Week 1, 역할별 Hardware Layer 확정 전 | Gate A: transceiver, sensor/actuator, pin/peripheral | 실제 보드/부품 회로도, 전압/정격, 핀 중복과 timer channel/AF 검토, 최소 bring-up 기록 |
+| Week 1 말~Week 2 첫 ECU pair 통합 전 | Gate B: Network + 전체 message/LIN + DTC/Heartbeat 계약 | ID 중복 없음, field/단위/범위/invalid/enum/byte layout 완비, 양쪽 encode/decode 일치; 물리 bitrate/mode는 실제 H735↔G431 및 LIN pair 검증 |
+| VCU/Drive 실제 출력 제어 확정 전 | Gate C: State/Enable/Arbitration/Timeout/Safe Action | 상태·전이·복구·stale/invalid 처리를 결정하고 수치 근거 및 bench 검증 기록; 먼저 mock/출력 비활성 시험 가능 |
+| Week 2 계측 후~Week 3 통합 baseline 빌드 전 | Gate D: RTOS/Linux 자원·주기·watchdog | 대표 통신/GUI/제어 부하에서 period/jitter, stack high-water, queue 최대 점유/overflow, starvation, fault 경로 측정 |
+| 관련 기능 통합 전, 늦어도 전체 baseline 직전 | Perception/Vision/HMI/Body 잔여 결정 | 실제 장착·보정·baseline 계측 후 수치와 기능 범위 결정, 시험의 Target/Expected에서 TBD 제거 |
+
+주차는 [WEEKLY_PLAN](../getting_started/WEEKLY_PLAN.md)의 목표이며 달력 경과만으로 gate를 통과하지 않는다.
+Bring-up, RTOS skeleton, mock, 계측용 bench 코드는 OPEN 값으로도 작성할 수 있다.
+이때 값은 `BENCH ONLY / NOT FROZEN` 설정으로 분리하고 최종 통합 상수나 PASS 근거로 승격하지 않는다.
+Gate D 이전의 계측용 통합 빌드는 허용하되 최종 통합 baseline으로 취급하지 않는다.
+
+Gate B 추가 완결성 확인:
+- §1.1의 `Driver_Input`도 필수 계약이다. 현재 §4에 상세 표가 없으므로 필드·payload·주기·timeout 표를 추가한 뒤에야 Gate B를 닫는다.
+- DTC/Heartbeat처럼 다중 publisher인 메시지는 노드 식별·ID 할당/충돌 회피까지 정의한다.
+- §6의 Task 이름 목록만으로 Gate D를 닫지 않는다. Node별 실제 Task/Period/Priority/Stack(bytes)/Queue(depth와 item bytes)/Watchdog 조건을 기록해야 한다.
 
 ---
 
@@ -505,7 +542,7 @@ Project Owner가 승인한 값만 FROZEN으로 바꿔라.
 
 # 10. Final Freeze Checklist
 
-코드 본격 작성 전 Project Owner 확인:
+검증용 코드로 필요한 근거를 확보한 뒤, 최종 구현 baseline을 확정하기 전 Project Owner 확인:
 
 - [ ] Hardware Decision 전부 FROZEN
 - [ ] Network Decision 전부 FROZEN
@@ -518,3 +555,8 @@ Project Owner가 승인한 값만 FROZEN으로 바꿔라.
 - [ ] RTOS/Linux Execution Contract 전부 FROZEN
 
 모든 핵심 항목이 FROZEN된 시점을 **Implementation Baseline v1.0**으로 태그/커밋한다.
+
+현재는 일부 Hardware 결정만 동결되었으므로 v1.0 태그를 만들지 않는다.
+각 동결 기록에는 결정 ID, 날짜, Owner 지시/승인, 근거 문서·시험 대상 소스 SHA, 적용 범위와 미검증 범위를 남긴다.
+동결 후 변경은 사유·영향 ECU/메시지·재시험 범위·Owner 승인을 기록하고 새 revision으로 반영한다.
+Baseline v1.0은 구현 계약의 동결이며 차량 전체 시험 PASS나 최종 release를 대신하지 않는다.

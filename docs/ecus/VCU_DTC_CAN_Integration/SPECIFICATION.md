@@ -1,5 +1,7 @@
 # VCU + DTC + CAN Integration Functional Specification
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: F 담당 VCU가 **무엇을 해야 하는지** 정의한다. 구현 구조는 `ARCHITECTURE.md`, 검증은 `TEST_REPORT.md`를 기준으로 한다.
@@ -14,7 +16,7 @@
 | Role | 최종 판단 / 안전 / 통신 / 진단 통합 |
 | Status | Draft |
 | Priority | MUST |
-| Board / Platform | STM32 #5 |
+| Board / Platform | STM32G431KB (STM32 #5) |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
 | Related Architecture | `ARCHITECTURE.md` |
 | Related Test | `TEST_REPORT.md` |

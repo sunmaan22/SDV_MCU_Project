@@ -1,5 +1,7 @@
 # Lighting + Ambient / LIN-CAN Functional Specification
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: D 담당의 **Body Gateway + Body LIN Slave + Ambient + Lighting** 기능이 무엇을 해야 하는지 정의한다. 구현 구조는 `ARCHITECTURE.md`, 검증 결과는 `TEST_REPORT.md`에서 관리한다.
@@ -14,7 +16,7 @@
 | Role | 통신 / 제어 / 인지 |
 | Status | Draft |
 | Priority | MUST |
-| Board / Platform | STM32 Gateway + STM32 LIN Slave |
+| Board / Platform | STM32G431KB Gateway + STM32G431KB LIN Slave |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
 | Related Architecture | `ARCHITECTURE.md` |
 | Related Test | `TEST_REPORT.md` |
@@ -195,7 +197,7 @@ UI 직접 구현은 N/A. H735가 다음 정보를 표시할 수 있다.
 
 | Device | Interface | Electrical / Voltage | Note |
 |---|---|---|---|
-| Gateway STM32 | FDCAN + UART/LIN | board spec | 실제 MCU TBD |
+| Gateway STM32 | FDCAN + UART/LIN | board spec | STM32G431KB; peripheral/핀 배정 검증 필요 |
 | CAN FD Transceiver | FDCAN ↔ CANH/L | part TBD | 필수 |
 | LIN Transceiver | UART/LIN ↔ LIN bus | part TBD | Gateway/Slave 각각 필요 |
 | Ambient Sensor | ADC/I2C TBD | sensor spec | model TBD |
@@ -313,7 +315,7 @@ UI 직접 구현은 N/A. H735가 다음 정보를 표시할 수 있다.
 
 | ID | Item | Owner | Condition |
 |---|---|---|---|
-| TBD-BODY-001 | Gateway/Slave 실제 STM32 모델 | D | HW 확정 |
+| TBD-BODY-001 | Gateway/Slave STM32G431KB 모델 동결; 실물 revision/핀 배정 잔여 | D | DEC-HW-003/004; Gate A |
 | TBD-BODY-002 | CAN/LIN Transceiver 모델 | D | 부품 선정 |
 | TBD-BODY-003 | LIN bitrate/frame ID/checksum/schedule | D | LIN 설계 |
 | TBD-BODY-004 | Ambient Sensor 모델 | D | 센서 선정 |

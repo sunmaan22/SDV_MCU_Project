@@ -1,5 +1,7 @@
 # Lighting + Ambient / LIN-CAN Software Architecture
 
+> 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: D 담당의 **Body Gateway STM32 + Body LIN Slave STM32**를 어떤 구조로 구현하는지 설명한다. 기능 요구사항은 `SPECIFICATION.md`, 검증은 `TEST_REPORT.md`를 기준으로 한다.
@@ -10,7 +12,7 @@
 |---|---|
 | Node / System | Body Gateway + Body LIN Slave |
 | Owner | D |
-| Board / Platform | STM32 Gateway + STM32 Slave |
+| Board / Platform | STM32G431KB Gateway + STM32G431KB Slave |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
 | Revision | v0.1 |
 | Status | Draft |
@@ -305,8 +307,8 @@ Slave STM32 + FreeRTOS
 
 | HW | SW | Interface | Note |
 |---|---|---|---|
-| Gateway STM32 | CAN/LIN Gateway tasks | FDCAN, UART/LIN | model TBD |
-| Slave STM32 | Ambient/Lighting tasks | UART/LIN, ADC/I2C, GPIO/PWM | model TBD |
+| Gateway STM32 | CAN/LIN Gateway tasks | FDCAN, UART/LIN | STM32G431KB; 실제 보드 revision/핀맵 확인 필요 |
+| Slave STM32 | Ambient/Lighting tasks | UART/LIN, ADC/I2C, GPIO/PWM | STM32G431KB; 실제 보드 revision/핀맵 확인 필요 |
 | CAN FD Transceiver | physical CAN | CANH/L | TBD |
 | LIN Transceivers | physical LIN | LIN | Gateway/Slave 각각 필요 |
 
