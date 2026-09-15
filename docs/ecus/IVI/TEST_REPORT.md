@@ -33,6 +33,7 @@
 | v0.4 | 2026-09-10 | Team | FDCAN2 internal loopback bench 결과(§0.5) 반영, 관련 매트릭스 / RTOS / Evidence / Final Result 갱신 |
 | v0.5 | 2026-09-10 | Team | §0.6 SDV_IVI_H735 자체 External Memory(OCTOSPI1 NOR / OCTOSPI2 HyperRAM) bring-up — `.map` + 플래시 verify + 육안으로 **PASS**, §0.6.5 빈 `Error_Handler` 관찰, Final Result / Remaining Issues 갱신 |
 | v0.6 | 2026-09-15 | Team | §0.7 HyperRAM MPU Region2 8MB→16MB 정합화 및 재검증(LCD ≥5분, FDCAN2 loopback 회귀 없음) 반영, Final Result / 완료된 항목 갱신 |
+| v0.7 | 2026-09-15 | Team | §0.4 hang/tearing·FDCAN2 loopback 행을 §0.5/§0.7 결과로 갱신(PARTIAL, 물리 CAN·응답시간은 여전히 NOT RUN), Remaining Issues에서 완료된 `Error_Handler` 수정(`0a06b06`) 및 MPU 커밋(`a226f9a`) 반영 |
 
 ---
 
@@ -101,8 +102,8 @@ bss  =    45,016 bytes
 | 내부/외부 메모리 다운로드·검증 | PASS | File download complete; Download verified successfully |
 | LCD 화면 출력 | PASS | 사용자 실보드 확인 |
 | Touch UI 반응 | PASS | 사용자 GUI 재검증 완료 기록 요청 |
-| 장시간 hang/tearing/flicker 및 응답시간 | NOT RUN | 별도 측정 결과 없음 |
-| FDCAN2 loopback / physical CAN | NOT RUN | 아직 송수신 시험 전 |
+| 장시간 hang/tearing/flicker 및 응답시간 | PARTIAL — hang/tearing: PASS / 응답시간: NOT RUN | hang/tearing은 §0.7(2026-09-15, ≥5분 연속 실행)에서 확인됨; Touch/Critical 응답시간 계측은 아직 없음 |
+| FDCAN2 loopback / physical CAN | PARTIAL — internal loopback: PASS / physical CAN: NOT RUN | internal loopback은 §0.5(2026-09-10, state=2, 100/100)에서 완료; 트랜시버 + 2nd node 물리 CAN 시험은 아직 수행 전 |
 
 로그의 다운로드 크기는 2.16 MB, 다운로드 16.010초, 검증 5.765초였다. 이번 빌드의 error/warning 개수는 제공되지 않아 0 errors/0 warnings로 단정하지 않는다.
 
@@ -570,9 +571,9 @@ FULL IVI INTEGRATION: NOT RUN
 - ~~검증된 로컬 펌웨어 변경의 소스 커밋 고정~~ → 완료 (`835e48d`, PR #2 `22d6e4f`)
 - ~~FDCAN2 internal loopback~~ → 완료 (§0.5, bench PASS)
 - ~~`SDV_IVI_H735` 자체 HyperRAM(OCTOSPI2) · external Flash(OCTOSPI1) 실동작 확인~~ → 완료 (§0.6, PASS)
-- ~~HyperRAM MPU Region2 8MB→16MB 정합화~~ → 완료 (§0.7, PASS), 소스 커밋만 아직 남음
+- ~~HyperRAM MPU Region2 8MB→16MB 정합화~~ → 완료 (§0.7, PASS, 커밋 `a226f9a`)
+- ~~빈 `Error_Handler` 본문 — `while (1)` / fault 로깅 추가 (§0.6.5)~~ → 완료 (커밋 `0a06b06`, halt loop + `g_error_handler_caller` 기록 추가)
 - FDCAN2 physical CAN 시험 (트랜시버 + 2nd node / external loopback)
-- 빈 `Error_Handler` 본문 — `while (1)` / fault 로깅 추가 (§0.6.5)
 - 외부 메모리 런타임 디버거 보강 (선택): `HAL_OSPI_GetState` = mem-mapped, HyperRAM 임의주소 write/read, `0x70000000` 프레임 변화 (§0.6 D4/D5)
 - CAN signal layout freeze (`DEC-NET-004~007`)
 - task numeric priority (`DEC-HLT-001~003`)
