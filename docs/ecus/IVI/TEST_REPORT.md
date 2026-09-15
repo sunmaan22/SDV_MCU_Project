@@ -1,5 +1,7 @@
 # Cluster + IVI Cockpit Test Report
 
+> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Parking/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 목적: `SPECIFICATION.md` 요구사항을 실제 시험으로 검증한다.  
@@ -487,7 +489,7 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 | T-HMI-003 | REQ-HMI-003 | ADAS 상태 표시 | NOT RUN |
 | T-HMI-004 | REQ-HMI-004 | Parking 거리/Warning 표시 | NOT RUN |
 | T-HMI-005 | REQ-HMI-005 | DTC list/detail | NOT RUN |
-| T-HMI-006 | REQ-HMI-006 | Touch 화면 전환 | REFERENCE TOUCH PASS / IVI UI NOT RUN |
+| T-HMI-006 | REQ-HMI-006 | 단일 Screen 내 패널 열기·닫기 | REFERENCE TOUCH PASS / IVI UI NOT RUN |
 | T-HMI-007 | REQ-HMI-007 | timeout data invalid 표시 | NOT RUN |
 | T-HMI-008 | REQ-HMI-008 | Body_User_Request CAN TX | NOT RUN |
 | T-HMI-009 | REQ-HMI-009 | raw camera CAN path 없음 | NOT RUN |
@@ -510,7 +512,7 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 | Cluster | Dummy speed/rpm/gear (정확한 관찰값 미기록) | 값 표시 | 사용자 기본 표시 확인 (§0.9); 고정 입력 24/1250/D 별도 재시험 필요 | BASIC DISPLAY PASS / 고정값·경계값 NOT RUN |
 | Parking | RR=180 mm, CRITICAL | right critical UI | NOT RUN | TBD |
 | DTC | 2 entries | list/detail | NOT RUN | TBD |
-| Screen Flow | 5개 화면 이동 | hang 없이 전환 | NOT RUN | TBD |
+| Panel Flow | 동일 Screen에서 4개 패널 열기·닫기 | Cluster 유지, hang/잔상 없음 | NOT RUN | TBD |
 | Warning Overlay | Settings + CRITICAL injection | warning 우선 표시 | NOT RUN | TBD |
 
 Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 않고 Model update 경로를 통과하게 한다.
@@ -751,3 +753,20 @@ FULL IVI INTEGRATION: NOT RUN
 - queue depth
 - IWDG policy
 - DTC Clear protocol
+
+## 14. 단일 Screen / 패널 전환 추가 시험 계획 (2026-09-15)
+
+사용자 UI 결정에 따른 향후 검증 기준이다. 이전 bring-up/Cluster PASS 기록은 보존하며 아래 시험으로 확대하지 않는다.
+
+| Test ID | 시험 | 기대 결과 | Result |
+|---|---|---|---|
+| PANEL-01 | 4개 패널 반복 열기·닫기 | 동일 Screen 유지, 일반 패널 최대 1개, 잔상 없음 | NOT RUN |
+| PANEL-02 | 패널 표시 중 계기판 확인 | 속도·기어·READY 및 주요 경고 읽기 가능 | NOT RUN |
+| PANEL-03 | 숨긴 패널 위치 터치 / 모달 배경 터치 | 숨김 위젯·배경 설정 요청 발생 없음 | NOT RUN |
+| PANEL-04 | 패널 숨김 중 데이터 갱신·timeout 후 다시 열기 | 최신 snapshot과 invalid/timeout 표시 | NOT RUN |
+| PANEL-05 | 각 패널 및 모달 중 critical 주입 | 경고가 가려지지 않으며 목표 200ms 측정 | NOT RUN |
+| PANEL-06 | critical 중 일반 패널 닫기 | 활성 critical이 해제되지 않음 | NOT RUN |
+| PANEL-07 | 패널 전환과 명시적 조명 조작 분리 | 전환만으로 TX 없음; 조명 조작은 기존 VCU 요청 경로 | NOT RUN |
+| PANEL-08 | 패널 연타·CAN burst·장시간 실행 | 기존 timing 목표, stack/queue/메모리 예산 검증 | NOT RUN |
+
+Gear R 자동 호출/복귀 시험은 DEC-HMI-003 확정 후 추가한다.
