@@ -68,7 +68,7 @@
 | Stakeholder | 관심사 |
 |---|---|
 | B HMI | TouchGFX, Task 구조, Data Model, 화면 상태 |
-| F VCU/CAN | RX/TX contract, timeout, diagnostic request |
+| F VCU/CAN | RX/TX contract, timeout, Active fault 표시 |
 | A Ultrasonic | Parking data display |
 | C Drive | speed/rpm/status contract |
 | D Body | body status/request |
@@ -114,12 +114,13 @@ flowchart LR
     US[Ultrasonic ECU] -->|Distance/Warning| HMI
     HPC[Pi Vision/HPC] -->|Vision_Status / ADAS_Request| HMI
     BODY[Body Gateway] -->|Body Status| HMI
-    DTC[Pi DTC Manager] -->|DTC Data| HMI
+    ALLECU[All ECU] -->|DTC_Event 직접 CAN, 실시간| HMI
     HMI -->|Body_User_Request| VCU
     VCU -->|Body_Command| BODY
-    HMI -->|Diagnostic Request| DTC
     DRIVER[Driver/Touch] <--> HMI
 ```
+
+Pi DTC Manager는 삭제됐다 (2026-09-15). B는 각 ECU의 `DTC_Event`/fault flag를 직접 구독한다. 수동 DTC Clear 요청은 현재 범위에서 제외하며, 소스 ECU가 fault 해소를 판정한다.
 
 ---
 
@@ -374,7 +375,7 @@ Pin map은 CubeMX/board schematic 확인 후 작성한다.
 | `Ultrasonic_Status` | distance/warning | Ultrasonic | sensor invalid |
 | `Vision_Status` / `ADAS_Request` | detected_class/direction/warning result | HPC(E) | vision unavailable |
 | `Body_Status` | lamp/LIN | Gateway | body warning |
-| `DTC_Event` | fault code/status | All/Pi | raw code라도 표시 |
+| `DTC_Event` | fault code/status | All ECU (직접 CAN) | raw code라도 표시, 실시간(Active만) |
 | `ECU_Heartbeat` | alive | all | offline warning |
 
 ## CAN TX
@@ -382,7 +383,6 @@ Pin map은 CubeMX/board schematic 확인 후 작성한다.
 | Message | Meaning | Trigger | Receiver |
 |---|---|---|---|
 | `Body_User_Request` | lighting/body request | UI event | VCU |
-| Diagnostic Clear Request | DTC clear 후보 | user event | Diagnostics target |
 
 H735는 LIN 직접 사용 없음.
 
@@ -426,7 +426,7 @@ Warning overlay는 screen state와 독립된 공통 계층이다.
 ## Diagnostics
 - local candidate: CAN/Touch/GUI task/queue fault
 - unknown external DTC도 raw code 표시
-- DTC clear는 request만 전송
+- Active fault는 소스 ECU의 해소 통보로 제거하며, IVI가 임의로 clear하지 않는다.
 
 ## Timing
 

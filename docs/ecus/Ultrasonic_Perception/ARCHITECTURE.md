@@ -371,7 +371,7 @@ Ultrasonic Sensor Array
 | Message / Signal | Meaning | Unit | Cycle/Event | Receiver | Valid Condition |
 |---|---|---|---|---|---|
 | `Ultrasonic_Status` | sensor/zone distance + valid + warning | mm/flags | Periodic TBD | VCU/H735/HPC | ECU running |
-| `Ultrasonic_Fault` 후보 | local fault | code/flags | Event/Periodic TBD | Diagnostics/VCU | fault active/history policy |
+| `Ultrasonic_Fault` 후보 | local fault | code/flags | Event/Periodic TBD | Diagnostics/VCU | fault active/inactive policy |
 | `ECU_Heartbeat` | node alive/health | flags | Periodic TBD | VCU/HPC | scheduler/health OK |
 
 ### RX
@@ -445,7 +445,7 @@ stateDiagram-v2
 
 - local sensor timeout / range invalid / multiple unavailable / CAN fault / RTOS health를 검출한다.
 - DTC code 숫자와 lifecycle은 F 담당의 진단 규격에 따른다.
-- Pi DTC Manager가 history를 보관하고 H735가 표시한다.
+- 각 ECU가 `DTC_Event`/fault flag를 직접 발행하고 B(H735)가 Active fault만 실시간 표시한다. Pi DTC Manager와 History 저장은 없다.
 
 ## 12.3 Timing
 

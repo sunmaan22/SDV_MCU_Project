@@ -9,6 +9,10 @@
 
 > **최상위 구현 기준:** [FINAL_IMPLEMENTATION_SPEC.md](../../system/FINAL_IMPLEMENTATION_SPEC.md). 조명 요청은 `IVI → Body_User_Request → VCU → Body_Command → Body Gateway`를 따른다. IVI는 `Body_Command`를 직접 송신하지 않는다.
 
+> **2026-09-15 범위 변경:** Pi DTC Manager(History DB)가 삭제됐다. B는 각 ECU가 발행하는 `DTC_Event`를 직접 CAN으로 구독해 **실시간(Active만)** 표시하며, 지속 저장/History는 하지 않는다 — fault가 해소되면 목록에서 사라진다.
+
+현재 상태 갱신·재접속·통신 두절 표시는 [최상위 명세 §4.10](../../system/FINAL_IMPLEMENTATION_SPEC.md#410-dtc_event)을 따른다. `(source_node, code)`별 RAM 상태만 유지하고, 수동 Clear/History UI는 제공하지 않는다. 화면을 보지 않는 동안 발생·해소된 간헐적 fault는 사후 확인할 수 없다. 재동기화 방식과 시간 수치는 OWNER INPUT이다.
+
 ## Document Information
 
 | Item | Value |
@@ -32,6 +36,7 @@
 | v0.2 | 2026-09-09 | Team | FreeRTOS task/timing/health requirements added |
 | v0.3 | 2026-09-10 | Team | Lighting request route aligned with final specification: IVI → VCU → Body Gateway |
 | v0.4 | 2026-09-15 | Team | `Body_Status.ambient` 소비 제거, `Vision_Status`를 새 계약(detected_class/direction, Rear Vision 없음)에 맞게 필드명만 조정. 화면 구성/TouchGFX 구조/테스트 기록은 유지 |
+| v0.5 | 2026-09-15 | Team | Pi DTC Manager/History 삭제 반영 — `DTC_Event`를 각 ECU로부터 직접 CAN 구독, 실시간(Active만) 표시로 변경 |
 
 ---
 
@@ -146,7 +151,7 @@ flowchart TD
 | IN-HMI-003 | `Ultrasonic_Status` | Ultrasonic ECU | CAN FD | mm/warning | sensor valid | periodic |
 | IN-HMI-004 | `Vision_Status` / `ADAS_Request` | HPC(E) | CAN FD | detected_class/direction/warning | source valid | periodic/event |
 | IN-HMI-005 | `Body_Status` | Body Gateway | CAN FD | lamp/LIN health | valid payload | periodic |
-| IN-HMI-006 | `DTC_Event` | ECU/Pi DTC Manager | CAN FD | code/status/severity | valid format | event |
+| IN-HMI-006 | `DTC_Event` | 각 ECU (직접 CAN, Pi DTC Manager 없음) | CAN FD | code/status/severity | valid format | event |
 | IN-HMI-007 | `ECU_Heartbeat` | ECU Nodes | CAN FD | alive/status | timeout 정상 | periodic |
 | IN-HMI-008 | Touch Event | Driver | Touch | x/y/action | valid region | event |
 
@@ -160,7 +165,6 @@ flowchart TD
 | OUT-HMI-002 | Critical Warning | Driver | LCD/TouchGFX | event | warning valid |
 | OUT-HMI-003 | DTC Detail | Driver | LCD/TouchGFX | event | DTC entry valid |
 | OUT-HMI-004 | `Body_User_Request` | VCU | CAN FD | user event | request valid |
-| OUT-HMI-005 | Diagnostic Clear Request 후보 | Diagnostics target | CAN FD | user event | policy satisfied |
 
 ---
 
@@ -200,7 +204,7 @@ flowchart TD
 | RULE-HMI-003 | Critical Warning | 일반 화면보다 Warning 우선 |
 | RULE-HMI-004 | CAN Signal timeout | `valid=false` + Comm Warning |
 | RULE-HMI-005 | Lighting 설정 | Command Queue → Body_User_Request → VCU |
-| RULE-HMI-006 | DTC Clear | 통합 규격 조건 확인 후 Request |
+| RULE-HMI-006 | DTC 해소 | 소스 ECU의 Inactive/현재 fault flag를 반영해 목록에서 제거 |
 | RULE-HMI-007 | GUI load 증가 | CanRxTask/Validity 처리가 starvation되지 않아야 함 |
 
 ---
@@ -227,7 +231,7 @@ flowchart TD
 | Cluster Main (기본 영역) | Speed, RPM, Gear, READY, Warning, Lamp |
 | ADAS 패널 | ADAS active, detected_class/direction/warning semantic data |
 | Parking 패널 | Ultrasonic distance/warning (4방향, Rear Vision 없음) |
-| Diagnostics 패널 | Active/History DTC list/detail |
+| Diagnostics 패널 | Active DTC list/detail (실시간, History 없음) |
 | Settings 패널 | Lighting/vehicle setting Request |
 
 Raw Rear Camera 영상 자체를 CAN으로 받아 표시하는 것은 현재 범위가 아니다.
@@ -253,7 +257,7 @@ Raw Rear Camera 영상 자체를 CAN으로 받아 표시하는 것은 현재 범
 | `Ultrasonic_Status` | RX | Ultrasonic | periodic | TBD | sensor invalid |
 | `Vision_Status` / `ADAS_Request` | RX | HPC(E) | periodic/event | TBD | vision unavailable |
 | `Body_Status` | RX | Gateway | periodic | TBD | body warning |
-| `DTC_Event` | RX | All/Pi | event | N/A | list update |
+| `DTC_Event` | RX | All ECU (직접 CAN) | event | N/A | list update (실시간, 지속 저장 없음) |
 | `Body_User_Request` | TX | VCU | event | N/A | TX result/log |
 
 ## 10.3 LIN
@@ -355,6 +359,6 @@ Cockpit은 Motor/Steering 안전 제어의 최종 권한을 갖지 않는다.
 - numeric task priority
 - task stack size
 - queue depth
-- DTC Clear protocol
+- DTC Active/Inactive 수신 및 현재 상태 재동기화 계약
 - Battery SOC Owner
 - Watchdog 최종 정책

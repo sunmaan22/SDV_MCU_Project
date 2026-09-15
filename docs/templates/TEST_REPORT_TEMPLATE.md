@@ -170,7 +170,7 @@ ISR 안에서 긴 계산이나 blocking 호출이 없는지도 Code Review한다
 
 # 10. DTC / Diagnostics Test
 
-| Fault | Expected DTC / Status | Pi Manager Stored? | H735 Displayed? | Result |
+| Fault | Expected DTC / Status | H735 Active 표시? | 해소 시 제거? | Result |
 |---|---|---|---|---|
 
 ---

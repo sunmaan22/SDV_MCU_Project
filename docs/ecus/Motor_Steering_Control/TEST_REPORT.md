@@ -2,7 +2,9 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
-> **2026-09-15 범위 변경:** Encoder/Hall 관련 테스트 항목을 전부 삭제했다. RF/가변저항 `Driver_Input` 읽기 시험과 명령값 기반 speed/rpm 추정 검증 항목으로 대체했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1.1, §3.3, §4.5, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경 (1차):** Encoder/Hall 관련 테스트 항목을 전부 삭제했다. RF/가변저항 `Driver_Input` 읽기 시험과 명령값 기반 speed/rpm 추정 검증 항목으로 대체했다.
+>
+> **2026-09-15 범위 변경 (2차):** E-Stop/Gear 물리 입력 시험 항목을 F에서 C로 이전했다. E-Stop은 CAN 비의존 로컬 즉시 차단 시험을 추가했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1, §1.2, §3.1, §4.8.1, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -30,6 +32,15 @@
 | v0.2 | 2026-09-15 | Team | Encoder/Hall 시험 항목 삭제, Driver_Input 읽기 및 speed/rpm 추정 시험 항목으로 대체 |
 
 ---
+
+## 추가 E-Stop 검증 계획
+
+| 조건 | 기대 동작 | 실행 상태 |
+|---|---|---|
+| 부팅 전부터 E-Stop active | Motor Enable/STBY 비활성 유지 | NOT RUN |
+| E-Stop active + 반복 enable command | ControlTask가 로컬 차단을 덮어쓰지 않음 | NOT RUN |
+| E-Stop active + CAN 단절/RTOS 부하 | CAN 수신/Task 실행을 기다리지 않고 로컬 차단 | NOT RUN |
+| E-Stop 해제 | 단순 해제만으로 재구동하지 않음; DEC-CTRL-006 확정 조건 적용 | NOT RUN |
 
 # 1. Test Objective
 
@@ -75,7 +86,9 @@ Drive + Steering ECU가 RF/가변저항 Driver 입력을 읽어 `Driver_Input`�
 
 | Test ID | Requirement ID | Test Method | Expected | Result | PASS/FAIL |
 |---|---|---|---|---|---|
-| T-DRV-001 | REQ-DRV-001 | RF/가변저항 신호 입력 | `Driver_Input` CAN 발행 | NOT RUN | TBD |
+| T-DRV-001 | REQ-DRV-001 | RF/가변저항/Gear 신호 입력 | `Driver_Input` CAN 발행 | NOT RUN | TBD |
+| T-DRV-001a | REQ-DRV-001a | E-Stop 활성화 (CAN 연결 끊은 상태) | CAN 없이도 Motor Driver 즉시 disable | NOT RUN | TBD |
+| T-DRV-001b | REQ-DRV-001b | E-Stop 활성화 | `Driver_Input.estop_status=true` CAN 발행 | NOT RUN | TBD |
 | T-DRV-002 | REQ-DRV-002 | Dummy/real CAN command | Drive/Steering command 수신 | NOT RUN | TBD |
 | T-DRV-003 | REQ-DRV-003 | invalid/out-of-range command | actuator에 직접 적용되지 않음 | NOT RUN | TBD |
 | T-DRV-004 | REQ-DRV-004 | `Drive_Enable=false` | Motor safe state | NOT RUN | TBD |
@@ -161,6 +174,7 @@ Motor/Driver의 실제 전기적 한계를 확인하기 전 무리하게 최대 
 
 | Test ID | Fault / Edge Case | Expected Detection | Expected Safe/Recovery Action | Actual | Result |
 |---|---|---|---|---|---|
+| F-DRV-000 | E-Stop active + CAN cable 분리 | GPIO EXTI (CAN 무관) | Motor Driver Enable/STBY 즉시 disable | NOT RUN | TBD |
 | F-DRV-001 | VCU command timeout | last_rx timeout | Motor safe state + fault | NOT RUN | TBD |
 | F-DRV-002 | `Drive_Enable=false` while command exists | enable check | output disable | NOT RUN | TBD |
 | F-DRV-003 | speed request out-of-range | range validation | reject/clamp policy | NOT RUN | TBD |
@@ -295,7 +309,7 @@ N/A.
 
 # 10. DTC / Diagnostics Test
 
-| Fault | Expected DTC / Status | Pi Manager Stored? | H735 Displayed? | Result |
+| Fault | Expected DTC / Status | H735 Active 표시? | 해소 시 제거? | Result |
 |---|---|---|---|---|
 | VCU command timeout | `DRV_COMM_TIMEOUT` 후보 | NOT RUN | NOT RUN | TBD |
 | Driver Input timeout | `DRV_INPUT_TIMEOUT` 후보 | NOT RUN | NOT RUN | TBD |

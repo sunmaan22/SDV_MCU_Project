@@ -51,7 +51,7 @@ CAN FD
 → Cluster + IVI
 
 Touch
-→ Body_User_Request / Diagnostic Request
+→ Body_User_Request
 ```
 
 H735는 상태를 표시하고 사용자 요청을 만든다. 최종 차량 제어와 Lamp GPIO는 직접 수행하지 않는다.
@@ -62,7 +62,7 @@ H735는 상태를 표시하고 사용자 요청을 만든다. 최종 차량 제�
 - H735는 `Body_Command`를 직접 publish하지 않는다.
 - H735 → `Body_User_Request` → VCU → `Body_Command` 순서다.
 - WarningManager는 표시 우선순위만 정하고 센서 threshold나 차량 safety를 다시 계산하지 않는다.
-- DTC History canonical source는 Pi DTC Manager다.
+- DTC History/Pi DTC Manager는 삭제됐다 (2026-09-15) — B가 각 ECU의 `DTC_Event`를 직접 구독해 실시간(Active만) 표시하며, 지속 저장은 어디에도 없다.
 - CAN decode와 TouchGFX rendering은 분리한다.
 
 ## Hardware / Peripheral 기준
@@ -123,7 +123,7 @@ DEC-DTC-001 ~ DEC-DTC-005
 DEC-HLT-001 ~ DEC-HLT-003
 ```
 
-Cluster 필수 항목, signal 목록, Warning 표시 정책, Gear R 화면정책, DTC Clear, Body_User_Request 기능범위, CAN ID/DLC/cycle/timeout, RTOS 수치는 이 폴더에서 독자적으로 최종 확정하지 않는다.
+Cluster 필수 항목, signal 목록, Warning 표시 정책, 전방 객체 팝업 정책, DTC Active/Inactive 처리, Body_User_Request 기능범위, CAN ID/DLC/cycle/timeout, RTOS 수치는 이 폴더에서 독자적으로 최종 확정하지 않는다.
 
 ## Coding Gate
 

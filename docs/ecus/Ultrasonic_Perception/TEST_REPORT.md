@@ -260,7 +260,7 @@ N/A.
 
 # 10. DTC / Diagnostics Test
 
-| Fault | Expected DTC / Status | Pi Manager Stored? | H735 Displayed? | Result |
+| Fault | Expected DTC / Status | H735 Active 표시? | 해소 시 제거? | Result |
 |---|---|---|---|---|
 | Sensor timeout | `US_SENSOR_TIMEOUT` 후보 | NOT RUN | NOT RUN | TBD |
 | Multiple sensor unavailable | `US_MULTI_SENSOR_FAULT` 후보 | NOT RUN | NOT RUN | TBD |

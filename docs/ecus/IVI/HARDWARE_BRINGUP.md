@@ -288,7 +288,7 @@ H735에 raw sensor를 직접 연결하지 않는다. 다음 logical message를 C
 ### TX
 
 - `Body_User_Request`
-- Diagnostic request (최종 protocol freeze 후)
+- Active fault 수신/해소 처리 (최종 protocol freeze 후)
 
 H735는 아래를 직접 수행하지 않는다.
 

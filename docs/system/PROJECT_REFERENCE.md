@@ -5,7 +5,9 @@
 > 현재 프로젝트에서 **어떤 보드가 무엇을 맡고, 어떤 센서/데이터를 소유하고, 어떤 RTOS Task 구조를 기본으로 하는지** 한 곳에서 확인하는 문서다.  
 > 핀 번호, CAN ID, 주기, 임계값, FreeRTOS numeric priority는 실제 보드/시험 후 확정하며 미정값은 `TBD`로 둔다.
 
-> **2026-09-15 범위 변경:** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall 실측 Feedback을 삭제했다. 주차는 Ultrasonic 4방향(FL/FR/RL/RR) 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경 (1차):** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall 실측 Feedback을 삭제했다. 주차는 Ultrasonic 4방향(FL/FR/RL/RR) 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
+>
+> **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 각 ECU로부터 직접 CAN 구독해 실시간(Active만) 표시한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md).
 
 # 1. 현재 전체 구조
 
@@ -13,12 +15,12 @@
 Front Camera → Raspberry Pi Vision/HPC ────────────────┐
                                                         │ CAN FD
 Ultrasonic(4방향) → STM32 #1 ───────────────────────────┤
-                                                        ├→ STM32 #5 VCU
+                                                        ├→ STM32 #5 VCU (물리 GPIO 없음)
 STM32H735 Cockpit ←──────────────────────────────────────┤       │
                                                         │       ↓
 STM32 #3 Body Gateway ←──────────────────────────────────┘  STM32 #2 Drive/Steer
         ↕ LIN                                                    ↑
-STM32 #4 Body LIN Slave                                RF 수신기/가변저항
+STM32 #4 Body LIN Slave                                RF 수신기/가변저항 + Gear + E-Stop
         └ Lighting (헤드램프 밝기/턴/브레이크)
 ```
 
@@ -27,13 +29,14 @@ STM32 #4 Body LIN Slave                                RF 수신기/가변저항
 | Node | Hardware | 역할 | 실행 환경 |
 |---|---|---|---|
 | A | STM32 #1 + Ultrasonic | Parking distance perception (4방향 FL/FR/RL/RR) | FreeRTOS |
-| B | STM32H735 + TouchGFX | Cluster + IVI | FreeRTOS + TouchGFX |
-| C | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기/가변저항 | Drive + Steering control, Driver Input | FreeRTOS |
+| B | STM32H735 + TouchGFX | Cluster + IVI + DTC 실시간 표시 | FreeRTOS + TouchGFX |
+| C | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기/가변저항 + Gear/E-Stop | Drive + Steering control, Driver Input(gear/estop_status 포함), E-Stop 로컬 즉시 차단 | FreeRTOS |
 | D-Gateway | STM32 #3 + CAN/LIN Transceiver | CAN FD ↔ LIN Gateway, LIN Master | FreeRTOS |
 | D-Slave | STM32 #4 + LIN Transceiver | Lighting LIN Slave | FreeRTOS 기본 |
 | E | Raspberry Pi | Front Camera Vision(COCO), HPC services | Linux |
-| F | STM32 #5 | VCU, Safety, CAN Integration | FreeRTOS |
-| Diagnostics | Raspberry Pi service | DTC History / Logger | Linux service |
+| F | STM32 #5 | VCU, Safety, CAN Integration (물리 GPIO 없음) | FreeRTOS |
+
+Pi DTC Manager(History DB)는 삭제됐다. Diagnostics는 별도 Node가 아니며, `DTC_Event`는 각 ECU가 직접 발행하고 B가 실시간 구독·표시한다.
 
 > STM32는 FreeRTOS + CMSIS-RTOS2 API를 기본안으로 한다. 실제 MCU 자원이 너무 작은 경우만 Architecture Decision을 남기고 예외를 검토한다.
 
@@ -76,8 +79,8 @@ Safety / Control
 
 | 영역 | 입력 / 센서 | Owner | Interface 후보 | 상태 |
 |---|---|---|---|---|
-| Driver | P/R/N/D (Gear) | VCU | GPIO | 계획 |
-| Driver | E-Stop | VCU | GPIO | 계획 |
+| Driver | P/R/N/D (Gear) | Drive ECU(C) | GPIO/ADC | `DEC-HW-026`/`028` 확정 전 |
+| Driver | E-Stop | Drive ECU(C) | GPIO/EXTI | `DEC-HW-020`/`027` 확정 전, 로컬 즉시 차단 |
 | Driver | Accelerator/Brake/Steering (RF 리모컨 또는 가변저항) | Drive ECU(C) | PWM capture / ADC | `DEC-HW-024` 확정 전 |
 | Steering | Actual Steering Feedback | Drive ECU | ADC/I2C | 선택 확장 |
 | Parking | Ultrasonic Sensors (FL/FR/RL/RR 4방향 고정) | Ultrasonic ECU | GPIO/Timer | `FROZEN` |
@@ -93,15 +96,14 @@ Safety / Control
 
 | 데이터 | Owner | 주요 Consumer |
 |---|---|---|
-| Gear / E-Stop | VCU | Drive, HPC, H735 |
-| Accelerator / Brake / Steering Input (`Driver_Input`) | Drive ECU(C) | VCU, HPC, H735 |
+| Gear / E-Stop / Accelerator / Brake / Steering Input (`Driver_Input`) | Drive ECU(C) | VCU, HPC, H735 |
 | Final Speed / Steering Request | VCU | Drive + Steering ECU |
 | Motor RPM / Vehicle Speed (estimated, 명령값 기반) | Drive ECU | VCU, H735, HPC |
 | Ultrasonic Distance / Warning (FL/FR/RL/RR) | Ultrasonic ECU | VCU, H735, HPC |
 | Front Vision Result (detected_class/direction) | Raspberry Pi HPC | VCU, H735 |
 | Local Lamp Status | Body LIN Slave | Gateway → VCU/H735/HPC |
 | CAN↔LIN Gateway Status | Body Gateway | VCU/H735/HPC |
-| DTC History DB | Raspberry Pi DTC Manager | H735 / Debug tools |
+| `DTC_Event` (실시간, 지속 저장 없음) | 각 로컬 Node | H735(구독), VCU(안전 판단) |
 | 화면 값 | 원본 Node | H735는 Subscriber |
 
 Node 내부에서도 한 데이터의 writer를 가능하면 하나로 둔다.
@@ -165,7 +167,7 @@ Fault   : CAN timeout, invalid data, UI task fault
 | `CanRxTask` | event | High | CAN decode / model update request |
 | `VehicleModelTask` | event / 10~20 ms 후보 | Normal/High | repository, validity, warning state |
 | `GuiTask` | TouchGFX tick | Normal | TouchGFX rendering |
-| `CommandTxTask` | UI event | Normal | Body/DTC request CAN TX |
+| `CommandTxTask` | UI event | Normal | Body_User_Request CAN TX |
 | `HealthTask` | 100 ms 후보 | Low | task/queue/stack health |
 
 상세 예시는 [`IVI/ARCHITECTURE.md`](../ecus/IVI/ARCHITECTURE.md)를 기준으로 한다.
@@ -187,14 +189,15 @@ Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) �
 
 | Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
 |---|---|---|---|
-| Driver Input capture ISR | PWM capture/ADC event | ISR | raw sample + notify |
+| **E-Stop EXTI** | GPIO event | **ISR (최고 우선)** | Motor Driver Enable/STBY 로컬 즉시 차단 (CAN 비의존) |
+| Driver Input capture ISR (accel/brake/steering/gear) | PWM capture/ADC event | ISR | raw sample + notify |
 | `CanRxTask` | event | High | latest VCU command update |
 | `ControlTask` | 5~10 ms 후보 | Highest application | speed/steering control, PWM update, speed/rpm 추정 |
-| `DriverInputTask` | 5~10 ms 후보/event | High | RF/가변저항 read → `Driver_Input` 산출 |
+| `DriverInputTask` | 5~10 ms 후보/event | High | RF/가변저항/Gear read → `Driver_Input`(gear/estop_status 포함) 산출 |
 | `CanTxTask` | 20~50 ms 후보 + event | Normal | `Driver_Input`/`Drive_Status` 송신 |
 | `HealthTask` | 50~100 ms 후보 | Low/Normal | command timeout / task health |
 
-ControlTask는 UART printf, blocking CAN TX, 느린 진단 처리에 의존하지 않는다.
+ControlTask는 UART printf, blocking CAN TX, 느린 진단 처리에 의존하지 않는다. E-Stop만 예외적으로 ISR이 안전 액션을 직접 수행한다 (2026-09-15부터 Gear/E-Stop이 F에서 C로 이전).
 
 ---
 
@@ -247,9 +250,10 @@ Front Camera → front_vision (COCO Object Detection)
 ```text
 front_vision service ─┐
 can_service ───────────┤→ vehicle_manager
-DTC manager ────────────┤
 logger ──────────────────┘
 ```
+
+DTC manager(Pi) 서비스는 삭제됐다 — `DTC_Event`는 각 ECU가 직접 CAN 발행하고 B(IVI)가 실시간 구독·표시한다.
 
 Architecture에는 Process/Thread, Queue, service dependency, restart 정책을 기록한다.
 
@@ -260,8 +264,7 @@ Raw Camera frame은 Pi 내부에서 처리하고 CAN에는 semantic/control resu
 ## F. VCU + DTC + CAN Integration
 
 ```text
-Gear/E-Stop (VCU 자체 입력)
-Driver_Input (CAN, C 발행)
+Driver_Input (CAN, C 발행 — accel/brake/steering/gear/estop_status)
 ADAS_Request
 Ultrasonic_Status (Parking Critical 포함)
 ECU Heartbeat/Fault
@@ -273,17 +276,17 @@ Safety & Arbitration (Parking Critical > ADAS_Request)
 Final Speed / Steering Request
 ```
 
+F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다 (2026-09-15부터 Gear/E-Stop도 C 소유, `Driver_Input`으로만 CAN 수신).
+
 ### RTOS 구조 후보
 
 | Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
 |---|---|---|---|
-| GPIO ISR (Gear/E-Stop) | event | ISR | 최소 capture |
-| `CanRxTask` | event | High | Driver_Input/ADAS/US/Drive/Body status 수신 |
-| `LocalInputTask` | 10 ms 후보 | High/Normal | Gear/E-Stop input |
-| `SafetyTask` | 5~10 ms/event 후보 | Highest application | E-Stop, heartbeat, critical fault |
+| `CanRxTask` | event | High | Driver_Input(gear/estop_status 포함)/ADAS/US/Drive/Body status 수신 |
+| `SafetyTask` | 5~10 ms/event 후보 | Highest application | estop_status(CAN)/critical fault override |
 | `VcuControlTask` | 10 ms 후보 | High | mode/state/arbitration |
 | `CanTxTask` | 20 ms/event 후보 | Normal/High | final command/state TX |
-| `DiagnosticTask` | 100 ms/event | Low | DTC/status integration |
+| `DiagnosticTask` | 100 ms/event | Low | DTC 실시간 발행 (history 없음) |
 | `HealthTask` | 100 ms 후보 | Low | task health + watchdog coordination |
 
 우선순위 기본 방향:

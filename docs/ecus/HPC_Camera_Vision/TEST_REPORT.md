@@ -194,7 +194,7 @@ Thermal throttling 여부도 장시간 시험에서 확인한다.
 
 # 11. DTC / Diagnostics Test
 
-| Fault | Expected Status / DTC Candidate | Pi Manager Stored? | H735 Displayed? | Result |
+| Fault | Expected Status / DTC Candidate | H735 Active 표시? | 해소 시 제거? | Result |
 |---|---|---|---|---|
 | Front Camera timeout | `VIS_FRONT_CAMERA_xxx` 후보 | NOT RUN | NOT RUN | TBD |
 | Vision service crash | `VIS_FRONT_SERVICE_xxx` 후보 | NOT RUN | NOT RUN | TBD |

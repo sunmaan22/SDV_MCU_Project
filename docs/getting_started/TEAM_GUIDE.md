@@ -4,6 +4,8 @@
 
 > 처음 보는 팀원이 이 문서 하나로 **내 역할, 필요한 전자기초, RTOS가 왜 필요한지, 개발 순서**를 이해하는 것을 목표로 한다.
 
+> **2026-09-15 범위 변경:** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. Driver Input(RF/가변저항)뿐 아니라 Gear/E-Stop 물리 입력도 C가 읽어 `Driver_Input`으로 CAN 발행한다 — E-Stop은 C가 로컬에서 즉시 차단(CAN 비의존)한다. F(VCU)는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다. Pi DTC Manager(History DB)는 삭제했고, `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
+
 # 1. 프로젝트를 아주 쉽게 보면
 
 ```text
@@ -284,13 +286,13 @@ logger
 
 ## F — VCU + DTC + CAN Integration / 최종 판단
 
-**한마디:** 여러 요청 중 차량이 실제로 무엇을 할지 최종 결정하고 통신 규칙을 맞춘다.
+**한마디:** 여러 요청 중 차량이 실제로 무엇을 할지 최종 결정하고 통신 규칙을 맞춘다. **물리 GPIO는 하나도 없다** — Driver Input/Gear/E-Stop까지 전부 C가 CAN으로 보내준다.
 
 ```text
-Driver Input ───────┐
-ADAS Request ───────┤
-Ultrasonic Status ──┤
-ECU Fault ──────────┤
+Driver_Input (CAN, C 발행 — accel/brake/steering/gear/estop_status) ───┐
+ADAS Request ───────────────────────────────────────────────────────┤
+Ultrasonic Status ────────────────────────────────────────────────────┤
+ECU Fault ──────────────────────────────────────────────────────────┤
                     ↓
                    VCU
               Safety / Mode
@@ -301,27 +303,27 @@ ECU Fault ──────────┤
               Drive + Steering
 ```
 
+E-Stop의 실제 모터 정지는 C가 CAN과 무관하게 이미 로컬로 처리한다. F가 받는 `estop_status`는 Vehicle State 갱신과 다른 요청(ADAS 등) 무효화용이다.
+
 ### RTOS에서 나누는 예
 
 ```text
-DriverInputTask ───────┐
-CanRxTask ─────────────┤
-                       ↓
-                  VcuControlTask
-                       ↓
-                   CanTxTask
+CanRxTask (Driver_Input의 estop_status 포함)
+       ↓
+  VcuControlTask
+       ↓
+   CanTxTask
 
 SafetyTask
-→ E-Stop / heartbeat / critical fault
+→ estop_status(CAN) / heartbeat / critical fault
 
 DiagnosticTask
-→ DTC / health
+→ DTC_Event 실시간 발행 (history 없음)
 ```
 
 초기 후보:
 - `SafetyTask`: 5~10 ms 또는 event, 가장 높은 Application priority 후보
 - `VcuControlTask`: 10 ms 후보
-- `DriverInputTask`: 10 ms 후보
 - `CanRxTask`: event driven, 높은 priority
 - `CanTxTask`: 20 ms/event 후보
 - `DiagnosticTask`: 100 ms 후보

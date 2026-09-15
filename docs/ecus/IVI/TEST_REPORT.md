@@ -8,6 +8,8 @@
 > Reference board bring-up은 2026-09-10에 실제 STM32H735G-DK에서 수행했으며, 이후 SDV IVI 기능 시험은 단계적으로 추가한다.
 
 > **2026-09-15 범위 변경 (최소 수정):** 아직 `NOT RUN`인 계획 항목에서 `Body_Status.ambient` 소비와 `Vision_Status`의 ADAS/Parking 필드명만 새 계약에 맞게 조정했다. 기존 bring-up/실기 시험 결과(§0)는 변경하지 않았다.
+>
+> **2026-09-15 추가 변경:** Pi DTC Manager/History 삭제에 따라 DTC 시험을 "저장 확인"이 아닌 "실시간 표시 + 해소 시 소멸 확인"으로 변경했다.
 
 ## Document Information
 
@@ -654,7 +656,9 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 
 # 11. DTC / Diagnostics Test
 
-| Fault | Expected Status | Pi Stored? | H735 Displayed? | Result |
+> Pi DTC Manager/History DB는 삭제됐다. 저장 여부가 아니라 **실시간 표시**와 fault 해소 시 목록에서 사라지는지를 확인한다.
+
+| Fault | Expected Status | H735 Displayed (Active)? | 해소 시 사라짐? | Result |
 |---|---|---|---|---|
 | Ultrasonic timeout | sensor DTC | NOT RUN | NOT RUN | TBD |
 | Body LIN fault | Body DTC | NOT RUN | NOT RUN | TBD |
@@ -662,6 +666,20 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 | HMI queue/task fault 후보 | HMI local health/DTC | NOT RUN | NOT RUN | TBD |
 
 ---
+
+## 11.1 Active 표시 경계 조건 (추가 시험 계획)
+
+| 조건 | 기대 동작 | 실행 상태 |
+|---|---|---|
+| 동일 source/code Active 중복 수신 | 목록 중복 없이 최신 상태 갱신 | NOT RUN |
+| 서로 다른 ECU의 동일 code | source_node로 구분 | NOT RUN |
+| Active → 유효한 Inactive/해소 flag | 목록에서 제거, 이력 없음 | NOT RUN |
+| 다른 화면에서 발생 후 해소 | Diagnostics 복귀 시 과거 fault 표시 없음 | NOT RUN |
+| fault 유지 중 IVI 재시작/재접속 | 현재 상태 재동기화 후 Active 표시 | NOT RUN |
+| Active/Inactive 프레임 누락 | 확정된 재전송/snapshot 계약으로 현재 상태 회복 | NOT RUN |
+| 소스 통신 두절 | 상태 미확인/통신 두절 표시, 정상 해소로 오인하지 않음 | NOT RUN |
+
+재동기화·timeout 수치가 OWNER INPUT이므로 관련 실기 판정은 계약 동결 후 수행한다.
 
 # 12. Evidence
 
@@ -755,7 +773,7 @@ FULL IVI INTEGRATION: NOT RUN
 - task stack size
 - queue depth
 - IWDG policy
-- DTC Clear protocol
+- DTC Active/Inactive 수신 및 현재 상태 재동기화 계약
 
 ## 14. 단일 Screen / 패널 전환 추가 시험 계획 (2026-09-15)
 

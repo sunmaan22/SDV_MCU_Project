@@ -12,6 +12,8 @@
 `DEC-HW-001~005`, `DEC-HW-021~023`만 이번에 동결했다. 구매 결정과 기존 H735 시험 기록을 근거로 하며,
 새 실기 시험을 수행한 것은 아니다. 상세 근거와 다음 동결 조건은 [Freeze Review](FREEZE_REVIEW_2026-09-11.md)를 따른다.
 
+> **2026-09-15 범위 변경:** E-Stop과 Gear 물리 입력을 F에서 C로 이전했다. C가 E-Stop을 로컬에서 즉시 차단(모터 Enable/STBY 직접 차단, CAN 비의존)하고, Gear/E-Stop 상태를 `Driver_Input`에 포함해 CAN으로 F에 보고한다. Pi DTC History DB(중앙 저장/이력) 기능은 삭제했다 — 이 프로젝트에 OBD2/외부 진단 커넥터가 없어 이력 조회의 실효성이 낮으므로, 각 Node가 발행하는 `DTC_Event`를 B(IVI)가 직접 구독해 실시간(Active만) 표시한다. History/Severity 지속 저장은 없다.
+
 ```text
 FINAL_IMPLEMENTATION_SPEC.md
         ↓
@@ -44,13 +46,12 @@ TEST_REPORT.md
 | 영역 | 고정 규칙 |
 |---|---|
 | A Ultrasonic | 4방향(FL/FR/RL/RR) 거리 / valid / warning / local fault owner — 주차 판단 전담 |
-| B H735 | UI 표시 + 사용자 Request 생성 |
-| C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF/가변저항) owner |
+| B H735 | UI 표시 + 사용자 Request 생성 + `DTC_Event` 실시간 구독·표시(Active only, History 없음) |
+| C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF/가변저항) owner + Gear/E-Stop 물리 입력 owner (E-Stop 로컬 즉시 차단) |
 | D Gateway | CAN↔LIN mapping + LIN Master schedule owner |
 | D Slave | Lamp actual state owner |
 | E Vision | 전방 카메라 객체인식(COCO) 결과 + 전방 회피 ADAS 요청 owner (주차 관여 안 함) |
 | F VCU | 최종 vehicle arbitration + Final Drive / Body Command owner |
-| Pi DTC | DTC History DB / timestamp / count / storage owner |
 
 ## 1.1 고정 Message Publisher
 
@@ -66,10 +67,10 @@ TEST_REPORT.md
 | `Body_Status` | D Gateway | F, B, E |
 | `Vehicle_State` | F | All |
 | `Driver_Input` | C | F |
-| `DTC_Event` | 각 Local Node | F, Pi, B 필요 시 |
+| `DTC_Event` | 각 Local Node | F, B |
 | `ECU_Heartbeat` | 각 Node | F, Pi |
 
-같은 최종 Message를 두 Node가 동시에 publish하지 않는다.
+같은 최종 Message를 두 Node가 동시에 publish하지 않는다. `Driver_Input`은 accel/brake/steering뿐 아니라 gear와 estop_status도 포함한다 (2026-09-15부터 C가 Gear/E-Stop 물리 입력 owner, §4.8.1 참고).
 
 ## 1.2 고정 Safety Rule
 
@@ -88,6 +89,7 @@ E-Stop / Critical Fault
 - VCU는 `Drive_Status`, Heartbeat, Peer Message timeout을 감지한다.
 - Brake와 Accelerator가 동시에 유효하게 입력되면 Brake 우선을 기본 정책으로 한다.
 - D↔R은 차량이 움직이는 상태에서 즉시 반전하지 않는다.
+- E-Stop은 C가 로컬 GPIO/EXTI로 직접 읽고, CAN 경유 없이 즉시 Motor Driver Enable/STBY를 차단한다. C는 E-Stop 상태를 `Driver_Input.estop_status`로 CAN 발행해 F가 `Vehicle_State`/arbitration에 반영하지만, 모터 차단 자체는 CAN 통신 상태와 무관하게 동작해야 한다.
 
 ---
 
@@ -139,9 +141,12 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | `DEC-HW-017` | Accelerator Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-018` | Brake Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-019` | Steering Input Sensor | OWNER INPUT | OPEN |
-| `DEC-HW-020` | E-Stop 입력 방식 | OWNER INPUT | OPEN |
+| `DEC-HW-020` | E-Stop owner node / 동작 방식 | C 물리 GPIO/EXTI, 로컬 즉시 차단(CAN 비의존) + `Driver_Input.estop_status`로 상태 보고 | FROZEN |
 | `DEC-HW-024` | Driver 원격 입력 장치 (RF 리모컨 or 가변저항) | OWNER INPUT | OPEN |
 | `DEC-HW-025` | Ultrasonic 4방향 센서 배치 | 전좌(FL) / 전우(FR) / 후좌(RL) / 후우(RR) 4개 고정 | FROZEN |
+| `DEC-HW-026` | Gear owner node / 동작 방식 | C 물리 GPIO, `Driver_Input.gear`로 CAN 발행 | FROZEN |
+| `DEC-HW-027` | E-Stop 회로/부품 (스위치 모델, pull-up/down, debounce) | OWNER INPUT | OPEN |
+| `DEC-HW-028` | Gear 입력 회로/부품 (버튼 개수 vs 로터리 스위치 vs ADC selector) | OWNER INPUT | OPEN |
 | `DEC-HW-021` | B IVI 보드 | STM32H735G-DK | FROZEN |
 | `DEC-HW-022` | B CAN peripheral / 핀 예약 | FDCAN2, PB5 RX / PB6 TX (설계 배정; 외부 통신 검증 미완료) | FROZEN |
 | `DEC-HW-023` | B Display / Touch / 외부 메모리 역할 | LTDC RGB888 / BSP I2C4 touch / OCTOSPI1 NOR asset @ 0x90000000 / OCTOSPI2 HyperRAM framebuffer @ 0x70000000 | FROZEN |
@@ -229,10 +234,11 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 
 | ID | Decision | Final Value | Status |
 |---|---|---|---|
+| `DEC-DTC-000` | DTC History DB / 저장 여부 | 미사용 — Pi DTC Manager/History DB 삭제. OBD2/외부 진단 커넥터가 없어 이력 조회 실효성이 낮으므로, `DTC_Event`는 B(IVI)가 실시간(Active만) 구독·표시하고 지속 저장하지 않는다 | REMOVED |
 | `DEC-DTC-001` | DTC code numbering | OWNER INPUT | OPEN |
-| `DEC-DTC-002` | DTC status enum | OWNER INPUT | OPEN |
+| `DEC-DTC-002` | DTC status enum (Active/Inactive 중심, History 상태 불필요) | OWNER INPUT | OPEN |
 | `DEC-DTC-003` | DTC severity enum | OWNER INPUT | OPEN |
-| `DEC-DTC-004` | confirmation / clear rule | OWNER INPUT | OPEN |
+| `DEC-DTC-004` | fault 확정 / 해소 판정 규칙 (소스 ECU) | OWNER INPUT | OPEN |
 | `DEC-DTC-005` | Critical DTC → Safe Action mapping | OWNER INPUT | OPEN |
 | `DEC-HLT-001` | Heartbeat period / timeout | OWNER INPUT | OPEN |
 | `DEC-HLT-002` | Watchdog refresh condition | OWNER INPUT | OPEN |
@@ -335,6 +341,22 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | lin_health | enum/flags | OWNER INPUT |
 | fault_flags | bitfield | OWNER INPUT |
 
+## 4.8.1 `Driver_Input`
+
+> Publisher는 C다 (2026-09-15부터 accel/brake/steering + gear + E-Stop 상태까지 포함, §7.1에서 지적된 누락 계약을 채움). C는 RF 리모컨 또는 가변저항으로 accel/brake/steering을, 물리 GPIO로 gear와 E-Stop을 읽어 하나의 `Driver_Input` 메시지로 CAN 발행한다. E-Stop의 실제 차단은 C가 CAN과 무관하게 로컬에서 수행하며, 이 필드는 F의 `Vehicle_State`/arbitration 반영용이다.
+
+| Field | Unit / Type | Final |
+|---|---|---|
+| accel | TBD (`DEC-CTRL-019` 선형 매핑) | OWNER INPUT |
+| brake | TBD (`DEC-CTRL-019` 선형 매핑) | OWNER INPUT |
+| steering | TBD (`DEC-CTRL-019` 선형 매핑) | OWNER INPUT |
+| gear | P/R/N/D enum | OWNER INPUT |
+| estop_status | bool (C가 로컬로 이미 차단한 상태를 보고) | OWNER INPUT |
+| request_valid | bool | OWNER INPUT |
+| freshness/sequence | TBD | OWNER INPUT |
+
+`Driver_Input`의 invalid/stale/timeout을 F가 E-Stop 해제나 유효한 Gear로 간주해서는 안 된다. 안전 상태는 `DEC-CTRL-004~006`과 freshness 계약에 따라 처리한다. C의 로컬 E-Stop 차단은 CAN 송수신과 독립적이며, 이후 ControlTask/수신 command가 차단을 덮어쓰지 않도록 interlock을 유지한다. 부팅 시 이미 눌린 E-Stop도 확인해야 한다. 해제만으로 자동 재구동하지 않으며, 구체적인 복구 조건은 `DEC-CTRL-006`에서 확정한다. Enable/STBY 비활성 극성과 실제 핀은 선택된 드라이버/회로 기준으로 확정한다.
+
 ## 4.9 `Vehicle_State`
 
 | Field | Unit / Type | Final |
@@ -346,13 +368,23 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 
 ## 4.10 `DTC_Event`
 
+> Pi DTC History DB는 삭제됐다 (`DEC-DTC-000` REMOVED). `DTC_Event`는 B(IVI)가 실시간으로 구독·표시하며 지속 저장하지 않는다 — 소스 Node의 fault가 해소되면 해당 이벤트도 화면에서 사라진다(Active만 표시).
+
 | Field | Type | Final |
 |---|---|---|
 | source_node | enum/id | OWNER INPUT |
 | code | integer/enum | OWNER INPUT |
-| status | enum | OWNER INPUT |
+| status | enum (Active/Inactive) | OWNER INPUT |
 | severity | enum | OWNER INPUT |
 | sequence/timestamp | TBD | OWNER INPUT |
+
+### 실시간 fault 표시 계약
+
+- 각 ECU가 자기 fault의 Active/Inactive를 판정하고 `DTC_Event` 또는 합의된 fault flag로 직접 발행한다. B는 `(source_node, code)`별 현재 상태를 RAM에만 유지한다. severity는 현재 표시/안전 판단에 사용하며, 이력 저장 삭제와 severity 필드 삭제를 혼동하지 않는다.
+- 소스의 유효한 Inactive 통보 또는 해당 fault가 해소되었음을 나타내는 최신 상태를 받으면 B는 Active 목록에서 제거한다. 이벤트 미수신만으로 정상 복귀를 추정하지 않는다. IVI 수동 DTC Clear 요청은 현재 범위에 포함하지 않는다.
+- IVI 재시작/재접속, Active 또는 Inactive 프레임 누락 후에도 현재 상태를 회복할 수 있도록 소스의 현재 fault 상태 재전송/주기 snapshot 계약이 필요하다. 방식·주기·timeout·최대 항목 수·sequence 처리 규칙은 `DEC-DTC-002/004`, `DEC-NET-004~007`, `DEC-HLT-001`에서 OWNER INPUT으로 확정한다. 과거 이벤트 재생은 하지 않는다.
+- 소스 heartbeat/fault 상태가 stale이면 통신 두절/상태 미확인으로 구분하고, 이전 값을 현재 Active 또는 정상으로 확정 표시하지 않는다. 재접속 후에는 최신 유효 상태로 갱신한다.
+- 화면을 보지 않는 동안 발생했다가 해소된 간헐적 fault는 나중에 확인할 수 없다. 이는 사용자가 수용한 범위 제한이다. fault 확정 threshold는 별도이며, CAN 프레임 한 번 누락을 반드시 DTC로 확정한다는 뜻은 아니다.
 
 ## 4.11 `ECU_Heartbeat`
 
@@ -401,6 +433,8 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | F | SafetyTask, VcuControlTask, CanRxTask, CanTxTask, DiagnosticTask, HealthTask |
 
 > C에 `DriverInputTask` 추가 (RF 수신기 또는 가변저항 입력 읽기 + `Driver_Input` CAN 발행 — 입력 하드웨어가 실제로 C에 물리적으로 붙기 때문에 publisher를 F에서 C로 이전, §1.1 참고). C의 `FeedbackTask`(Encoder 기반)는 Encoder 삭제로 제거. F의 `DriverInputTask`는 publisher 이전에 따라 제거.
+>
+> **2026-09-15:** E-Stop/Gear GPIO도 F에서 C로 이전했다. C는 E-Stop EXTI ISR에서 Motor Driver Enable/STBY를 즉시 로컬 차단(가장 높은 우선순위, CAN/RTOS Task 경유 없이 ISR에서 직접 처리 가능)하고, `DriverInputTask`가 gear/estop_status를 `Driver_Input`에 실어 CAN 발행한다. F는 더 이상 E-Stop/Gear GPIO를 직접 읽지 않으며, `SafetyTask`는 CAN으로 수신한 `Driver_Input.estop_status`를 보고 override를 갱신한다. F의 `DiagnosticTask`는 Pi DTC Manager 없이 `DTC_Event` 발행과 현재 fault/status 처리를 담당하며, 지속 이력 저장은 하지 않는다. B는 각 ECU의 이벤트를 직접 구독해 표시한다.
 
 Linux E Node는 다음을 Freeze한다.
 
@@ -411,6 +445,8 @@ Linux E Node는 다음을 Freeze한다.
 | can_service | CAN single owner |
 | health_monitor | timeout / restart condition |
 | logger | storage / rotation / blocking policy |
+
+Pi DTC Manager 서비스는 삭제됐다 (`DEC-DTC-000` REMOVED). Diagnostics history/storage는 어떤 Node도 소유하지 않는다.
 
 ---
 
@@ -476,7 +512,7 @@ Bring-up, RTOS skeleton, mock, 계측용 bench 코드는 OPEN 값으로도 작�
 Gate D 이전의 계측용 통합 빌드는 허용하되 최종 통합 baseline으로 취급하지 않는다.
 
 Gate B 추가 완결성 확인:
-- §1.1의 `Driver_Input`도 필수 계약이다. 현재 §4에 상세 표가 없으므로 필드·payload·주기·timeout 표를 추가한 뒤에야 Gate B를 닫는다.
+- §4.8.1 `Driver_Input`은 accel/brake/steering/gear/estop_status 필드 목록까지는 채웠으나 값/단위/payload/주기/timeout은 여전히 OWNER INPUT이다. 이 값들이 FROZEN되어야 Gate B가 닫힌다.
 - DTC/Heartbeat처럼 다중 publisher인 메시지는 노드 식별·ID 할당/충돌 회피까지 정의한다.
 - §6의 Task 이름 목록만으로 Gate D를 닫지 않는다. Node별 실제 Task/Period/Priority/Stack(bytes)/Queue(depth와 item bytes)/Watchdog 조건을 기록해야 한다.
 
@@ -497,6 +533,7 @@ Driver → Measurement → Perception → Repository → CAN
 ```text
 CAN → Repository → TouchGFX
 Touch → Body_User_Request
+DTC_Event(CAN) → 실시간 구독 → Diagnostics 화면 (Active only, History 없음)
 ```
 
 View에서 CAN Driver를 직접 호출하지 않는다.
@@ -504,12 +541,13 @@ View에서 CAN Driver를 직접 호출하지 않는다.
 ## C Drive
 
 ```text
-RF 수신기/가변저항 → DriverInputTask → Driver_Input(CAN, C 발행)
+E-Stop GPIO/EXTI → 로컬 즉시 Motor Enable/STBY 차단 (CAN 비의존)
+Gear GPIO + RF 수신기/가변저항 → DriverInputTask → Driver_Input(CAN, C 발행: accel/brake/steering/gear/estop_status)
 Final_Drive_Command → Validation → Control → PWM/DIR/Servo
 PWM/모터 명령값 → 추정 함수 → Motor_RPM/Speed(estimated) → Status
 ```
 
-Motor driver rating과 command timeout/safe state가 FROZEN이어야 한다. Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) — speed/rpm 표시는 명령값 기반 추정 함수(`DEC-CTRL-021`)로 대체한다. Driver 입력(RF 또는 가변저항, `DEC-HW-024`)은 accel/brake 값에 선형 비례해 target speed가 오르내린다(`DEC-CTRL-019`).
+Motor driver rating과 command timeout/safe state가 FROZEN이어야 한다. Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) — speed/rpm 표시는 명령값 기반 추정 함수(`DEC-CTRL-021`)로 대체한다. Driver 입력(RF 또는 가변저항, `DEC-HW-024`)은 accel/brake 값에 선형 비례해 target speed가 오르내린다(`DEC-CTRL-019`). E-Stop 로컬 차단(`DEC-HW-020`)은 Driver_Input CAN 발행과 독립적으로 가장 먼저 처리한다.
 
 ## D Body
 
@@ -532,13 +570,13 @@ Raw image는 CAN으로 보내지 않는다. Rear Camera/Rear Vision/주차 Visio
 ## F VCU
 
 ```text
-Driver + Perception + Status + Fault
+Driver_Input(CAN, gear/estop 포함) + Perception + Status + Fault
 → Validation/Freshness
 → Safety/Arbitration
 → Final_Drive_Command / Body_Command
 ```
 
-Final command writer는 `VcuControlTask` 하나다.
+Final command writer는 `VcuControlTask` 하나다. F는 Gear/E-Stop 물리 GPIO를 더 이상 직접 읽지 않는다 (2026-09-15부터 C 소유) — `SafetyTask`는 CAN으로 수신한 `Driver_Input.estop_status`를 override 조건으로 사용한다.
 
 ---
 

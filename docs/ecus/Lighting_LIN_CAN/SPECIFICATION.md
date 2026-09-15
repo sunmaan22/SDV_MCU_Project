@@ -130,7 +130,7 @@ flowchart LR
 | OUT-BODY-003 | `Lamp_Status` | Gateway | LIN | flags | periodic/event | slave valid |
 | OUT-BODY-004 | `Lamp_Diagnostic` | Gateway | LIN | fault flags | periodic/event | valid fault state |
 | OUT-BODY-005 | `Body_Status` | VCU/H735/HPC | CAN FD | lamp/LIN health (ambient 없음) | periodic/event | gateway valid |
-| OUT-BODY-006 | DTC/Fault Event | DTC Manager/H735 | CAN FD | code/status | event | fault detected |
+| OUT-BODY-006 | DTC/Fault Event | H735(직접 구독)/VCU(안전 판단) | CAN FD | code/status | event | fault detected |
 
 ---
 
@@ -210,7 +210,7 @@ UI 직접 구현은 N/A. H735가 다음 정보를 표시할 수 있다.
 |---|---|---|---|---|---|
 | `Body_Command` | RX | VCU/H735 | Event/Periodic TBD | TBD | command invalid |
 | `Body_Status` | TX | VCU/H735/HPC | Periodic TBD | N/A | status publish |
-| `DTC_Event` | TX | Pi/H735 | Event | N/A | fault publish |
+| `DTC_Event` | TX | H735/VCU | Event | N/A | fault publish |
 | `ECU_Heartbeat` | TX | VCU/HPC | Periodic TBD | N/A | alive |
 
 ## 10.3 LIN

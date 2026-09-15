@@ -4,7 +4,9 @@
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
-> **2026-09-15 범위 변경:** `Driver_Input`(가속/브레이크/조향) 입력을 VCU가 직접 GPIO/ADC로 읽던 시험 항목을 삭제하고, C가 발행한 `Driver_Input` CAN 수신 시험으로 대체했다. Gear/E-Stop 시험은 유지한다. `Vision_Request`는 `ADAS_Request`로, Parking Critical 우선순위 시험을 강화했다.
+> **2026-09-15 범위 변경 (1차):** `Driver_Input`(가속/브레이크/조향) 입력을 VCU가 직접 GPIO/ADC로 읽던 시험 항목을 삭제하고, C가 발행한 `Driver_Input` CAN 수신 시험으로 대체했다. `Vision_Request`는 `ADAS_Request`로, Parking Critical 우선순위 시험을 강화했다.
+>
+> **2026-09-15 범위 변경 (2차):** Gear/E-Stop을 VCU 자체 GPIO로 시험하던 항목을 삭제했다. F는 Driver/Gear/E-Stop 입력용 GPIO가 없으며, `Driver_Input.gear`/`estop_status` CAN 수신 시험으로 대체한다. DTC는 Pi 저장 시험 없이 실시간 표시만 확인한다.
 
 > 목적: VCU 기능 요구사항과 FreeRTOS 실행 구조를 실제 시험으로 검증한다. 현재는 실행 전 계획 상태이므로 결과는 `NOT RUN / TBD`로 둔다.
 
@@ -23,7 +25,7 @@
 
 # 1. Test Objective
 
-Gear/E-Stop(VCU 자체 입력), `Driver_Input`(CAN, C 발행), `ADAS_Request`, `Ultrasonic_Status`, Safety/Fault를 조합했을 때 VCU가 예상한 최종 명령을 만들고, timeout/critical fault/RTOS load 조건에서도 stale 또는 위험한 명령을 유지하지 않는지 검증한다. Ultrasonic Parking Critical이 `ADAS_Request`보다 항상 우선함을 별도로 검증한다.
+`Driver_Input`(CAN, C 발행 — gear/estop_status 포함), `ADAS_Request`, `Ultrasonic_Status`, Safety/Fault를 조합했을 때 VCU가 예상한 최종 명령을 만들고, timeout/critical fault/RTOS load 조건에서도 stale 또는 위험한 명령을 유지하지 않는지 검증한다. Ultrasonic Parking Critical이 `ADAS_Request`보다 항상 우선함을 별도로 검증한다.
 
 # 2. Test Environment
 
@@ -33,8 +35,8 @@ Gear/E-Stop(VCU 자체 입력), `Driver_Input`(CAN, C 발행), `ADAS_Request`, `
 | RTOS | FreeRTOS version TBD |
 | CMSIS-RTOS | v2 |
 | CAN FD Transceiver | TBD |
-| VCU 자체 물리 입력 | Gear/E-Stop |
-| `Driver_Input` 소스 | Drive ECU(C) CAN 발행, dummy/real |
+| VCU 자체 물리 입력 | 없음 (전부 CAN 수신) |
+| `Driver_Input` 소스 | Drive ECU(C) CAN 발행 (accel/brake/steering/gear/estop_status), dummy/real |
 | Debug | STM32CubeIDE / ST-Link / UART / CAN logger 후보 |
 | CAN bitrate | TBD |
 
@@ -61,8 +63,8 @@ Gear/E-Stop(VCU 자체 입력), `Driver_Input`(CAN, C 발행), `ADAS_Request`, `
 
 | Input | Condition | Expected | Actual | Result |
 |---|---|---|---|---|
-| Gear (VCU 자체) | P/R/N/D | defined enum | NOT RUN | TBD |
-| E-Stop (VCU 자체) | inactive/active | safety flag follows | NOT RUN | TBD |
+| `Driver_Input.gear` (CAN, C 발행) | P/R/N/D | defined enum | NOT RUN | TBD |
+| `Driver_Input.estop_status` (CAN, C 발행) | inactive/active | safety flag follows | NOT RUN | TBD |
 | `Driver_Input.accel` (CAN, C 발행) | min/mid/max | 값 반영 | NOT RUN | TBD |
 | `Driver_Input.brake` (CAN, C 발행) | min/mid/max | 값 반영 | NOT RUN | TBD |
 | `Driver_Input.steer` (CAN, C 발행) | left/center/right | 값 반영 | NOT RUN | TBD |
@@ -115,7 +117,6 @@ Gear/E-Stop(VCU 자체 입력), `Driver_Input`(CAN, C 발행), `ADAS_Request`, `
 | SafetyTask | event + fast periodic | Highest | NOT RUN | TBD |
 | VcuControlTask | 5~10 ms 후보 | High | NOT RUN | TBD |
 | CanRxTask | event | High | NOT RUN | TBD |
-| LocalInputTask | 10~20 ms 후보 | High/Normal | NOT RUN | TBD |
 | CanTxTask | event/periodic | Normal/High | NOT RUN | TBD |
 | DiagnosticTask | event/periodic | Normal/Low | NOT RUN | TBD |
 | HealthTask | 50~100 ms 후보 | Low/Normal | NOT RUN | TBD |
@@ -155,7 +156,9 @@ Gear/E-Stop(VCU 자체 입력), `Driver_Input`(CAN, C 발행), `ADAS_Request`, `
 
 # 10. DTC / Diagnostics Test
 
-| Fault | Expected DTC/Status | Pi Stored? | H735 Displayed? | Safe Action? | Result |
+> Pi DTC Manager/History DB는 삭제됐다. 저장 여부 시험이 아니라 **B(IVI) 실시간 표시**와 fault 해소 시 화면에서 사라지는지를 확인한다.
+
+| Fault | Expected DTC/Status | H735 Displayed (Active)? | 해소 시 화면에서 사라짐? | Safe Action? | Result |
 |---|---|---|---|---|---|
 | Driver input invalid | VCU input DTC candidate | NOT RUN | NOT RUN | policy | TBD |
 | Drive heartbeat lost | communication DTC | NOT RUN | NOT RUN | candidate yes | TBD |

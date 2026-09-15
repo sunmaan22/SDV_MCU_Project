@@ -10,7 +10,9 @@
 > 주차 경과는 동결 근거가 아니다. 계측용 bench/skeleton은 OPEN 값으로 가능하며 최종 상수와 구분한다.
 > 상세 조건: [최상위 명세 §7.1](../system/FINAL_IMPLEMENTATION_SPEC.md#71-단계별-동결-시점).
 
-> **2026-09-15 범위 변경:** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. 주차는 Ultrasonic 4방향 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
+> **2026-09-15 범위 변경 (1차):** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. 주차는 Ultrasonic 4방향 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
+>
+> **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear/E-Stop 입력용 GPIO가 없다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
 
 # 역할
 
@@ -18,10 +20,10 @@
 |---|---|---|
 | A | Ultrasonic / 인지 (4방향) | STM32 + FreeRTOS |
 | B | H735 Cluster + IVI / UI | STM32H735 + FreeRTOS + TouchGFX |
-| C | Motor + Steering / 제어 + Driver Input | STM32 + FreeRTOS |
+| C | Motor + Steering / 제어 + Driver Input(Gear/E-Stop 포함) | STM32 + FreeRTOS |
 | D | Lighting / LIN-CAN | STM32 Gateway + STM32 LIN Slave + FreeRTOS |
 | E | HPC + Front Camera Vision (COCO) | Raspberry Pi Linux |
-| F | VCU + DTC + CAN Integration | STM32 + FreeRTOS |
+| F | VCU + DTC + CAN Integration (물리 GPIO 없음) | STM32 + FreeRTOS |
 
 ---
 
@@ -53,7 +55,7 @@ Watchdog / Health 구조
 |---|---|
 | A | Ultrasonic 1개 측정 → Timer ISR + UltrasonicTask 구조 |
 | B | TouchGFX Dummy UI → GuiTask + VehicleModelTask + CanRxTask skeleton |
-| C | PWM/DIR/Servo + RF/가변저항 Driver Input → ControlTask + DriverInputTask skeleton |
+| C | PWM/DIR/Servo + RF/가변저항/Gear/E-Stop Input → ControlTask + DriverInputTask skeleton (E-Stop 로컬 즉시 차단 포함) |
 | D | Lighting 단독 + Gateway/Slave FreeRTOS skeleton + LIN 기본 통신 |
 | E | Pi Front camera capture, Linux service 구조 초안 |
 | F | VCU state dummy → SafetyTask/VcuControlTask/CanRxTask skeleton |
@@ -163,9 +165,8 @@ B/F Body Request
 ```text
 Local Fault
 → DiagnosticTask / HealthTask
-→ DTC Event
-→ Pi DTC Manager
-→ H735 Diagnostics
+→ DTC Event (CAN, 직접)
+→ H735 Diagnostics (실시간, History 없음)
 ```
 
 MCU Node는 가능한 경우 다음까지 구현한다.
@@ -206,7 +207,7 @@ Front Vision 상시 active (Gear 무관)
 - [ ] Heartbeat timeout
 - [ ] Sensor disconnect
 - [ ] Camera service failure
-- [ ] DTC Active/History/Clear
+- [ ] DTC Active 실시간 표시 / 소스의 해소 통보 시 제거 (History 없음)
 
 ## RTOS 측정
 
@@ -247,7 +248,7 @@ Power ON
 → CAN → Gateway → LIN → Lamp
 → 감속 감지 → brake_lamp 자동 점등 → CAN → Gateway → LIN → Lamp
 → Sensor/Camera/Communication Fault
-→ DTC → Pi → H735
+→ DTC Event(CAN) → H735 (실시간 표시)
 ```
 
 최종 목표는 단순히 RTOS를 사용했다는 것이 아니라 **각 Task의 책임, 우선순위, 데이터 전달, Fault 대응을 설명하고 실제 Timing을 측정할 수 있는 시스템**을 만드는 것이다.

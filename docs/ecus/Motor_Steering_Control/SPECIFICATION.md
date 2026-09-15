@@ -2,7 +2,9 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
-> **2026-09-15 범위 변경:** Encoder/Hall 실측 Feedback을 삭제했다 (`DEC-HW-012`, `DEC-CTRL-017` REMOVED). C는 RF 리모컨 또는 가변저항 기반 Driver 입력을 직접 읽어 `Driver_Input`을 CAN으로 발행하는 owner가 되었고(publisher가 F에서 C로 이전), `Motor_RPM`/`Vehicle_Speed`는 Motor 명령값(PWM 등) 기반 추정 함수 결과로 대체한다 (`DEC-CTRL-021`, 실측 아님). 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1.1, §3.3, §4.5, §4.6(C 발행 표는 `Driver_Input`이 아니라 §3 공통 계약 참고), §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경 (1차):** Encoder/Hall 실측 Feedback을 삭제했다 (`DEC-HW-012`, `DEC-CTRL-017` REMOVED). C는 RF 리모컨 또는 가변저항 기반 Driver 입력을 직접 읽어 `Driver_Input`을 CAN으로 발행하는 owner가 되었고(publisher가 F에서 C로 이전), `Motor_RPM`/`Vehicle_Speed`는 Motor 명령값(PWM 등) 기반 추정 함수 결과로 대체한다 (`DEC-CTRL-021`, 실측 아님).
+>
+> **2026-09-15 범위 변경 (2차):** E-Stop과 Gear 물리 입력도 F에서 C로 이전했다 (`DEC-HW-020`, `DEC-HW-026` FROZEN owner node). C는 E-Stop을 로컬 GPIO/EXTI로 직접 읽어 CAN과 무관하게 즉시 Motor Driver Enable/STBY를 차단하고, Gear/E-Stop 상태를 `Driver_Input`에 포함해 CAN 발행한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1, §1.2, §3.1, §4.8.1, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -30,6 +32,7 @@
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial filled example with FreeRTOS |
 | v0.2 | 2026-09-15 | Team | Encoder/Hall 실측 Feedback 삭제, RF/가변저항 Driver 입력 읽기(`DriverInputTask`, `Driver_Input` publisher를 C로 이전) 추가, Motor_RPM/Vehicle_Speed를 명령값 기반 추정 함수로 대체 |
+| v0.3 | 2026-09-15 | Team | E-Stop/Gear 물리 입력을 F에서 C로 이전. E-Stop은 로컬 즉시 차단(CAN 비의존), Gear는 `Driver_Input`에 포함해 CAN 발행 |
 
 ---
 
@@ -37,12 +40,14 @@
 
 ## 1.1 한 문장 설명
 
-> Drive + Steering ECU는 RF 리모컨 또는 가변저항으로 들어오는 Driver 입력을 읽어 `Driver_Input`으로 CAN에 발행하고, VCU가 CAN FD로 전달한 최종 속도/조향 명령을 검증해 Motor와 Steering Actuator가 사용할 실제 출력으로 변환하며, 명령값 기반 추정 Speed/RPM과 ECU 상태를 다시 차량 네트워크에 제공한다.
+> Drive + Steering ECU는 RF 리모컨 또는 가변저항으로 들어오는 Driver 입력(가속/브레이크/조향)과 Gear/E-Stop 물리 입력을 읽어 `Driver_Input`으로 CAN에 발행하고, VCU가 CAN FD로 전달한 최종 속도/조향 명령을 검증해 Motor와 Steering Actuator가 사용할 실제 출력으로 변환하며, 명령값 기반 추정 Speed/RPM과 ECU 상태를 다시 차량 네트워크에 제공한다. E-Stop은 CAN과 무관하게 로컬에서 즉시 처리한다.
 
 ## 1.2 포함 범위
 
 - RF 수신기 또는 가변저항 기반 Driver 입력(가속/브레이크/조향) 읽기
-- `Driver_Input` CAN 발행 (C가 publisher)
+- Gear(P/R/N/D) 물리 입력 읽기
+- E-Stop 물리 입력 읽기 + 로컬 즉시 Motor Driver Enable/STBY 차단 (CAN 비의존)
+- `Driver_Input` CAN 발행 (C가 publisher; accel/brake/steering/gear/estop_status 포함)
 - VCU의 최종 Drive / Steering Command 수신
 - Command 유효성 및 Timeout 검증
 - Brushed DC Motor PWM / Direction 제어
@@ -59,15 +64,15 @@
 
 - Encoder/Hall 기반 실측 Feedback (삭제됨, `DEC-HW-012`/`DEC-CTRL-017` REMOVED)
 - Closed-loop Speed Control/PID (실측 feedback이 없으므로 범위 밖; `DEC-CTRL-018`은 OPEN으로 남지만 실측 기반 PID는 전제하지 않는다)
-- Gear P/R/N/D 최종 상태 결정
+- Gear P/R/N/D 최종 상태/모드 결정 (C는 읽어서 보고만 함, 최종 결정은 F)
 - ADAS Camera Processing
 - ADAS/Parking 요청의 최종 우선순위 판단
 - Ultrasonic 거리 계산
 - H735 UI Rendering
 - LIN Body Network
-- DTC History DB 저장
+- DTC History DB 저장 (Pi DTC Manager 삭제, `DEC-DTC-000` REMOVED)
 
-최종 Arbitration은 VCU가 담당한다. 이 ECU는 **Driver 입력을 읽어 발행하고, VCU가 승인한 최종 명령을 실제 Actuator 제어로 실행하는 Node**다.
+최종 Arbitration은 VCU가 담당한다. 이 ECU는 **Driver/Gear 입력을 읽어 발행하고(E-Stop만 예외적으로 로컬 즉시 차단), VCU가 승인한 최종 명령을 실제 Actuator 제어로 실행하는 Node**다.
 
 ---
 
@@ -77,11 +82,23 @@
 
 | Item | Description |
 |---|---|
-| Actor / Trigger | RF 수신기 또는 가변저항 하드웨어 |
+| Actor / Trigger | RF 수신기 또는 가변저항 하드웨어, Gear 스위치 |
 | Preconditions | ECU 초기화 완료, 입력 장치 연결 |
 | Trigger | 주기적 샘플링 |
-| Normal Flow | RF/가변저항 신호 read → `DriverInputTask` 처리 → 가속/브레이크/조향 값 산출 → `Driver_Input` CAN 발행 |
+| Normal Flow | RF/가변저항/Gear 신호 read → `DriverInputTask` 처리 → 가속/브레이크/조향/gear 값 산출 → `Driver_Input` CAN 발행 |
 | Postconditions | F(VCU)가 최신 Driver 입력을 받아 최종 명령 산출에 사용할 수 있음 |
+
+## 2.1.1 E-Stop 로컬 즉시 차단
+
+| Item | Description |
+|---|---|
+| Actor / Trigger | E-Stop 스위치 GPIO/EXTI |
+| Preconditions | ECU 초기화 완료 |
+| Trigger | E-Stop 활성화 (눌림) |
+| Normal Flow | EXTI ISR 감지 → Motor Driver Enable/STBY 즉시 로컬 차단 (CAN/RTOS Task 경유 없이 최소 지연) → `DriverInputTask`가 `estop_status`를 `Driver_Input`에 포함해 CAN 발행 |
+| Postconditions | CAN 통신 상태와 무관하게 모터가 즉시 정지 상태가 되고, F는 후속 CAN 프레임으로 상태를 인지함 |
+
+E-Stop 차단은 이 ECU에서 가장 높은 우선순위로 처리하며, VCU의 `Final_Drive_Command` 수신 여부와 무관하게 동작한다.
 
 ## 2.2 정상 Drive Command
 
@@ -121,8 +138,11 @@
 
 ```mermaid
 flowchart TD
-    RF[RF 수신기 / 가변저항] --> DI[DriverInputTask]
-    DI --> DIPUB[Driver_Input CAN TX]
+    ESTOP[E-Stop GPIO/EXTI] -->|즉시, CAN 비의존| ESACT[Motor Enable/STBY 로컬 차단]
+    ESTOP --> DI
+
+    RF[RF 수신기 / 가변저항 / Gear] --> DI[DriverInputTask]
+    DI --> DIPUB[Driver_Input CAN TX<br/>accel/brake/steering/gear/estop_status]
 
     A[VCU CAN Command] --> B[CanRxTask]
     B --> C[Command Validation]
@@ -146,12 +166,16 @@ flowchart TD
 | Input ID | Input | Source | Interface | Unit / Range | Valid Condition | Update / Trigger |
 |---|---|---|---|---|---|---|
 | IN-DRV-001 | RF 수신기 또는 가변저항 신호 | Driver 입력 장치 | PWM capture / ADC (`DEC-HW-024`) | 채널별 pulse/ADC raw | 신호 정상 범위 | 주기적 샘플링 |
+| IN-DRV-001a | Gear 스위치 신호 | Gear 입력 장치 | GPIO/ADC (`DEC-HW-026`/`DEC-HW-028`) | P/R/N/D 상태 | 신호 정상 범위 | 주기적 샘플링 |
+| IN-DRV-001b | E-Stop 스위치 신호 | E-Stop 입력 장치 | GPIO/EXTI (`DEC-HW-020`/`DEC-HW-027`) | active/inactive | 신호 정상 범위 | Event(EXTI) |
 | IN-DRV-002 | `Final_Speed_Request` | VCU | CAN FD | `%` 또는 project speed unit, TBD | valid flag / range / timeout 정상 | Periodic/Event TBD |
 | IN-DRV-003 | `Final_Steering_Request` | VCU | CAN FD | deg 또는 normalized %, TBD | 허용 Steering range | Periodic/Event TBD |
 | IN-DRV-004 | `Drive_Enable` | VCU | CAN FD | bool | defined enum/bool | Periodic/Event TBD |
-| IN-DRV-005 | `Vehicle_Gear` / Direction info | VCU | CAN FD | P/R/N/D enum | defined value | Periodic/Event TBD |
+| IN-DRV-005 | `Vehicle_Gear` / Direction info (F가 arbitration한 확정 방향) | VCU | CAN FD | P/R/N/D enum | defined value | Periodic/Event TBD |
 | IN-DRV-006 | Steering feedback, 선택 확장 | Steering sensor | ADC/I2C | angle, TBD | sensor valid | Periodic TBD |
 | IN-DRV-007 | Motor temperature, 선택 확장 | Temperature sensor | ADC/I2C | °C | sensor valid | Periodic TBD |
+
+IN-DRV-005는 C가 로컬로 읽은 IN-DRV-001a(원시 Gear)와 다르다 — C가 보낸 Gear를 F가 검증/중재한 뒤 최종 방향으로 돌려주는 값이다.
 
 `Final_Speed_Request`, `Vehicle_Gear`, `Drive_Enable`을 하나의 CAN frame으로 묶을지 별도 signal로 둘지는 공통 CAN Matrix에서 확정한다 (최상위 명세 `Final_Drive_Command` 통합 계약과의 정합은 CAN Matrix 확정 시 함께 정리한다). RF/가변저항 중 실제 채택 장치는 `DEC-HW-024`에서 확정한다.
 
@@ -161,7 +185,8 @@ flowchart TD
 
 | Output ID | Output | Destination | Interface | Unit / Range | Update / Event | Valid Condition |
 |---|---|---|---|---|---|---|
-| OUT-DRV-000 | `Driver_Input` (가속/브레이크/조향) | VCU(F) | CAN FD | TBD (`DEC-CTRL-019` 선형 매핑) | 주기적 | 입력 신호 valid |
+| OUT-DRV-000 | `Driver_Input` (가속/브레이크/조향/gear/estop_status) | VCU(F) | CAN FD | TBD (`DEC-CTRL-019` 선형 매핑) | 주기적 | 입력 신호 valid |
+| OUT-DRV-000a | Motor Driver Enable/STBY 로컬 차단 | Motor Driver | GPIO | E-Stop active 시 즉시 disable | E-Stop event | CAN/RTOS Task 비의존 |
 | OUT-DRV-001 | Motor PWM | Motor Driver | Timer PWM | duty %, actual range TBD | ControlTask period | Drive enabled / command valid |
 | OUT-DRV-002 | Motor Direction | Motor Driver | GPIO | Forward/Reverse/Stop | command change | valid command |
 | OUT-DRV-003 | Motor Driver Enable/Standby | Motor Driver | GPIO | bool | state change | ECU state |
@@ -180,7 +205,9 @@ flowchart TD
 
 | Requirement ID | Requirement | Priority | Verification | Related Test |
 |---|---|---|---|---|
-| REQ-DRV-001 | ECU는 RF 수신기 또는 가변저항 입력을 읽어 `Driver_Input`으로 CAN 발행해야 한다. | MUST | Test | T-DRV-001 |
+| REQ-DRV-001 | ECU는 RF 수신기 또는 가변저항 입력과 Gear 입력을 읽어 `Driver_Input`으로 CAN 발행해야 한다. | MUST | Test | T-DRV-001 |
+| REQ-DRV-001a | ECU는 E-Stop 입력을 로컬에서 감지하고 CAN 통신 상태와 무관하게 즉시 Motor Driver를 disable해야 한다. | MUST | Fault Test | T-DRV-001a |
+| REQ-DRV-001b | ECU는 E-Stop 상태를 `Driver_Input.estop_status`로 CAN 발행해야 한다. | MUST | Test | T-DRV-001b |
 | REQ-DRV-002 | ECU는 VCU가 전송한 최종 Drive/Steering Command를 수신해야 한다. | MUST | Test | T-DRV-002 |
 | REQ-DRV-003 | ECU는 유효하지 않거나 정의 범위를 벗어난 Command를 그대로 Actuator에 적용하지 않아야 한다. | MUST | Fault Test | T-DRV-003 |
 | REQ-DRV-004 | ECU는 `Drive_Enable=false` 또는 허용되지 않은 Vehicle State에서 Motor 구동 출력을 비활성화해야 한다. | MUST | Test | T-DRV-004 |
@@ -212,6 +239,8 @@ flowchart TD
 | RULE-DRV-007 | Gear/Direction 상태 불일치 | Motor direction 변경 전 안전 정책 적용, 상세 TBD |
 | RULE-DRV-008 | Critical Local Fault | VCU에 Fault 상태 통보, 필요 시 local output safe state |
 | RULE-DRV-009 | Speed/RPM 추정값 | 항상 "estimated" 임을 CAN 소비자가 식별 가능한 형태로 제공 |
+| RULE-DRV-010 | E-Stop active | CAN 수신/발행 여부와 무관하게 Motor Driver Enable/STBY 즉시 disable, 최우선 처리 |
+| RULE-DRV-011 | E-Stop 해제(복귀) | 자동 재개 금지 — 복귀 조건은 `DEC-CTRL-006`(E-Stop recovery 정책) 확정 후 반영 |
 
 Motor direction 전환, Steering timeout 시 위치는 실제 Motor/Servo/차체 기구를 확인한 뒤 확정한다.
 
@@ -226,6 +255,7 @@ Motor direction 전환, Steering timeout 시 위치는 실제 Motor/Servo/차체
 | EDGE-DRV-003 | Speed request out-of-range | range check | reject/clamp + fault policy | valid request |
 | EDGE-DRV-004 | Steering request out-of-range | range check | mechanical limit 밖 command 금지 | valid request |
 | EDGE-DRV-005 | Driver 입력 신호 missing/disconnect | signal timeout | `Driver_Input` invalid, 안전 기본값 | 신호 복구 |
+| EDGE-DRV-005a | E-Stop 신호선 disconnect/미연결 | 신호 미검출 | fail-safe 기본값 정책 필요(TBD) — 신호 없음을 active로 볼지 별도 fault로 볼지 확정 | `DEC-HW-027` 회로 확정 후 결정 |
 | EDGE-DRV-006 | Queue full | RTOS queue API/result | drop/overwrite/health flag policy | queue drains |
 | EDGE-DRV-007 | ControlTask overrun | runtime timestamp/health | health fault, timing evidence | load/root cause fix |
 | EDGE-DRV-008 | CAN burst | queue occupancy / timing | ControlTask deadline 유지 | load normal |
@@ -258,15 +288,17 @@ Drive + Steering ECU
 | TB6612FNG 후보 | PWM / Direction / Standby | Datasheet + Board logic 기준 | Motor Stall Current 적합성 확인 후 확정 |
 | RC Servo | Timer PWM | Servo spec 기준 | pulse/angle은 실제 Servo calibration 기준 |
 | RF 수신기 또는 가변저항 | PWM capture / ADC | `DEC-HW-024` 확정 후 기준 | 채택 장치에 따라 인터페이스 확정 |
+| Gear 스위치 | GPIO/ADC | `DEC-HW-026`/`DEC-HW-028` 확정 후 기준 | 버튼/로터리/ADC selector 중 확정 |
+| E-Stop 스위치 | GPIO/EXTI | `DEC-HW-020`/`DEC-HW-027` 확정 후 기준 | pull-up/down, debounce 확정 필요 |
 | CAN FD Transceiver | FDCAN ↔ CANH/L | selected part 기준 | 실제 STM32/FDCAN 지원 여부 확인 |
 
-MCU GPIO에서 DC Motor를 직접 구동하지 않는다. Encoder/Hall 하드웨어는 이 ECU에 연결하지 않는다.
+MCU GPIO에서 DC Motor를 직접 구동하지 않는다. Encoder/Hall 하드웨어는 이 ECU에 연결하지 않는다. E-Stop 스위치는 Motor Driver Enable/STBY 라인을 로컬에서 직접(또는 최소 경로로) 차단할 수 있는 배선을 우선 검토한다.
 
 ## 10.2 CAN / CAN FD
 
 | Message / Signal | TX/RX | Owner / Peer | Unit | Cycle/Event | Timeout | Timeout Action |
 |---|---|---|---|---|---|---|
-| `Driver_Input` | TX | C → VCU | TBD | TBD | N/A | local log if send fail |
+| `Driver_Input` | TX | C → VCU | TBD (accel/brake/steering/gear/estop_status) | TBD | N/A | local log if send fail |
 | `Final_Speed_Request` | RX | VCU | TBD | TBD | TBD | Motor safe state |
 | `Final_Steering_Request` | RX | VCU | TBD | TBD | TBD | steering safe/degraded policy TBD |
 | `Drive_Enable` | RX | VCU | bool | TBD | TBD | output disable |
@@ -274,7 +306,7 @@ MCU GPIO에서 DC Motor를 직접 구동하지 않는다. Encoder/Hall 하드웨
 | `Drive_Status` | TX | VCU/H735/HPC | struct | periodic TBD | N/A | health/log |
 | `Motor_RPM` (estimated) | TX | VCU/H735/HPC | rpm | periodic TBD | N/A | 항상 estimated 표시 |
 | `Steering_Status` | TX | VCU/H735/HPC | TBD | periodic TBD | N/A | valid flag |
-| `DTC_Event` | TX | Pi/H735/VCU | code/status | event | N/A | event/log |
+| `DTC_Event` | TX | H735/VCU | code/status | event | N/A | event/log (Pi History 없음, B가 실시간 표시) |
 | `ECU_Heartbeat` | TX | VCU/HPC | alive/health | periodic TBD | N/A | network health |
 
 CAN ID, DLC, scale, offset, endian은 공통 CAN Matrix에서 확정한다.
@@ -313,9 +345,11 @@ N/A for MCU external interface. 내부 RTOS Queue/Notification은 Architecture�
 |---|---|---|---|---|---|
 | `CanRxTask` | VCU command decode/validate | CAN event | High | command update latency TBD | 긴 blocking 금지 |
 | `ControlTask` | speed/steering final control, PWM update, 명령값 기반 speed/RPM 추정 | 5~10 ms 후보 | Highest application | period 내 완료 | blocking log 금지 |
-| `DriverInputTask` | RF/가변저항 read, `Driver_Input` 산출 | 5~10 ms 후보 / event | High | next control cycle 전 최신화 목표 | 긴 blocking 금지 |
+| `DriverInputTask` | RF/가변저항/Gear read, `Driver_Input`(estop_status 포함) 산출 | 5~10 ms 후보 / event | High | next control cycle 전 최신화 목표 | 긴 blocking 금지 |
 | `CanTxTask` | `Driver_Input`/`Drive_Status`/Heartbeat 송신 | 20~50 ms 후보 + event | Normal | status period | CAN TX queue 사용 |
 | `HealthTask` | timeout/task/queue/stack health | 50~100 ms 후보 | Low/Normal | health period | 짧은 처리 |
+
+E-Stop은 별도 Task가 아니라 **EXTI ISR에서 즉시 처리**한다 (아래 12.3 참고) — Task 스케줄링 지연조차 감수하지 않는 가장 빠른 경로다.
 
 정확한 Priority 숫자와 Stack은 실측 후 확정한다. Encoder 삭제로 기존 `FeedbackTask`는 제거되었다.
 
@@ -335,8 +369,11 @@ N/A for MCU external interface. 내부 RTOS Queue/Notification은 Architecture�
 | Interrupt | ISR이 해야 하는 일 | Task로 넘길 일 | Constraint |
 |---|---|---|---|
 | Driver Input capture (PWM/ADC), 필요 시 | raw sample/timestamp 최소 저장 | 값 변환/valid 판단 | printf/blocking 금지 |
+| **E-Stop EXTI** | **Motor Driver Enable/STBY GPIO 즉시 비활성 레벨 설정 (ISR 내부에서 직접 수행), `DriverInputTask` notify** | estop_status를 `Driver_Input`에 반영해 CAN 발행 | 이 ECU에서 유일하게 "안전 액션을 ISR이 직접 수행"하는 예외 — 로컬 차단 외 printf/blocking/제어 연산 금지는 유지 |
 | FDCAN RX | frame handle/copy + task wake | decode/validity | 최소 처리 |
 | Timer update, 필요 시 | timestamp/event | control computation | Control algorithm ISR 실행 금지 |
+
+E-Stop 차단은 이후 ControlTask나 수신 command가 덮어쓰지 못하도록 유지한다. 부팅 시 E-Stop active도 확인하고, 해제 후 재구동은 `DEC-CTRL-006` 복구 조건을 따른다. ISR의 GPIO 차단은 짧고 nonblocking이어야 하며, RTOS notify는 해당 IRQ 우선순위에서 허용될 때만 사용한다. 그렇지 않으면 상태를 latch하고 Task에서 읽는다. IRQ 우선순위와 비활성 극성은 하드웨어/RTOS 설정 확정 후 검증한다.
 
 ## 12.4 Resource / Memory Requirement
 
@@ -366,6 +403,7 @@ N/A for MCU external interface. 내부 RTOS Queue/Notification은 Architecture�
 
 | Fault | Detection | Safe / Local Action | DTC Candidate | Recovery |
 |---|---|---|---|---|
+| E-Stop active | GPIO/EXTI | Motor Driver Enable/STBY 즉시 disable (로컬, CAN 비의존) | `DRV_ESTOP_ACTIVE` 후보 | E-Stop 해제 + `DEC-CTRL-006` recovery 정책 |
 | VCU command timeout | timestamp | Motor safe state | `DRV_COMM_TIMEOUT` 후보 | fresh valid command + policy |
 | Driver Input signal unavailable | signal timeout | `Driver_Input` invalid / 안전 기본값 | `DRV_INPUT_TIMEOUT` 후보 | 신호 recovery |
 | Steering feedback invalid, 확장 시 | sensor validity | safe/degraded steering policy | `STR_FEEDBACK_INVALID` 후보 | valid sensor |
@@ -382,7 +420,8 @@ TB6612FNG 자체에서 Fault Pin이 제공되는 것으로 가정하지 않는�
 - [ ] Power ON 직후 Motor가 의도치 않게 구동되지 않는다.
 - [ ] 낮은 출력의 bench 조건에서 Motor PWM/DIR 동작을 확인한다.
 - [ ] Servo Center / Left / Right 동작과 기구 한계를 기록한다.
-- [ ] RF/가변저항 입력을 읽어 `Driver_Input`을 CAN으로 발행한다.
+- [ ] RF/가변저항/Gear 입력을 읽어 `Driver_Input`을 CAN으로 발행한다.
+- [ ] E-Stop 활성화 시 CAN 없이도 Motor Driver가 즉시 disable됨을 확인한다.
 - [ ] Motor 명령값 기반 Speed/RPM 추정값을 산출하고, 이 값이 estimated임을 확인한다.
 - [ ] VCU dummy/real CAN Command를 수신해 Motor/Steering output에 반영한다.
 - [ ] Command Timeout 시 오래된 Motor Command가 유지되지 않는다.
@@ -404,6 +443,8 @@ TB6612FNG 자체에서 Fault Pin이 제공되는 것으로 가정하지 않는�
 | TBD-DRV-002 | Motor 모델 / Voltage / Rated Current / Stall Current | C | Motor 선정 |
 | TBD-DRV-003 | TB6612FNG 사용 확정 여부 | C | Motor spec 비교 후 |
 | TBD-DRV-004 | RF 리모컨 vs 가변저항 최종 선택 | C | `DEC-HW-024` |
+| TBD-DRV-004a | E-Stop 스위치 회로/부품 (pull-up/down, debounce) | C | `DEC-HW-027` |
+| TBD-DRV-004b | Gear 입력 회로/부품 (버튼 개수 vs 로터리 vs ADC selector) | C | `DEC-HW-028` |
 | TBD-DRV-005 | Servo 모델 / calibration / mechanical range | C | Servo/기구 조립 후 |
 | TBD-DRV-006 | Motor PWM frequency | C | Driver/Motor 시험 후 |
 | TBD-DRV-007 | Speed control unit / scale | C/F | CAN Matrix 확정 |

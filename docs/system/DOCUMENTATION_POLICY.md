@@ -68,8 +68,7 @@ TEST_REPORT.md
 | `Final_Drive_Command` | F |
 | `Body_Command` | F |
 | `Vehicle_State` | F |
-| `Driver_Input` | C |
-| DTC History DB | Raspberry Pi DTC Manager |
+| `Driver_Input` (accel/brake/steering/gear/estop_status) | C |
 
 같은 최종 데이터를 여러 Node가 동시에 publish하지 않는다.
 
@@ -89,7 +88,8 @@ E-Stop / Critical Fault
 - `VcuControlTask`만 final command를 작성한다.
 - Drive ECU가 `Final_Drive_Command` timeout을 감지한다.
 - VCU는 peer status/heartbeat timeout을 감지한다.
-- DTC local detection은 각 Node, safety/severity integration은 VCU, History DB는 Pi, 표시는 H735가 담당한다.
+- DTC local detection은 각 Node, safety/severity integration은 VCU, 실시간 표시는 H735가 담당한다. History DB/지속 저장은 없다 (2026-09-15 삭제, `DEC-DTC-000` REMOVED).
+- Gear/E-Stop 물리 입력은 C가 소유한다. E-Stop은 C가 로컬에서 즉시 차단하며(CAN 비의존), F는 `Driver_Input.estop_status`로 상태만 받는다.
 
 # 5. 실행 환경
 

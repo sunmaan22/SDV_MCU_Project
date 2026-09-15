@@ -2,7 +2,9 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
-> **2026-09-15 범위 변경:** Encoder/Hall 기반 Feedback 구조를 삭제했다 (`DEC-HW-012`, `DEC-CTRL-017` REMOVED). `FeedbackTask`/`FeedbackEstimator`/`CaptureAdapter`는 제거하고, RF/가변저항 Driver 입력을 읽는 `DriverInputTask`를 신설했다 (`Driver_Input` publisher가 F에서 C로 이전). `Motor_RPM`/`Vehicle_Speed`는 모터 명령값(PWM) 기반 추정 함수로 대체한다 (`DEC-CTRL-021`, 실측 아님). 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1.1, §3.3, §4.5, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경 (1차):** Encoder/Hall 기반 Feedback 구조를 삭제했다 (`DEC-HW-012`, `DEC-CTRL-017` REMOVED). `FeedbackTask`/`FeedbackEstimator`/`CaptureAdapter`는 제거하고, RF/가변저항 Driver 입력을 읽는 `DriverInputTask`를 신설했다 (`Driver_Input` publisher가 F에서 C로 이전). `Motor_RPM`/`Vehicle_Speed`는 모터 명령값(PWM) 기반 추정 함수로 대체한다 (`DEC-CTRL-021`, 실측 아님).
+>
+> **2026-09-15 범위 변경 (2차):** E-Stop/Gear GPIO를 F에서 C로 이전했다 (`DEC-HW-020`/`DEC-HW-026` FROZEN owner node). E-Stop은 EXTI ISR에서 Motor Driver Enable/STBY를 즉시 로컬 차단한다 (CAN 비의존, 이 ECU에서 유일하게 ISR이 안전 액션을 직접 수행하는 예외). `DriverInputTask`가 gear/estop_status를 `Driver_Input`에 포함해 CAN 발행한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1, §1.2, §3.1, §4.8.1, §6, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -28,6 +30,7 @@
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial filled RTOS architecture example |
 | v0.2 | 2026-09-15 | Team | Encoder/Hall Feedback 구조 삭제, `DriverInputTask` 신설(RF/가변저항 읽기 + `Driver_Input` publish), Motor_RPM/Vehicle_Speed를 명령값 기반 추정 함수로 대체 |
+| v0.3 | 2026-09-15 | Team | E-Stop/Gear GPIO를 F에서 C로 이전. E-Stop EXTI ISR 로컬 즉시 차단 경로 추가 |
 
 ---
 
@@ -191,9 +194,10 @@ Control / Estimated Speed / Fault
 | `MotorController` | speed target → PWM/DIR | command | motor output | calibration/control policy |
 | `SteeringController` | steering target → servo command | command | servo output | calibration |
 | `SpeedEstimator` | PWM 등 명령값 → estimated RPM/speed | motor output | rpm/speed(estimated) | 추정 함수(`DEC-CTRL-021`) |
-| `DriverInputAdapter` | RF/가변저항 raw sample 획득 | ISR/ADC event | raw sample | timer/ADC |
-| `DriverInputEstimator` | raw sample → accel/brake/steer 값 | raw sample | driver input struct | 선형 매핑(`DEC-CTRL-019`) |
-| `DriverInputRepository` | 최신 Driver 입력 보관 | estimator output | snapshot | DriverInputTask |
+| `DriverInputAdapter` | RF/가변저항/Gear raw sample 획득 | ISR/ADC event | raw sample | timer/ADC |
+| `DriverInputEstimator` | raw sample → accel/brake/steer/gear 값 | raw sample | driver input struct | 선형 매핑(`DEC-CTRL-019`) |
+| `DriverInputRepository` | 최신 Driver 입력(gear/estop_status 포함) 보관 | estimator output | snapshot | DriverInputTask |
+| `EstopLocalCutoff` | E-Stop EXTI에서 Motor Driver Enable/STBY 즉시 차단 | GPIO EXTI | GPIO write (즉시) | ISR, CAN 비의존 |
 | `FaultManager` | timeout/invalid/RTOS health | health inputs | fault state | timers/RTOS |
 | `StatusBuilder` | network status 구성 | command/output/estimate/fault | Drive_Status | repositories |
 | `CanTxService` | periodic/event CAN TX (`Driver_Input` 포함) | status/driver input | frame TX | FDCAN |
@@ -257,10 +261,12 @@ ControlTask
 | Interrupt | Peripheral / Source | ISR Responsibility | Wake-up Target | Mechanism |
 |---|---|---|---|---|
 | FDCAN RX | CAN frame arrival | 최소 frame metadata/copy | `CanRxTask` | Queue/Notification |
+| **E-Stop EXTI** | **GPIO EXTI** | **Motor Driver Enable/STBY GPIO를 ISR 내부에서 즉시 비활성 레벨로 설정 (예외적으로 안전 액션을 ISR이 직접 수행), 이후 notify** | `DriverInputTask` (상태를 `Driver_Input`에 반영) | GPIO write (즉시) + Notification |
 | Driver Input capture (PWM capture/ADC), 필요 시 | Timer/ADC | raw sample/timestamp only | `DriverInputTask` | Notification / capture buffer |
+| Gear GPIO change, 필요 시 | GPIO/EXTI 또는 polling | raw state only | `DriverInputTask` | Notification |
 | Timer Update, 필요 시 | periodic timing | timestamp/event only | relevant task | Notification |
 
-ISR에서 하지 않는 것:
+ISR에서 하지 않는 것 (E-Stop의 로컬 GPIO 차단은 예외):
 - 제어 연산 전체
 - 입력값 선형 매핑/추정 계산 전체
 - `printf`
@@ -400,6 +406,8 @@ sequenceDiagram
 | Driver Input (accel/brake) | RF 수신기/가변저항 | TBD | TIM Input Capture / ADC | IN | 채택 장치에 따라 확정 |
 | Driver Input (steering) | RF 수신기/가변저항 | TBD | TIM Input Capture / ADC | IN | 채택 장치에 따라 확정 |
 | Servo PWM | RC Servo | TBD | TIM PWM | OUT | servo spec 기준 |
+| E-Stop | E-Stop 스위치 | TBD | GPIO/EXTI | IN | Motor Enable/STBY 로컬 차단 경로와 연계, pull-up/down 확정 필요 |
+| Gear | Gear 스위치 | TBD | GPIO/ADC | IN | 버튼/로터리/ADC selector 중 확정 |
 | CAN TX/RX | Transceiver | TBD | FDCAN | I/O | schematic 확인 |
 
 ---
@@ -485,10 +493,12 @@ stateDiagram-v2
 - Timeout은 command freshness로 관리한다.
 - Driver Input 신호 invalid는 `Driver_Input.request_valid=false`로 분리한다.
 - output safe state는 local control path에서 빠르게 적용 가능해야 한다.
+- E-Stop만 예외적으로 ISR에서 즉시 안전 액션(Motor Driver disable)을 수행한다 — CAN이나 RTOS Task 스케줄링을 기다리지 않는다.
 
 ## 12.2 Diagnostics / DTC
 
 Local fault 후보:
+- E-Stop active (참고: 이 fault는 이미 로컬에서 즉시 처리됐고, DTC는 F/B에 상태를 알리는 용도)
 - VCU command timeout
 - Driver Input 신호 timeout/implausibility
 - CAN communication fault
@@ -496,7 +506,7 @@ Local fault 후보:
 - queue overflow
 - steering feedback fault, 확장 시
 
-DTC history 저장은 Pi DTC Manager가 담당하고, 이 ECU는 **fault detection + event/status 제공**을 담당한다.
+Pi DTC Manager/History DB는 삭제됐다 (`DEC-DTC-000` REMOVED). 이 ECU는 **fault detection + `DTC_Event` 발행**만 담당하며, 지속 저장은 어떤 Node도 하지 않는다 — B(IVI)가 실시간 표시만 한다.
 
 ## 12.3 Timing
 

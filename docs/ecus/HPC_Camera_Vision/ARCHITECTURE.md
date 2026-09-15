@@ -104,7 +104,7 @@ flowchart LR
     HPC -->|ADAS_Request| VCU
     HPC -->|Vision_Status| HMI[H735 Cockpit]
     HPC -->|Vision_Status| VCU
-    HPC -->|Local health/log| LOG[Logger / DTC Manager]
+    HPC -->|Local health/log| LOG[Local runtime logger]
 ```
 
 ## External Interfaces

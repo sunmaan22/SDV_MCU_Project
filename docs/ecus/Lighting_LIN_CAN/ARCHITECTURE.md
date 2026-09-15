@@ -324,7 +324,7 @@ Pin map은 실제 board schematic/CubeMX 후 작성한다.
 | Message | Meaning | Receiver | Cycle/Event |
 |---|---|---|---|
 | `Body_Status` | lamp/LIN health (ambient 없음) | VCU/H735/HPC | periodic TBD |
-| `DTC_Event` | Body fault | Pi/H735 | event |
+| `DTC_Event` | Body fault | H735/VCU | event |
 | `ECU_Heartbeat` | gateway alive | VCU/HPC | periodic TBD |
 
 ## 10.2 LIN
