@@ -1,5 +1,7 @@
 # Cluster + IVI Cockpit Functional Specification
 
+> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Parking/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: STM32H735 + TouchGFX Cockpit 기능이 **무엇을 해야 하는지** 정의한다.  
@@ -46,12 +48,26 @@
 - Ultrasonic / Rear Parking 상태
 - DTC 목록/상세
 - Lighting / Vehicle Setting Request UI
-- Touch 기반 화면 전환
+- Touch 기반 단일 Screen 내 패널 표시·숨김
 - CAN RX/TX
 - Signal validity / timeout
 - FreeRTOS Task 분리
 - Queue / Notification 기반 Task 간 데이터 전달
 - Health / Stack / Queue monitoring
+
+## 1.2.1 단일 Screen 표시 정책
+
+- 기존 Screen1을 Cockpit의 단일 Screen으로 사용한다. 5개 기능 영역은 유지하되 별도 Screen 전환을 요구하지 않는다.
+- Cluster의 속도/RPM/기어/READY와 경고 상태를 기본 영역에 표시한다. 480×272에서 모든 상세 항목을 동시에 펼치지 않고 필요한 패널을 여는 방식이다.
+- ADAS/Parking/Diagnostics/Settings는 Custom Container로 분리하고 일반 상세 패널은 한 번에 하나만 연다. 닫기/뒤로는 패널만 숨기며 기본 계기판으로 돌아간다.
+- 패널이 기본 계기판 영역을 덮는 배치에서는 속도·기어·READY와 주요 경고를 읽을 수 있는 축약 영역을 유지한다. 최종 픽셀 배치는 구현 시 확인한다.
+- 표시·숨김에는 Container의 가시성 제어와 redraw를 사용한다. 배경 터치를 차단해야 하는 확인 창은 ModalWindow를 사용할 수 있다.
+- 숨김 패널에는 터치가 전달되지 않아야 하며, 모달 배경 터치가 설정 요청을 발생시키면 안 된다. 단순 투명도 0을 숨김 처리로 사용하지 않는다.
+- 패널이 숨겨져도 Repository 수신·validity·timeout 처리는 계속한다. 다시 열면 최신 snapshot을 표시한다.
+- Critical Warning은 모든 일반 패널·확인 창보다 우선 보인다. 활성 critical 상태를 일반 패널 닫기로 해제하지 않는다.
+- Gear R 관련 자동 패널 호출/복귀 조건은 DEC-HMI-003의 기존 OPEN 결정을 유지한다. 수동 Parking 패널 접근은 제공한다.
+- 패널 열기·닫기 자체는 CAN 요청을 발생시키지 않는다. 명시적 조명 조작만 기존 UiCommandQueue → Body_User_Request → VCU 경로를 따른다.
+- 애니메이션은 선택 사항이다. 기본은 즉시 표시·숨김이며 부하·경고 지연을 실측한 후 효과를 추가한다.
 
 ## 1.3 제외 범위
 
@@ -92,7 +108,7 @@
 | Item | Description |
 |---|---|
 | Actor / Trigger | Driver touch |
-| Preconditions | Settings screen active |
+| Preconditions | Settings panel visible |
 | Trigger | Lighting toggle/select |
 | Normal Flow | GuiTask → Command Queue → CommandTxTask → Body_User_Request → VCU |
 | Postconditions | VCU가 Body_User_Request를 수신 가능. VCU가 최종 Body_Command를 결정하여 Body Gateway로 전달 |
@@ -156,7 +172,7 @@ flowchart TD
 | REQ-HMI-003 | ADAS 상태와 Warning을 표시해야 한다. | MUST | Test | T-HMI-003 |
 | REQ-HMI-004 | Ultrasonic 거리/Warning을 Parking 화면에 표시해야 한다. | MUST | Test | T-HMI-004 |
 | REQ-HMI-005 | DTC 목록과 상세 상태를 표시해야 한다. | MUST | Test | T-HMI-005 |
-| REQ-HMI-006 | Touch로 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 전환해야 한다. | MUST | Test | T-HMI-006 |
+| REQ-HMI-006 | 하나의 Cockpit Screen을 유지하고 Touch로 ADAS/Parking/Diagnostics/Settings 패널을 열고 닫아야 한다. Cluster 기본 정보는 계속 표시한다. | MUST | Test | T-HMI-006 |
 | REQ-HMI-007 | Timeout/Invalid 차량 데이터를 정상 최신값처럼 표시하지 않아야 한다. | MUST | Fault Test | T-HMI-007 |
 | REQ-HMI-008 | Lighting 설정은 Body_User_Request로 VCU에 전송해야 하며, Body_Command 발행과 Lamp GPIO 직접 제어를 수행하지 않아야 한다. | MUST | Test/Inspect | T-HMI-008 |
 | REQ-HMI-009 | Raw Camera Frame을 CAN으로 수신하도록 설계하지 않아야 한다. | MUST | Inspect | T-HMI-009 |
@@ -205,13 +221,13 @@ flowchart TD
 
 # 9. UI / UX Reference
 
-| Screen | Main Data |
+| 단일 Screen 내 영역/패널 | Main Data |
 |---|---|
-| Cluster Main | Speed, RPM, Gear, READY, Warning, Lamp |
-| ADAS | ADAS active, lane/object/warning semantic data |
-| Parking | Ultrasonic distance/warning + Rear Vision status |
-| Diagnostics | Active/History DTC list/detail |
-| Settings | Lighting/vehicle setting Request |
+| Cluster Main (기본 영역) | Speed, RPM, Gear, READY, Warning, Lamp |
+| ADAS 패널 | ADAS active, lane/object/warning semantic data |
+| Parking 패널 | Ultrasonic distance/warning + Rear Vision status |
+| Diagnostics 패널 | Active/History DTC list/detail |
+| Settings 패널 | Lighting/vehicle setting Request |
 
 Raw Rear Camera 영상 자체를 CAN으로 받아 표시하는 것은 현재 범위가 아니다.
 
@@ -316,7 +332,7 @@ Cockpit은 Motor/Steering 안전 제어의 최종 권한을 갖지 않는다.
 
 - [ ] Cluster Main 정상 표시
 - [ ] Dummy Data로 주요 화면 동작
-- [ ] Touch 화면 전환
+- [ ] Touch 패널 열기·닫기
 - [ ] CAN RX → Model → UI 흐름 확인
 - [ ] Invalid/Timeout 표시
 - [ ] Critical Warning 우선 표시
