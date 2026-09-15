@@ -7,6 +7,64 @@
 
 ---
 
+## 2026-09-15 · HyperRAM MPU Region2 8MB → 16MB 정합화
+
+### 1. 이번 작업 범위
+
+`IVI_MPU_Dummy_TouchGFX_Guide.md` 1단계(HyperRAM MPU 정리)를 적용했다.
+보드 HyperRAM은 128Mbit(16MiB)이고 링커 `HYPERRAM` 영역도 16M로 선언되어 있었지만,
+MPU Region2(HyperRAM 창)는 8MB만 허용하고 있어 정합이 맞지 않았다. 상위 8MiB
+(`0x70800000`~`0x70FFFFFF`)에 접근하면 배경 Region1(512MB NO_ACCESS)이 적용되어 fault 위험이 있었다.
+
+### 2. 변경
+
+| 항목 | 변경 전 | 변경 후 |
+|---|---|---|
+| `SDV_IVI_H735.ioc` MPU Region2 Size | `MPU_REGION_SIZE_8MB` | `MPU_REGION_SIZE_16MB` |
+| `main.c` `MPU_Config()` Region2 | `MPU_REGION_SIZE_8MB` | `MPU_REGION_SIZE_16MB` (CubeMX Generate Code로 반영) |
+| Region2 Base(`0x70000000`) / 속성(FULL_ACCESS, Cacheable, Bufferable) | 변경 없음 | 변경 없음 |
+| 링커 `HYPERRAM` (16M) | 변경 없음 | 변경 없음 |
+
+CubeMX는 Standalone 6.18.0에서 `.ioc`만 수정 후 Generate Code로 재생성했다 (CubeIDE 내장 6.15로 재생성하지 않음, 가이드 권고 준수).
+
+### 3. 디버깅 경위 (원인 오인 → 재확인)
+
+1. `.ioc` Region2를 16MB로 바꾸고 재생성 후 첫 플래시에서 LCD가 아무것도 표시되지 않았다.
+2. MPU 크기 변경 자체가 원인인지 의심해 `.ioc`/`main.c`를 8MB로 되돌렸으나, 되돌린 뒤에도 화면이 안 나오는 현상이 계속됐다.
+3. 조사 중 별개로, TouchGFX Designer가 기존 `SDV_IVI_H735.touchgfx`를 열지 않고 새 프로젝트 `TouchGFX/MyApplication/`(독립 BSP/HAL 트리 포함)을 생성해놓은 것을 발견 — STM32CubeIDE Run Configurations에 `STM32H735G-DK`가 2개 뜨는 원인이었다. 이 미사용 프로젝트를 완전 삭제하고, 부수적으로 함께 삭제됐던 `TouchGFX/ApplicationTemplate.touchgfx.part`는 `git checkout`으로 복구했다.
+4. 위 정리 후에도 화면이 안 나와, git diff로 실제 소스(`main.c`, `TouchGFX/`, `Middlewares/`)가 정리 전/후 커밋 기준과 동일함을 확인 — 즉 **코드/설정 문제가 아님**을 확인했다.
+5. ST-LINK를 뽑았다 다시 꽂아 보드를 완전 전원 재기동하자 정상 표시됐다. 이전 실험 중 보드가 fault/hang 상태로 멈춰 있었고, 단순 재빌드·재플래시로는 그 상태가 풀리지 않았던 것으로 결론지었다.
+6. 이후 Region2를 다시 16MB로 적용 → 정상 동작 확인.
+
+**교훈**: MPU/외부 메모리 설정을 바꾼 뒤 화면 이상이 있으면, 코드를 되돌리기 전에 먼저 보드를 완전 전원 재기동(ST-LINK 재연결 또는 리셋)해서 재현되는지 확인한다.
+
+### 4. 재검증 결과
+
+| 시험 | 결과 |
+|---|---|
+| 빌드 | `0 errors, 0 warnings` (text=1,039,918 / data=304 / bss=45,016) |
+| LCD 표시 (완전 전원 재기동 후) | 정상 |
+| ≥5분 연속 실행 | hang / 화면 깨짐 없음 |
+| FDCAN2 internal loopback 회귀 재시험 | `g_fdcan_loopback`: `state=2, tx=100, rx=100, pass=100, mismatch=0, timeout=0, irq_count=100, queue_overflow=0, rx_error=0, api_error=0, last_hal_error=0, tx_error_counter=0, rx_error_counter=0, bus_off=0, stack_free_bytes=1684` — 2026-09-10 §0.5.2와 완전 동일, 회귀 없음 |
+
+### 5. 판정
+
+```text
+HYPERRAM MPU REGION2 8MB -> 16MB ALIGNMENT: PASS
+```
+
+상세 시험 매트릭스는 [TEST_REPORT.md](TEST_REPORT.md) §0.7 참조. 상위 8MiB 실제 write/read 디버거 검증은 아직 미수행(§0.6 D4/D5와 함께 후속 보강 예정)이며, 이 변경은 작성 시점 기준 아직 커밋 전이다.
+
+### 6. 관련 파일
+
+```text
+firmware/IVI/SDV_IVI_H735/
+├ SDV_IVI_H735.ioc                : CORTEX_M7 MPU Region2 Size 8MB → 16MB
+└ Core/Src/main.c                 : MPU_Config() Region2 Size 8MB → 16MB
+```
+
+---
+
 ## 2026-09-10 · FDCAN2 internal loopback bench test
 
 ### 1. 이번 작업 범위

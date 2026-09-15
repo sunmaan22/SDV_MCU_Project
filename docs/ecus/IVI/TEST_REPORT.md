@@ -32,6 +32,7 @@
 | v0.3 | 2026-09-10 | Team | STM32H735G-DK Reference TouchGFX 실기 bring-up 결과 기록 |
 | v0.4 | 2026-09-10 | Team | FDCAN2 internal loopback bench 결과(§0.5) 반영, 관련 매트릭스 / RTOS / Evidence / Final Result 갱신 |
 | v0.5 | 2026-09-10 | Team | §0.6 SDV_IVI_H735 자체 External Memory(OCTOSPI1 NOR / OCTOSPI2 HyperRAM) bring-up — `.map` + 플래시 verify + 육안으로 **PASS**, §0.6.5 빈 `Error_Handler` 관찰, Final Result / Remaining Issues 갱신 |
+| v0.6 | 2026-09-15 | Team | §0.7 HyperRAM MPU Region2 8MB→16MB 정합화 및 재검증(LCD ≥5분, FDCAN2 loopback 회귀 없음) 반영, Final Result / 완료된 항목 갱신 |
 
 ---
 
@@ -257,6 +258,47 @@ SDV_IVI_H735 EXTERNAL MEMORY BRING-UP: PASS
 
 ---
 
+## 0.7 HyperRAM MPU Region2 크기 정합화 (8MB → 16MB, 2026-09-15)
+
+§0.6.1에 기록된 대로 MPU Region2(HyperRAM 창)는 8MB로 설정되어 있었으나, 실제 보드 HyperRAM은 128Mbit(16MiB)이고 링커 `HYPERRAM` 영역도 16M로 선언되어 있어 정합이 맞지 않았다. 상위 8MiB(`0x70800000`~`0x70FFFFFF`)에 접근하면 MPU 기본 배경 영역(Region1, 512MB NO_ACCESS)이 적용되어 fault 위험이 있었다.
+
+### 0.7.1 변경
+
+| 항목 | 변경 전 | 변경 후 |
+|---|---|---|
+| CubeMX(.ioc) MPU Region2 Size | `MPU_REGION_SIZE_8MB` | `MPU_REGION_SIZE_16MB` |
+| `main.c` `MPU_Config()` Region2 | `MPU_REGION_SIZE_8MB` | `MPU_REGION_SIZE_16MB` (Generate Code로 반영) |
+| Region2 Base / 속성 | `0x70000000`, FULL_ACCESS / Cacheable / Bufferable | 변경 없음 |
+| 링커 `HYPERRAM` | 16M | 변경 없음 |
+
+### 0.7.2 적용 중 관찰된 현상 (코드 결함 아님, 운영 노트)
+
+변경 직후 1차 플래시에서 LCD가 아무것도 표시되지 않는 현상이 있었다. 조사 결과 코드/MPU 설정 문제가 아니라, 별도로 진행 중이던 TouchGFX Designer 작업에서 생성된 미사용 프로젝트(`TouchGFX/MyApplication/`)와 무관한 이전 실험 중 보드가 fault/hang 상태로 멈춰 있었던 것이 원인이었고, 단순 재플래시만으로는 그 상태가 풀리지 않았다. ST-LINK를 재연결(완전 전원 재기동)한 뒤 정상 표시를 확인했다.
+
+**운영 노트**: MPU/외부 메모리 설정 실험 후 화면 이상이 있으면, 재빌드/재플래시만으로 판단하지 말고 보드 전원을 완전히 재기동(ST-LINK 재연결 또는 리셋)한 뒤 재확인한다.
+
+### 0.7.3 재검증 결과
+
+| 시험 | 기대 | 실제 | Result |
+|---|---|---|---|
+| 빌드 | 0 error | `0 errors, 0 warnings` (text=1,039,918 / data=304 / bss=45,016 — §0.1과 동일) | PASS |
+| LCD 표시 (완전 전원 재기동 후) | 정상 표시 | 정상 표시 확인 | PASS |
+| ≥5분 연속 실행 | hang / 화면 깨짐 없음 | 5분 이상 정상, 이상 없음 확인 | PASS |
+| FDCAN2 internal loopback 회귀 재시험 | §0.5와 동일 결과 | `state=2, tx=100, rx=100, pass=100, mismatch=0, timeout=0, irq_count=100, queue_overflow=0, rx_error/api_error/last_hal_error=0, TEC/REC/bus_off=0, stack_free_bytes=1684` — §0.5.2와 완전 동일 | PASS (회귀 없음) |
+
+### 0.7.4 판정
+
+```text
+HYPERRAM MPU REGION2 8MB -> 16MB ALIGNMENT: PASS
+  Build: PASS (0 error / 0 warning)
+  LCD >=5min stability: PASS
+  FDCAN2 loopback regression: PASS (no change vs 0.5)
+```
+
+가이드([IVI_MPU_Dummy_TouchGFX_Guide.md] 1단계, HyperRAM MPU 정리) 완료 기준을 충족한다. 상위 8MiB(구 8MB~16MB 구간) 실제 write/read 검증(디버거 pattern test)은 아직 별도로 수행하지 않았으며, 필요 시 §0.6 D4/D5와 함께 후속 보강한다. 이 변경은 이 문서 갱신 시점 기준 아직 커밋되지 않은 로컬 변경이다.
+
+---
+
 # 1. Test Objective
 
 H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 정상 표시하는지 검증한다. 동시에 FreeRTOS 기반 `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask`가 의도한 구조로 실행되고, CAN burst나 UI load에서도 queue overflow, stack overflow, starvation 없이 주요 Timing 요구사항을 만족하는지 확인한다.
@@ -468,6 +510,7 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 - FDCAN2 loopback `g_fdcan_loopback` dump (2026-09-10): `state=2, tx=100, rx=100, pass=100, mismatch=0, timeout=0, irq_count=100, queue_overflow=0, TEC/REC/bus_off=0, stack_free_bytes=1684`
 - FDCAN2 loopback 개발 로그: [DEVLOG.md](DEVLOG.md) · 코드 커밋 `835e48d`
 - 외부 메모리 bring-up (§0.6, 2026-09-10): `.map` `SDV_IVI_H735.map` — `BufferSection @ 0x70000000` (0x17e800), `ExtFlashSection @ 0x90000000` (0x236600); 플래시 로그 `Erasing external memory sectors [0 35]` + `Download verified successfully`
+- HyperRAM MPU Region2 8MB→16MB 정합화 재검증 (§0.7, 2026-09-15): 빌드 0 error/0 warning, LCD ≥5분 정상, FDCAN2 loopback 회귀 재시험 `g_fdcan_loopback` = §0.5.2와 완전 동일(`state=2, tx=100, rx=100, pass=100, mismatch=0, timeout=0, irq_count=100, queue_overflow=0, stack_free_bytes=1684`)
 - CAN log (physical bus): TBD
 - Runtime stats (통합 태스크): TBD
 - stack high-water log (통합 태스크): TBD
@@ -494,6 +537,7 @@ REFERENCE BOARD BRING-UP: PASS
 SDV_IVI_H735 CLOCK-CHANGE GUI RETEST: PASS
 FDCAN2 INTERNAL LOOPBACK BENCH: PASS (state = 2, 100/100)
 SDV_IVI_H735 EXTERNAL MEMORY BRING-UP: PASS (OCTOSPI1 NOR + OCTOSPI2 HyperRAM)
+HYPERRAM MPU REGION2 8MB -> 16MB ALIGNMENT: PASS (build/LCD >=5min/FDCAN2 regression)
 FULL IVI INTEGRATION: NOT RUN
 ```
 
@@ -505,6 +549,7 @@ FULL IVI INTEGRATION: NOT RUN
 - [x] Touch 입력 UI 반응
 - [x] FDCAN2 internal loopback bench (`state = 2`, tx/rx/pass 100/100, `irq_count` 100, stack free 1684/2048 B) — 커밋 `835e48d`
 - [x] SDV_IVI_H735 자체 board bring-up — OCTOSPI1 NOR GUI asset(`0x90000000`) + OCTOSPI2 HyperRAM framebuffer(`0x70000000`) 실동작 (§0.6, `.map` + 플래시 verify + 육안)
+- [x] HyperRAM MPU Region2 8MB→16MB 정합화 — 빌드 0 error/0 warning, LCD ≥5분 정상, FDCAN2 loopback 회귀 없음 (§0.7, 커밋 미완료)
 
 ## 전체 IVI PASS 조건
 
@@ -525,6 +570,7 @@ FULL IVI INTEGRATION: NOT RUN
 - ~~검증된 로컬 펌웨어 변경의 소스 커밋 고정~~ → 완료 (`835e48d`, PR #2 `22d6e4f`)
 - ~~FDCAN2 internal loopback~~ → 완료 (§0.5, bench PASS)
 - ~~`SDV_IVI_H735` 자체 HyperRAM(OCTOSPI2) · external Flash(OCTOSPI1) 실동작 확인~~ → 완료 (§0.6, PASS)
+- ~~HyperRAM MPU Region2 8MB→16MB 정합화~~ → 완료 (§0.7, PASS), 소스 커밋만 아직 남음
 - FDCAN2 physical CAN 시험 (트랜시버 + 2nd node / external loopback)
 - 빈 `Error_Handler` 본문 — `while (1)` / fault 로깅 추가 (§0.6.5)
 - 외부 메모리 런타임 디버거 보강 (선택): `HAL_OSPI_GetState` = mem-mapped, HyperRAM 임의주소 write/read, `0x70000000` 프레임 변화 (§0.6 D4/D5)
