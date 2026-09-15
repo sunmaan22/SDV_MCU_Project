@@ -25,6 +25,8 @@ public:
      */
     virtual void deactivate();
 
+    virtual void updateVehicleData(const VehicleDataSnapshot& data);
+
     virtual ~Screen1Presenter() {}
 
 private:

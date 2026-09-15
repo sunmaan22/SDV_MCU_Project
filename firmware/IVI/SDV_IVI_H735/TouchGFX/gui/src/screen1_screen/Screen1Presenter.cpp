@@ -16,3 +16,8 @@ void Screen1Presenter::deactivate()
 {
 
 }
+
+void Screen1Presenter::updateVehicleData(const VehicleDataSnapshot& data)
+{
+    view.updateVehicleData(data);
+}

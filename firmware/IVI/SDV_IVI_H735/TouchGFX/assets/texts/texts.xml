@@ -5,11 +5,43 @@
   </Languages>
   <Texts>
     <TextGroup Id="Group1" />
-    <TextGroup Id="Unsorted" />
+    <TextGroup Id="Unsorted">
+      <Text Id="__SingleUse_M42V" Alignment="Center" TypographyId="Default">
+        <Translation Language="GB">&lt;value&gt;</Translation>
+      </Text>
+      <Text Id="ResourceId1" Alignment="Left" TypographyId="Default">
+        <Translation Language="GB">New Text</Translation>
+      </Text>
+      <Text Id="__SingleUse_DMSM" Alignment="Left" TypographyId="Default">
+        <Translation Language="GB">%s</Translation>
+      </Text>
+      <Text Id="__SingleUse_M0K1" Alignment="Left" TypographyId="Small">
+        <Translation Language="GB">%s</Translation>
+      </Text>
+      <Text Id="__SingleUse_VV7E" Alignment="Left" TypographyId="Small">
+        <Translation Language="GB">%s</Translation>
+      </Text>
+      <Text Id="__SingleUse_MBAJ" Alignment="Left" TypographyId="Small">
+        <Translation Language="GB">CRITICAL WARNING</Translation>
+      </Text>
+      <Text Id="__SingleUse_Q2LM" Alignment="Left" TypographyId="Small">
+        <Translation Language="GB">DEMO</Translation>
+      </Text>
+      <Text Id="__SingleUse_4YYB" Alignment="Left" TypographyId="Default">
+        <Translation Language="GB">READY</Translation>
+      </Text>
+      <Text Id="__SingleUse_01C1" Alignment="Center" TypographyId="Default">
+        <Translation Language="GB">&lt;value&gt;</Translation>
+      </Text>
+      <Text Id="__SingleUse_CAT6" Alignment="Center" TypographyId="Default">
+        <Translation Language="GB">&lt;value&gt;</Translation>
+      </Text>
+    </TextGroup>
   </Texts>
   <Typographies>
-    <Typography Id="Default" Font="verdana.ttf" Size="20" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" />
-    <Typography Id="Large" Font="verdana.ttf" Size="40" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" />
-    <Typography Id="Small" Font="verdana.ttf" Size="10" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" />
+    <Typography Id="Default" Font="verdanab.ttf" Size="20" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" WildcardCharacters="0123456789 -/hkmprACDILMNOPRSTV" />
+    <Typography Id="Large" Font="verdanab.ttf" Size="40" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" WildcardCharacters="0123456789 -/hkmprACDILMNOPRSTV" />
+    <Typography Id="Small" Font="verdanab.ttf" Size="10" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" WildcardCharacters="0123456789 -/hkmprACDILMNOPRSTV" />
+    <Typography Id="Typography1" Font="verdanab.ttf" Size="30" Bpp="4" IsVector="no" Direction="LTR" FallbackCharacter="?" WildcardCharacters="0123456789 -/hkmprACDILMNOPRSTV" />
   </Typographies>
 </TextDatabase>
