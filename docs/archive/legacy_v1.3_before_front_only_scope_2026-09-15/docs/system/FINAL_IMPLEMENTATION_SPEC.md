@@ -43,12 +43,12 @@ TEST_REPORT.md
 
 | 영역 | 고정 규칙 |
 |---|---|
-| A Ultrasonic | 4방향(FL/FR/RL/RR) 거리 / valid / warning / local fault owner — 주차 판단 전담 |
+| A Ultrasonic | 거리 / valid / warning / local fault owner |
 | B H735 | UI 표시 + 사용자 Request 생성 |
-| C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF/가변저항) owner |
+| C Drive | Motor / Servo 실제 actuator output owner |
 | D Gateway | CAN↔LIN mapping + LIN Master schedule owner |
-| D Slave | Lamp actual state owner |
-| E Vision | 전방 카메라 객체인식(COCO) 결과 + 전방 회피 ADAS 요청 owner (주차 관여 안 함) |
+| D Slave | Ambient + Lamp actual state owner |
+| E Vision | Vision semantic result + ADAS high-level request owner |
 | F VCU | 최종 vehicle arbitration + Final Drive / Body Command owner |
 | Pi DTC | DTC History DB / timestamp / count / storage owner |
 
@@ -65,7 +65,7 @@ TEST_REPORT.md
 | `Body_Command` | F | D Gateway |
 | `Body_Status` | D Gateway | F, B, E |
 | `Vehicle_State` | F | All |
-| `Driver_Input` | C | F |
+| `Driver_Input` | F | B, E |
 | `DTC_Event` | 각 Local Node | F, Pi, B 필요 시 |
 | `ECU_Heartbeat` | 각 Node | F, Pi |
 
@@ -80,7 +80,7 @@ E-Stop / Critical Fault
 > Normal Driver Request
 ```
 
-- Vision(전방 객체 회피 요청)은 Ultrasonic Parking `CRITICAL`을 해제/override하지 않는다.
+- Rear Vision은 Ultrasonic `CRITICAL`을 해제하지 않는다.
 - `valid=false`인 센서값은 정상 판단에 사용하지 않는다.
 - `SafetyTask`는 final command를 직접 쓰지 않는다.
 - `VcuControlTask`만 `final_command`의 writer다.
@@ -131,17 +131,15 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | `DEC-HW-009` | Ultrasonic Sensor 모델/개수 | OWNER INPUT | OPEN |
 | `DEC-HW-010` | Motor 모델 | OWNER INPUT | OPEN |
 | `DEC-HW-011` | Motor Driver | OWNER INPUT | OPEN |
-| `DEC-HW-012` | Encoder/Hall | 미사용 — Speed/RPM 표시는 명령값(PWM 등) 기반 추정으로 대체 | REMOVED |
+| `DEC-HW-012` | Encoder/Hall | OWNER INPUT | OPEN |
 | `DEC-HW-013` | RC Servo | OWNER INPUT | OPEN |
-| `DEC-HW-014` | Ambient Sensor | 미사용 — Ambient 기능 삭제 | REMOVED |
-| `DEC-HW-015` | Front Camera | OWNER INPUT (전방 전용, COCO 기반 객체인식용) | OPEN |
-| `DEC-HW-016` | Rear Camera | 미사용 — 주차는 초음파 4방향 전용, Rear Vision 삭제 | REMOVED |
+| `DEC-HW-014` | Ambient Sensor | OWNER INPUT | OPEN |
+| `DEC-HW-015` | Front Camera | OWNER INPUT | OPEN |
+| `DEC-HW-016` | Rear Camera | OWNER INPUT | OPEN |
 | `DEC-HW-017` | Accelerator Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-018` | Brake Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-019` | Steering Input Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-020` | E-Stop 입력 방식 | OWNER INPUT | OPEN |
-| `DEC-HW-024` | Driver 원격 입력 장치 (RF 리모컨 or 가변저항) | OWNER INPUT | OPEN |
-| `DEC-HW-025` | Ultrasonic 4방향 센서 배치 | 전좌(FL) / 전우(FR) / 후좌(RL) / 후우(RR) 4개 고정 | FROZEN |
 | `DEC-HW-021` | B IVI 보드 | STM32H735G-DK | FROZEN |
 | `DEC-HW-022` | B CAN peripheral / 핀 예약 | FDCAN2, PB5 RX / PB6 TX (설계 배정; 외부 통신 검증 미완료) | FROZEN |
 | `DEC-HW-023` | B Display / Touch / 외부 메모리 역할 | LTDC RGB888 / BSP I2C4 touch / OCTOSPI1 NOR asset @ 0x90000000 / OCTOSPI2 HyperRAM framebuffer @ 0x70000000 | FROZEN |
@@ -189,28 +187,24 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | `DEC-CTRL-014` | Final steering unit/range | OWNER INPUT | OPEN |
 | `DEC-CTRL-015` | Drive command timeout | OWNER INPUT | OPEN |
 | `DEC-CTRL-016` | Steering timeout action | OWNER INPUT | OPEN |
-| `DEC-CTRL-017` | Encoder invalid fallback | 미사용 — Encoder 삭제 | REMOVED |
+| `DEC-CTRL-017` | Encoder invalid fallback | OWNER INPUT | OPEN |
 | `DEC-CTRL-018` | PID 적용 여부 / tuning policy | OWNER INPUT | OPEN |
-| `DEC-CTRL-019` | 입력값→speed/steering 선형 매핑 (RF/가변저항, accel 비례↑ brake 비례↓) | OWNER INPUT | OPEN |
-| `DEC-CTRL-020` | Brake 입력 감속 감지 → `brake_lamp` 자동 점등 threshold | OWNER INPUT | OPEN |
-| `DEC-CTRL-021` | Motor 명령값→speed/rpm 표시값 추정 함수 (실측 아님을 UI에 명시) | OWNER INPUT | OPEN |
 
 ## 3.4 Perception / Vision Freeze
 
 | ID | Decision | Final Value | Status |
 |---|---|---|---|
-| `DEC-PER-001` | Ultrasonic zone / 장착 위치 | 전좌(FL) / 전우(FR) / 후좌(RL) / 후우(RR) 4개 고정 | FROZEN |
+| `DEC-PER-001` | Ultrasonic zone / 장착 위치 | OWNER INPUT | OPEN |
 | `DEC-PER-002` | Ultrasonic filter | OWNER INPUT | OPEN |
 | `DEC-PER-003` | Ultrasonic threshold / hysteresis | OWNER INPUT | OPEN |
 | `DEC-PER-004` | Ultrasonic scan period / gap | OWNER INPUT | OPEN |
 | `DEC-VIS-001` | Front Vision Stage 기능 | OWNER INPUT | OPEN |
-| `DEC-VIS-002` | Rear Vision Stage 기능 | 미사용 — Rear Vision 삭제 | REMOVED |
+| `DEC-VIS-002` | Rear Vision Stage 기능 | OWNER INPUT | OPEN |
 | `DEC-VIS-003` | Camera resolution / FPS | OWNER INPUT | OPEN |
 | `DEC-VIS-004` | Vision algorithm/model | OWNER INPUT | OPEN |
 | `DEC-VIS-005` | Vision freshness timeout | OWNER INPUT | OPEN |
-| `DEC-VIS-006` | Gear D/R camera switching | 미사용 — 카메라는 전방 1대 상시 동작 | REMOVED |
-| `DEC-VIS-007` | Gear R → first valid result latency | 미사용 — Rear Vision 삭제 | REMOVED |
-| `DEC-VIS-008` | 객체 class(COCO)/방향(zone: 좌/중/우 등) 표현 방식 | OWNER INPUT | OPEN |
+| `DEC-VIS-006` | Gear D/R camera switching | OWNER INPUT | OPEN |
+| `DEC-VIS-007` | Gear R → first valid result latency | OWNER INPUT | OPEN |
 
 ## 3.5 HMI / Body Freeze
 
@@ -218,12 +212,12 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 |---|---|---|---|
 | `DEC-HMI-001` | Cluster 필수 표시항목 | OWNER INPUT | OPEN |
 | `DEC-HMI-002` | Warning 표시 우선순위 | OWNER INPUT | OPEN |
-| `DEC-HMI-003` | 전방 객체 감지 팝업 정책 (구 Gear R Parking 화면) | OWNER INPUT | OPEN |
+| `DEC-HMI-003` | Gear R Parking 화면 정책 | OWNER INPUT | OPEN |
 | `DEC-HMI-004` | DTC Clear 구현 여부 | OWNER INPUT | OPEN |
 | `DEC-HMI-005` | TouchGFX update/frame budget | OWNER INPUT | OPEN |
-| `DEC-BODY-001` | 구현 Lamp 범위 | 좌/우 턴시그널 + 헤드램프(밝기 가변) + 브레이크등 | FROZEN |
-| `DEC-BODY-002` | Body_User_Request 기능 범위 | 좌/우 턴시그널 요청 + 헤드램프 밝기 요청 (brake_lamp는 사용자 요청이 아니라 F가 감속 감지로 자동 생성) | FROZEN |
-| `DEC-BODY-003` | Ambient 단위/filter/calibration | 미사용 — Ambient 기능 삭제 | REMOVED |
+| `DEC-BODY-001` | 구현 Lamp 범위 | OWNER INPUT | OPEN |
+| `DEC-BODY-002` | Body_User_Request 기능 범위 | OWNER INPUT | OPEN |
+| `DEC-BODY-003` | Ambient 단위/filter/calibration | OWNER INPUT | OPEN |
 
 ## 3.6 DTC / Health Freeze
 
@@ -246,11 +240,9 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 
 ## 4.1 `Ultrasonic_Status`
 
-> 4방향 고정: `FL`(전좌) / `FR`(전우) / `RL`(후좌) / `RR`(후우). 각 zone은 독립된 valid+distance를 갖는다 (단일 신호가 아니라 zone별 4세트, 또는 zone id로 구분되는 반복 필드).
-
 | Field | Unit / Type | Range | Valid Rule | Final |
 |---|---|---|---|---|
-| zone id | enum | FL / FR / RL / RR | defined ID | FROZEN |
+| sensor/zone id | TBD | TBD | defined ID | OWNER INPUT |
 | distance | mm 후보 | TBD | `valid=true` | OWNER INPUT |
 | valid | bool | 0/1 | source health | OWNER INPUT |
 | warning_level | enum | SAFE/WARNING/CRITICAL | valid only | OWNER INPUT |
@@ -259,26 +251,24 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 
 ## 4.2 `Vision_Status`
 
-> Rear Vision/주차 관련 필드 삭제 (2026-09-15). 전방 카메라 1대의 COCO 기반 객체인식 결과만 전달한다. Raw image는 CAN payload로 보내지 않는다 (§8 E HPC 참고).
-
 | Field | Unit / Type | Final |
 |---|---|---|
 | front_valid | bool | OWNER INPUT |
-| detected_class | enum (COCO name 기반) | OWNER INPUT |
-| direction/zone | enum (예: LEFT/CENTER/RIGHT) | OWNER INPUT |
+| rear_valid | bool | OWNER INPUT |
+| lane result | TBD | OWNER INPUT |
+| object result | TBD | OWNER INPUT |
+| rear parking result | TBD | OWNER INPUT |
 | vision warning | enum | OWNER INPUT |
 | freshness/sequence | TBD | OWNER INPUT |
 
 ## 4.3 `ADAS_Request`
-
-> 범위: 전방 객체 감지에 따른 회피/감속 요청만 담당한다. 주차 판단은 절대 포함하지 않는다 — 주차는 `Ultrasonic_Status`가 F에 직접 제공하고 §1.2 우선순위(Ultrasonic Parking Critical > ADAS Safety Request)를 따른다.
 
 | Field | Unit / Type | Final |
 |---|---|---|
 | request_valid | bool | OWNER INPUT |
 | requested_speed | TBD | OWNER INPUT |
 | requested_steering | TBD | OWNER INPUT |
-| request_reason/type | enum (전방 객체 회피 사유만; 주차 사유 없음) | OWNER INPUT |
+| request_reason/type | enum | OWNER INPUT |
 | freshness/sequence | TBD | OWNER INPUT |
 
 ## 4.4 `Final_Drive_Command`
@@ -294,43 +284,39 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 
 ## 4.5 `Drive_Status`
 
-> `motor_rpm`/`vehicle_speed`는 실측 센서(Encoder/Hall)가 아니라 **모터 명령값(PWM 등) 기반 추정 함수의 결과**다. IVI/Cluster 표시 시 이 필드가 추정값임을 UI에서 구분한다 (`DEC-CTRL-021`).
-
 | Field | Unit / Type | Final |
 |---|---|---|
-| motor_rpm (estimated) | rpm | OWNER INPUT |
-| vehicle_speed (estimated) | TBD | OWNER INPUT |
+| motor_rpm | rpm | OWNER INPUT |
+| vehicle_speed | TBD | OWNER INPUT |
 | steering_target | TBD | OWNER INPUT |
+| steering_actual | optional/TBD | OWNER INPUT |
 | command_valid | bool | OWNER INPUT |
 | fault_flags | bitfield | OWNER INPUT |
 
 ## 4.6 `Body_User_Request`
 
-> 범위: 좌/우 턴시그널 요청 + 헤드램프 밝기 요청만 (`DEC-BODY-002`). `brake_lamp`는 사용자 요청 대상이 아니다 — F가 감속을 감지해 자동으로 `Body_Command.brake_lamp`를 생성한다 (`DEC-CTRL-020`).
-
 | Field | Unit / Type | Final |
 |---|---|---|
-| request_type | enum (TURN_LEFT / TURN_RIGHT / HEADLAMP_BRIGHTNESS) | OWNER INPUT |
-| requested_value | TBD (헤드램프는 밝기 레벨) | OWNER INPUT |
+| request_type | enum | OWNER INPUT |
+| requested_value | TBD | OWNER INPUT |
 | request_valid | bool | OWNER INPUT |
 
 ## 4.7 `Body_Command`
 
-> `hazard`, `tail_lamp` 필드 삭제 (요구 범위 밖). `headlamp`는 on/off가 아니라 밝기값이다. `brake_lamp`는 F가 자동 생성한다.
-
 | Field | Unit / Type | Final |
 |---|---|---|
-| headlamp_brightness | 0~100% 등 (bool 아님) | OWNER INPUT |
-| brake_lamp | bool (F가 감속 감지로 자동 설정) | OWNER INPUT |
+| headlamp | bool/enum | OWNER INPUT |
+| tail_lamp | bool/enum | OWNER INPUT |
+| brake_lamp | bool/enum | OWNER INPUT |
 | turn_left | bool | OWNER INPUT |
 | turn_right | bool | OWNER INPUT |
+| hazard | bool | OWNER INPUT |
 
 ## 4.8 `Body_Status`
 
-> `ambient` 필드 삭제 (Ambient 기능 삭제).
-
 | Field | Unit / Type | Final |
 |---|---|---|
+| ambient | TBD | OWNER INPUT |
 | lamp_status | bitfield | OWNER INPUT |
 | lin_health | enum/flags | OWNER INPUT |
 | fault_flags | bitfield | OWNER INPUT |
@@ -371,18 +357,18 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | LIN Frame | Publisher | Subscriber | Period | ID | Checksum |
 |---|---|---|---|---|---|
 | `Lamp_Command` | Gateway | Slave | OWNER INPUT | OWNER INPUT | OWNER INPUT |
+| `Ambient_Status` | Slave | Gateway | OWNER INPUT | OWNER INPUT | OWNER INPUT |
 | `Lamp_Status` | Slave | Gateway | OWNER INPUT | OWNER INPUT | OWNER INPUT |
 | `Lamp_Diagnostic` | Slave | Gateway | OWNER INPUT | OWNER INPUT | OWNER INPUT |
-
-> `Ambient_Status` 프레임 삭제 (Ambient 기능 삭제, 2026-09-15).
 
 ## 5.2 CAN ↔ LIN Mapping
 
 | CAN Signal | LIN Signal | Mapping / Scale | Final |
 |---|---|---|---|
-| Body_Command headlamp_brightness | LAMP_HEAD_CMD | TBD | OWNER INPUT |
+| Body_Command headlamp | LAMP_HEAD_CMD | TBD | OWNER INPUT |
 | Body_Command turn left/right | LAMP_TURN_CMD | TBD | OWNER INPUT |
-| Body_Command brake_lamp | LAMP_BRAKE_CMD | TBD | OWNER INPUT |
+| Body_Command brake | LAMP_BRAKE_CMD | TBD | OWNER INPUT |
+| Ambient_Status | Body_Status ambient | TBD | OWNER INPUT |
 | Lamp_Status | Body_Status lamp_status | TBD | OWNER INPUT |
 
 ---
@@ -395,18 +381,17 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 |---|---|
 | A | UltrasonicTask, PerceptionTask, CanTxTask, HealthTask |
 | B | CanRxTask, VehicleModelTask, GuiTask, CommandTxTask, HealthTask |
-| C | CanRxTask, ControlTask, DriverInputTask, CanTxTask, StatusTask, HealthTask |
+| C | CanRxTask, ControlTask, FeedbackTask, StatusTask, HealthTask |
 | D Gateway | CanRxTask, GatewayMappingTask, LinScheduleTask, CanTxTask, HealthTask |
-| D Slave | LinRxTask, LightingTask, StatusTask, HealthTask |
-| F | SafetyTask, VcuControlTask, CanRxTask, CanTxTask, DiagnosticTask, HealthTask |
-
-> C에 `DriverInputTask` 추가 (RF 수신기 또는 가변저항 입력 읽기 + `Driver_Input` CAN 발행 — 입력 하드웨어가 실제로 C에 물리적으로 붙기 때문에 publisher를 F에서 C로 이전, §1.1 참고). C의 `FeedbackTask`(Encoder 기반)는 Encoder 삭제로 제거. F의 `DriverInputTask`는 publisher 이전에 따라 제거.
+| D Slave | LinRxTask, AmbientTask, LightingTask, StatusTask, HealthTask |
+| F | SafetyTask, VcuControlTask, DriverInputTask, CanRxTask, CanTxTask, DiagnosticTask, HealthTask |
 
 Linux E Node는 다음을 Freeze한다.
 
 | Service | Owner Decision |
 |---|---|
 | front_vision | lifetime / mode / restart |
+| rear_vision | lifetime / mode / restart |
 | vehicle_manager | state ownership |
 | can_service | CAN single owner |
 | health_monitor | timeout / restart condition |
@@ -504,30 +489,28 @@ View에서 CAN Driver를 직접 호출하지 않는다.
 ## C Drive
 
 ```text
-RF 수신기/가변저항 → DriverInputTask → Driver_Input(CAN, C 발행)
 Final_Drive_Command → Validation → Control → PWM/DIR/Servo
-PWM/모터 명령값 → 추정 함수 → Motor_RPM/Speed(estimated) → Status
+Encoder → Feedback → Status
 ```
 
-Motor driver rating과 command timeout/safe state가 FROZEN이어야 한다. Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) — speed/rpm 표시는 명령값 기반 추정 함수(`DEC-CTRL-021`)로 대체한다. Driver 입력(RF 또는 가변저항, `DEC-HW-024`)은 accel/brake 값에 선형 비례해 target speed가 오르내린다(`DEC-CTRL-019`).
+Motor driver rating과 command timeout/safe state가 FROZEN이어야 한다.
 
 ## D Body
 
 ```text
-Body_Command(headlamp_brightness/turn/brake) → CAN↔LIN Mapping → LIN → Lamp
-Lamp Status → LIN → CAN Body_Status
+Body_Command → CAN↔LIN Mapping → LIN → Lamp
+Ambient/Lamp Status → LIN → CAN Body_Status
 ```
 
-LIN schedule은 Gateway만 소유한다. Ambient 관련 기능은 삭제되어 D Slave는 Lamp actual state owner만 담당한다. `brake_lamp`는 F가 감속을 감지해 자동 생성하며, D는 그 값을 그대로 LIN으로 중계할 뿐 판단하지 않는다.
+LIN schedule은 Gateway만 소유한다.
 
 ## E HPC
 
 ```text
-Front Camera(1대) → YOLO/COCO 객체인식 → detected_class + direction/zone
-→ Vision_Status(팝업용, B로) / ADAS_Request(회피요청, F로) → can_service
+Camera → Vision → Vision_Status / ADAS_Request → can_service
 ```
 
-Raw image는 CAN으로 보내지 않는다. Rear Camera/Rear Vision/주차 Vision 기능은 삭제되었다 (`DEC-HW-016`, `DEC-VIS-002/006/007` REMOVED) — 주차 판단은 A(Ultrasonic)가 전담한다.
+Raw image는 CAN으로 보내지 않는다.
 
 ## F VCU
 

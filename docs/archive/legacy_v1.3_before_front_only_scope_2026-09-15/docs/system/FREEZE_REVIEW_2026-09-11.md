@@ -26,7 +26,7 @@
 |---|---|---|
 | [A Ultrasonic](../ecus/Ultrasonic_Perception/TEST_REPORT.md) | RESULT: NOT RUN | 센서 수/위치/filter/threshold/scan 수치 OPEN |
 | [C Drive](../ecus/Motor_Steering_Control/TEST_REPORT.md) | RESULT: NOT RUN | motor/driver/encoder/servo, PID, calibration, timeout/safe action OPEN |
-| [D Body](../ecus/Lighting_LIN_CAN/TEST_REPORT.md) | RESULT: NOT RUN | LIN bitrate/checksum/schedule/mapping 및 ambient/lamp 수치 OPEN |
+| [D Body](../ecus/Lighting_Ambient_LIN_CAN/TEST_REPORT.md) | RESULT: NOT RUN | LIN bitrate/checksum/schedule/mapping 및 ambient/lamp 수치 OPEN |
 | [E Vision](../ecus/HPC_Camera_Vision/TEST_REPORT.md) | RESULT: NOT RUN | camera/model/FPS/freshness/switch latency OPEN |
 | [F VCU](../ecus/VCU_DTC_CAN_Integration/TEST_REPORT.md) | RESULT: NOT RUN | state machine/enable/recovery/DTC/heartbeat 수치 OPEN |
 | [B IVI](../ecus/IVI/TEST_REPORT.md) §0.5 | loopback 100/100 PASS, commit `835e48d` (PR #2 merge `22d6e4f`) | MAC/ISR→queue→bench task 성공만 인정; 500 kbit/s, 0x123, Classic/internal loopback은 bench 설정 유지 |

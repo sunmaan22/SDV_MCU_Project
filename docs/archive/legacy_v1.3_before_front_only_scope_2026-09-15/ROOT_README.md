@@ -1,8 +1,6 @@
 # SDV MCU Project
 
-저속 RC 모형 기반의 6인 Mini SDV E/E 아키텍처 프로젝트다. 운전자 입력(RF/가변저항)을 중심으로 전방 카메라 객체인식(ADAS) + 초음파 4방향 주차 보조 기능을 구성하며, ECU 간 역할·통신·진단을 함께 설계한다.
-
-> **2026-09-15 범위 변경:** 후방 카메라/Rear Vision/주차 Vision과 Ambient 조도 센서 기능을 삭제했다. 주차는 초음파 4방향(전좌/전우/후좌/후우) 전용, 전방 카메라는 COCO 기반 객체인식(class+방향)만 담당한다. 변경 전 문서는 [과거 자료](docs/archive/legacy_v1.3_before_front_only_scope_2026-09-15/README.md) 참고.
+저속 RC 모형 기반의 6인 Mini SDV E/E 아키텍처 프로젝트다. 운전자 입력을 중심으로 ADAS와 주차 보조 기능을 구성하며, ECU 간 역할·통신·진단을 함께 설계한다.
 
 **[전체 문서 보기](docs/README.md)** · **[최종 구현 명세](docs/system/FINAL_IMPLEMENTATION_SPEC.md)** · **[프로젝트 상세 설명](docs/overview/PROJECT_OVERVIEW.md)**
 
@@ -25,14 +23,14 @@
 
 | 담당 | 역할 | 시작 | 기능 명세 | 구조 | 시험 기록 |
 |---|---|---|---|---|---|
-| A | 초음파 4방향(FL/FR/RL/RR) 주차 감지 전담 | [안내](docs/ecus/Ultrasonic_Perception/README.md) | [명세](docs/ecus/Ultrasonic_Perception/SPECIFICATION.md) | [아키텍처](docs/ecus/Ultrasonic_Perception/ARCHITECTURE.md) | [테스트](docs/ecus/Ultrasonic_Perception/TEST_REPORT.md) |
-| B | 화면·사용자 요청(턴시그널/헤드램프 밝기) | [안내](docs/ecus/IVI/README.md) | [명세](docs/ecus/IVI/SPECIFICATION.md) | [아키텍처](docs/ecus/IVI/ARCHITECTURE.md) | [테스트](docs/ecus/IVI/TEST_REPORT.md) |
-| C | 모터·조향 출력 + Driver 입력(RF/가변저항) | [안내](docs/ecus/Motor_Steering_Control/README.md) | [명세](docs/ecus/Motor_Steering_Control/SPECIFICATION.md) | [아키텍처](docs/ecus/Motor_Steering_Control/ARCHITECTURE.md) | [테스트](docs/ecus/Motor_Steering_Control/TEST_REPORT.md) |
-| D | 조명(턴시그널/헤드램프/브레이크등)·CAN/LIN Gateway | [안내](docs/ecus/Lighting_LIN_CAN/README.md) | [명세](docs/ecus/Lighting_LIN_CAN/SPECIFICATION.md) | [아키텍처](docs/ecus/Lighting_LIN_CAN/ARCHITECTURE.md) | [테스트](docs/ecus/Lighting_LIN_CAN/TEST_REPORT.md) |
-| E | 전방 카메라 COCO 객체인식·ADAS 요청 (Rear/주차 Vision 없음) | [안내](docs/ecus/HPC_Camera_Vision/README.md) | [명세](docs/ecus/HPC_Camera_Vision/SPECIFICATION.md) | [아키텍처](docs/ecus/HPC_Camera_Vision/ARCHITECTURE.md) | [테스트](docs/ecus/HPC_Camera_Vision/TEST_REPORT.md) |
+| A | 초음파·주차 거리 감지 | [안내](docs/ecus/Ultrasonic_Perception/README.md) | [명세](docs/ecus/Ultrasonic_Perception/SPECIFICATION.md) | [아키텍처](docs/ecus/Ultrasonic_Perception/ARCHITECTURE.md) | [테스트](docs/ecus/Ultrasonic_Perception/TEST_REPORT.md) |
+| B | 화면·사용자 요청 | [안내](docs/ecus/IVI/README.md) | [명세](docs/ecus/IVI/SPECIFICATION.md) | [아키텍처](docs/ecus/IVI/ARCHITECTURE.md) | [테스트](docs/ecus/IVI/TEST_REPORT.md) |
+| C | 모터·조향 출력 | [안내](docs/ecus/Motor_Steering_Control/README.md) | [명세](docs/ecus/Motor_Steering_Control/SPECIFICATION.md) | [아키텍처](docs/ecus/Motor_Steering_Control/ARCHITECTURE.md) | [테스트](docs/ecus/Motor_Steering_Control/TEST_REPORT.md) |
+| D | 조명·CAN/LIN Gateway | [안내](docs/ecus/Lighting_Ambient_LIN_CAN/README.md) | [명세](docs/ecus/Lighting_Ambient_LIN_CAN/SPECIFICATION.md) | [아키텍처](docs/ecus/Lighting_Ambient_LIN_CAN/ARCHITECTURE.md) | [테스트](docs/ecus/Lighting_Ambient_LIN_CAN/TEST_REPORT.md) |
+| E | 카메라·ADAS 요청 | [안내](docs/ecus/HPC_Camera_Vision/README.md) | [명세](docs/ecus/HPC_Camera_Vision/SPECIFICATION.md) | [아키텍처](docs/ecus/HPC_Camera_Vision/ARCHITECTURE.md) | [테스트](docs/ecus/HPC_Camera_Vision/TEST_REPORT.md) |
 | F | VCU·최종 명령 중재·DTC | [안내](docs/ecus/VCU_DTC_CAN_Integration/README.md) | [명세](docs/ecus/VCU_DTC_CAN_Integration/SPECIFICATION.md) | [아키텍처](docs/ecus/VCU_DTC_CAN_Integration/ARCHITECTURE.md) | [테스트](docs/ecus/VCU_DTC_CAN_Integration/TEST_REPORT.md) |
 
-기어·후진 요청과 최종 명령 중재는 **F**, 실제 구동·조향 출력과 Driver 입력은 **C**, 카메라 기반 전방 객체 회피 요청은 **E**, 초음파 4방향 주차 감지는 **A** 문서에서 확인한다. 주차 판단은 **A만** 담당하며 E는 관여하지 않는다. ECU 간 공통 계약은 최종 구현 명세를 우선한다.
+기어·후진 요청과 최종 명령 중재는 **F**, 실제 구동·조향 출력은 **C**, 카메라 기반 ADAS 요청은 **E**, 초음파 주차 감지는 **A** 문서에서 확인한다. ECU 간 공통 계약은 최종 구현 명세를 우선한다.
 
 ## 문서 폴더
 

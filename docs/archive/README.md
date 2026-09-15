@@ -9,6 +9,7 @@
 - [초기 개발 가이드](legacy_guides/README.md)
 - [문서 정리 전 v1.2 스냅샷](legacy_v1.2_before_doc_cleanup_2026-09-09/README.md)
 - [전체 동기화 전 v1.2 스냅샷](legacy_v1.2_before_full_sync_2026-09-09/README.md)
+- [Front-Only Scope 전환 전 스냅샷 (2026-09-15)](legacy_v1.3_before_front_only_scope_2026-09-15/README.md)
 
 ## 이전 루트 README
 
