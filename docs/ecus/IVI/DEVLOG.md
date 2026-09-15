@@ -7,6 +7,45 @@
 
 ---
 
+## 2026-09-15 · TouchGFX Cluster 데이터 연결 및 표시/플래시 수정
+
+### 1. 작업 범위
+
+코드 커밋: [`e437940`](https://github.com/sunmaan22/SDV_MCU_Project/commit/e437940c31451eec38a813bf34d9f0292b49e4a9).
+기존 VehicleModel + DummyDataProvider에 Cluster 화면을 연결했다.
+
+```text
+VehicleModel Repository → Model::tick() → ModelListener
+→ Screen1Presenter → Screen1View → Speed/RPM/Gear 및 상태 표시
+```
+
+- 기존 샘플 위젯/빈 Screen2를 정리하고 속도·RPM 게이지, 기어, READY/DEMO/Warning 표시를 구성했다.
+- 좌우 20×20 투명 PNG 화살표와 배경/게이지/폰트 리소스를 추가했다. 화살표의 CAN 연동·점멸 동작은 이번 확인 범위가 아니다.
+- 게이지 범위 200 km/h / 8000 rpm은 Dummy 벤치 값이며 최종 차량 스펙 동결이 아니다.
+
+### 2. 증상 → 원인 → 수정
+
+| 증상 | 확인된 원인 | 수정 |
+|---|---|---|
+| 단위/기어에 `???` 표시 | `Unicode::snprintf`의 `%s`에 일반 `char*`를 전달 | 단위는 `UnicodeChar` 배열로 변환, 기어는 `%c` 사용, 버퍼 0 초기화 |
+| 값과 단위가 잘림 | Designer 텍스트 영역 폭 37 px | 속도/RPM 176×28 px, 기어 48×28 px로 확대하고 중앙 정렬; Designer와 사용자 View 코드에 반영 |
+| 디버거 `load ...elf` 실패 | 외부 플래시 리소스가 있으나 `.launch`의 External Loader 목록이 비어 있음 | `MX25LM51245G_STM32H735G-DK.stldr` 활성화 후 사용자가 정상 표시 확인 |
+
+현재 폰트 advance 합계로 `8000 rpm` 108 px, `200 km/h` 111 px, `-- INVALID` 127 px, `-- COMM LOST` 161 px임을 확인했다. 이는 정적 폭 검사이며 모든 상태의 실기 표시 시험을 대신하지 않는다.
+외부 로더 경로는 로컬 STM32CubeProgrammer 설치 경로이므로 다른 PC에서는 Debug Configurations에서 다시 선택해야 한다.
+
+### 3. 검증과 한계
+
+- 기존 CubeIDE Debug 디렉터리에서 `make -j4 all` 성공. 이미 빌드된 상태의 증분 확인이며 clean rebuild는 수행하지 않았다.
+- ELF size 출력: text=3,492,756 / data=732 / bss=1,666,376 bytes. 내부 Flash만의 사용량을 뜻하지 않는다.
+- Designer JSON/text XML 파싱, 참조 이미지·폰트 존재, `git diff --check` 통과.
+- 사용자가 보드에 대해 “오키 다 나온다”라고 확인: 플래시 후 Cluster 기본 표시 확인으로 기록한다. 이번 세션의 스크린샷/프로그래머 상세 로그는 별도 저장하지 않았다.
+- READY/CRITICAL/RECOVERY/INVALID/TIMEOUT 각각의 화면 전이, 값 경계, 터치 중 갱신, 장시간 GUI 안정성, 물리 CAN 및 timing은 후속 시험이다.
+
+상세 결과와 미실시 항목은 [TEST_REPORT.md](TEST_REPORT.md) §0.9 참조.
+
+---
+
 ## 2026-09-15 · VehicleModel + DummyDataProvider (가이드 §2-4, pre-GUI)
 
 ### 1. 이번 작업 범위

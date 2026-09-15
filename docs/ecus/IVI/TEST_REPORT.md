@@ -14,8 +14,8 @@
 | Board / Platform | STM32H735G-DK + TouchGFX |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
 | Reference Commit | `f5c3b1ee03992cfd2d98587da270d9b3f9edd82a` (MaJerle reference) |
-| Firmware Commit | `835e48d` feat(ivi): FDCAN2 internal loopback bench test — `main`에 PR #2(`22d6e4f`)로 병합 |
-| Test Date | 2026-09-10 |
+| Firmware Commit | 최신 Cluster: `e437940`; 기존 FDCAN2 loopback: `835e48d` (PR #2 `22d6e4f`); 항목별 기준 커밋 참조 |
+| Test Date | 2026-09-10 ~ 2026-09-15 (항목별 수행일 참조) |
 | STM32CubeIDE | 1.19.0 |
 | STM32CubeMX | 6.18.0 (SDV_IVI_H735) / 6.15.0 (reference 검증 시) |
 | STM32Cube FW_H7 | V1.13.0 (SDV_IVI_H735) / V1.10.0 compatibility (reference) |
@@ -35,6 +35,7 @@
 | v0.6 | 2026-09-15 | Team | §0.7 HyperRAM MPU Region2 8MB→16MB 정합화 및 재검증(LCD ≥5분, FDCAN2 loopback 회귀 없음) 반영, Final Result / 완료된 항목 갱신 |
 | v0.7 | 2026-09-15 | Team | §0.4 hang/tearing·FDCAN2 loopback 행을 §0.5/§0.7 결과로 갱신(PARTIAL, 물리 CAN·응답시간은 여전히 NOT RUN), Remaining Issues에서 완료된 `Error_Handler` 수정(`0a06b06`) 및 MPU 커밋(`a226f9a`) 반영 |
 | v0.8 | 2026-09-15 | Team | §0.8 VehicleModel + DummyDataProvider bench(가이드 §2-4, pre-GUI) 결과 반영 — DUMMY-01~07/09 PASS, DUMMY-08 NOT RUN(GUI 없음), DUMMY-10 PARTIAL. Final Result / 완료된 항목 / Remaining Issues 갱신 |
+| v0.9 | 2026-09-15 | Team | §0.9 Cluster 기본 표시/외부 로더 사용자 확인과 정적·증분 빌드 검사 기록; GUI 상태 전이/터치·부하 시험은 미실시 유지 |
 
 ---
 
@@ -414,6 +415,48 @@ C 시험에서 확인된 대로, `source_valid=0`이 한 번 기록된 신호는
 
 ---
 
+## 0.9 TouchGFX Cluster 기본 표시 및 플래시 재확인 (2026-09-15)
+
+### 0.9.1 대상 및 근거
+
+- 코드: [`e437940`](https://github.com/sunmaan22/SDV_MCU_Project/commit/e437940c31451eec38a813bf34d9f0292b49e4a9), STM32H735G-DK / TouchGFX 4.26.1 / CubeIDE 1.19.0.
+- Repository → Model → Presenter → View 연결, Unicode 문자열 처리, 텍스트 영역 확대, 화면 리소스 및 외부 플래시 로더 설정을 포함한다.
+- 하드웨어 판정 근거: 사용자의 “오키 다 나온다” 확인. 상세 원시 플래시 로그/스크린샷 및 화면의 정확한 숫자는 이번 세션에 저장하지 않았다.
+- §0.8은 GUI 연결 전 시험 기록이다. 해당 데이터 경로 PASS를 이번 GUI 상태 전이/부하 시험 PASS로 확대하지 않는다.
+
+### 0.9.2 결과
+
+| Test ID | 시험 | Actual / Evidence | Result |
+|---|---|---|---|
+| CLUSTER-01 | 기존 Debug 빌드 확인 | `make -j4 all` exit 0; 기존 산출물 증분 검사, clean rebuild 미실시 | PASS (incremental) |
+| CLUSTER-02 | 화면/리소스 정합성 | Designer JSON, text XML 파싱 및 참조 이미지·폰트 존재 확인; `git diff --check` 통과 | PASS (static) |
+| CLUSTER-03 | 외부 플래시 다운로드 후 표시 | 비어 있던 External Loader에 `MX25LM51245G_STM32H735G-DK.stldr` 활성화; 사용자 정상 표시 확인 | PASS (user-confirmed smoke) |
+| CLUSTER-04 | 속도/RPM/기어 기본 표시 | `???`/잘림 수정 후 사용자 정상 표시 확인; 정확한 수치·경계값별 캡처 없음 | PASS (user-confirmed smoke) |
+| CLUSTER-05 | 긴 텍스트의 영역 폭 | 176 px 영역에 `8000 rpm` 108 px, `200 km/h` 111 px, `-- INVALID` 127 px, `-- COMM LOST` 161 px; 폰트 advance 합산 | PASS (static) / 각 상태 실기 NOT RUN |
+| CLUSTER-06 | NO_DATA/INVALID/TIMEOUT 및 복구 화면 전이 | 구현 코드 확인만 수행; 상태별 주입 후 화면 관찰 미실시 | NOT RUN |
+| CLUSTER-07 | READY/DEMO/CRITICAL/RECOVERY 표시 전이 | 구현 코드 확인만 수행; 상태별 실기 판정 근거 없음 | NOT RUN |
+| DUMMY-08 (GUI 후속) | 터치 중 값 갱신 | Cluster 화면 구성 완료; 터치 상호작용 중 갱신 시험은 미실시 | NOT RUN |
+| CLUSTER-08 | GUI 부하/장시간/타이밍 및 물리 CAN | 이번 변경 기준 별도 시험 미실시 | NOT RUN |
+
+빌드 size 출력(bytes): `text=3492756, data=732, bss=1666376`.
+외부 Flash/HyperRAM 영역을 포함하므로 위 값을 MCU 내부 메모리 사용량으로 해석하지 않는다.
+
+### 0.9.3 재현 및 다음 시험
+
+1. TouchGFX Designer에서 기존 프로젝트를 열고 Generate Code 후 CubeIDE 빌드한다.
+2. Debug Configurations → Debugger → External loaders에서 해당 보드 로더를 활성화한다. 커밋된 경로는 로컬 설치 경로이므로 다른 PC에서 조정한다.
+3. Flash/run 후 속도/RPM/기어가 문자 깨짐이나 잘림 없이 표시되는지 캡처한다.
+4. `g_dummy_mode`로 NORMAL → SOURCE_INVALID → NORMAL → PAUSE_DRIVE → NORMAL, CRITICAL → RECOVERY를 주입하여 화면과 Repository를 함께 기록한다.
+5. 터치 중 갱신, GUI 장시간 실행, 경고 지연, 큐 포화/stack 여유를 별도 측정한다.
+
+```text
+TOUCHGFX CLUSTER BASIC DISPLAY: PASS (user-confirmed smoke)
+GUI STATE TRANSITIONS / TOUCH-UPDATE / LOAD / TIMING: NOT RUN
+FULL IVI INTEGRATION: NOT RUN
+```
+
+---
+
 # 1. Test Objective
 
 H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 정상 표시하는지 검증한다. 동시에 FreeRTOS 기반 `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask`가 의도한 구조로 실행되고, CAN burst나 UI load에서도 queue overflow, stack overflow, starvation 없이 주요 Timing 요구사항을 만족하는지 확인한다.
@@ -439,7 +482,7 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 
 | Test ID | Requirement | Expected | Result |
 |---|---|---|---|
-| T-HMI-001 | REQ-HMI-001 | Speed/RPM/Gear 표시 | NOT RUN |
+| T-HMI-001 | REQ-HMI-001 | Speed/RPM/Gear 표시 | DUMMY BASIC DISPLAY PASS (사용자 확인, §0.9) / 실제 CAN·경계값 NOT RUN |
 | T-HMI-002 | REQ-HMI-002 | READY/Warning 표시 | NOT RUN |
 | T-HMI-003 | REQ-HMI-003 | ADAS 상태 표시 | NOT RUN |
 | T-HMI-004 | REQ-HMI-004 | Parking 거리/Warning 표시 | NOT RUN |
@@ -453,7 +496,7 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 | T-HMI-012 | REQ-HMI-012 | Touch≤150 ms 목표 | FUNCTIONAL PASS / TIMING NOT RUN |
 | T-HMI-013 | REQ-HMI-013 | CAN/GUI task 분리 | NOT RUN |
 | T-HMI-014 | REQ-HMI-014 | FDCAN ISR 최소 처리 | BENCH PARTIAL PASS (loopback: ISR enqueue-only, `irq_count` = 100) / 통합 NOT RUN |
-| T-HMI-015 | REQ-HMI-015 | Queue/Repository 전달 | BENCH: ISR→queue→task 경로 PASS (`loopbackQueue`) / Repository 경로 NOT RUN |
+| T-HMI-015 | REQ-HMI-015 | Queue/Repository 전달 | BENCH: loopback queue PASS; Dummy Repository PASS (§0.8), GUI 기본 표시 확인 (§0.9) / 실제 CAN 통합 NOT RUN |
 | T-HMI-016 | REQ-HMI-016 | load 중 critical warning block 없음 | NOT RUN |
 | T-HMI-017 | REQ-HMI-017 | stack/queue overflow 검증 | NOT RUN |
 | T-HMI-018 | REQ-HMI-018 | HealthTask/watchdog-ready 구조 | NOT RUN |
@@ -464,7 +507,7 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 
 | Test | Input | Expected | Actual | Result |
 |---|---|---|---|---|
-| Cluster | speed=24, rpm=1250, gear=D | 값 표시 | NOT RUN | TBD |
+| Cluster | Dummy speed/rpm/gear (정확한 관찰값 미기록) | 값 표시 | 사용자 기본 표시 확인 (§0.9); 고정 입력 24/1250/D 별도 재시험 필요 | BASIC DISPLAY PASS / 고정값·경계값 NOT RUN |
 | Parking | RR=180 mm, CRITICAL | right critical UI | NOT RUN | TBD |
 | DTC | 2 entries | list/detail | NOT RUN | TBD |
 | Screen Flow | 5개 화면 이동 | hang 없이 전환 | NOT RUN | TBD |
@@ -617,6 +660,8 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 
 # 12. Evidence
 
+- Cluster 표시/플래시 (§0.9, 2026-09-15, 코드 `e437940`): 사용자 정상 표시 확인, 기존 Debug 증분 빌드 성공, JSON/XML/리소스 참조 및 diff 검사 통과. 스크린샷/원시 플래시 로그 미저장.
+
 - Reference build log: PASS, `0 errors, 0 warnings`
 - Reference LCD visual confirmation: PASS
 - Reference TouchGFX visual confirmation: PASS
@@ -655,6 +700,7 @@ FDCAN2 INTERNAL LOOPBACK BENCH: PASS (state = 2, 100/100)
 SDV_IVI_H735 EXTERNAL MEMORY BRING-UP: PASS (OCTOSPI1 NOR + OCTOSPI2 HyperRAM)
 HYPERRAM MPU REGION2 8MB -> 16MB ALIGNMENT: PASS (build/LCD >=5min/FDCAN2 regression)
 VEHICLEMODEL + DUMMYDATAPROVIDER BENCH: PASS pre-GUI (DUMMY-01~07,09 PASS; 08 NOT RUN; 10 PARTIAL)
+TOUCHGFX CLUSTER BASIC DISPLAY: PASS (user-confirmed smoke, e437940; GUI state/touch/load tests NOT RUN)
 FULL IVI INTEGRATION: NOT RUN
 ```
 
@@ -668,6 +714,8 @@ FULL IVI INTEGRATION: NOT RUN
 - [x] SDV_IVI_H735 자체 board bring-up — OCTOSPI1 NOR GUI asset(`0x90000000`) + OCTOSPI2 HyperRAM framebuffer(`0x70000000`) 실동작 (§0.6, `.map` + 플래시 verify + 육안)
 - [x] HyperRAM MPU Region2 8MB→16MB 정합화 — 빌드 0 error/0 warning, LCD ≥5분 정상, FDCAN2 loopback 회귀 없음 (§0.7, 커밋 `a226f9a`)
 - [x] VehicleModel + DummyDataProvider (가이드 §2-4, pre-GUI) — DUMMY-01~07/09 PASS, 신호별 freshness/timeout/invalid 정책 디버거로 확인 (§0.8)
+
+- [x] Cluster 데이터 연결 및 기본 표시 사용자 확인 (§0.9, `e437940`); 상태 전이/터치·부하는 별도 미실시
 
 ## 전체 IVI PASS 조건
 
@@ -691,7 +739,8 @@ FULL IVI INTEGRATION: NOT RUN
 - ~~HyperRAM MPU Region2 8MB→16MB 정합화~~ → 완료 (§0.7, PASS, 커밋 `a226f9a`)
 - ~~빈 `Error_Handler` 본문 — `while (1)` / fault 로깅 추가 (§0.6.5)~~ → 완료 (커밋 `0a06b06`, halt loop + `g_error_handler_caller` 기록 추가)
 - ~~VehicleModel + DummyDataProvider 데이터 경로 (가이드 §2-4)~~ → 완료 (§0.8, pre-GUI bench PASS)
-- TouchGFX Cluster 화면 구성 및 데이터 연결 (가이드 §5) — DUMMY-08(터치 중 갱신)은 이 화면이 있어야 시험 가능
+- ~~TouchGFX Cluster 화면 구성 및 데이터 연결 (가이드 §5)~~ → 구현 및 기본 표시 사용자 확인 완료 (§0.9, `e437940`); 상태별 GUI 전이 시험은 미실시
+- DUMMY-08 터치 중 갱신, GUI 경고/INVALID/TIMEOUT 전이·복구 및 경계값 표시 시험
 - DUMMY-10 실제 큐 포화(burst) 주입 시험 — 현재는 `queue_overflow=0` 관찰만 확인
 - INVALID→TIMEOUT 우선순위 정책 재검토 (§0.8.5) — 한 번 invalid였던 신호가 이후 완전히 끊겨도 계속 INVALID로 표시되는 현재 동작이 최종 표시 정책에 맞는지 확인
 - FDCAN2 physical CAN 시험 (트랜시버 + 2nd node / external loopback)
