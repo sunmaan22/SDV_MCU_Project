@@ -10,15 +10,17 @@
 > 주차 경과는 동결 근거가 아니다. 계측용 bench/skeleton은 OPEN 값으로 가능하며 최종 상수와 구분한다.
 > 상세 조건: [최상위 명세 §7.1](../system/FINAL_IMPLEMENTATION_SPEC.md#71-단계별-동결-시점).
 
+> **2026-09-15 범위 변경:** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. 주차는 Ultrasonic 4방향 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
+
 # 역할
 
 | 담당 | 역할 | 실행 환경 |
 |---|---|---|
-| A | Ultrasonic / 인지 | STM32 + FreeRTOS |
+| A | Ultrasonic / 인지 (4방향) | STM32 + FreeRTOS |
 | B | H735 Cluster + IVI / UI | STM32H735 + FreeRTOS + TouchGFX |
-| C | Motor + Steering / 제어 | STM32 + FreeRTOS |
-| D | Lighting + Ambient / LIN-CAN | STM32 Gateway + STM32 LIN Slave + FreeRTOS |
-| E | HPC + Front/Rear Camera Vision | Raspberry Pi Linux |
+| C | Motor + Steering / 제어 + Driver Input | STM32 + FreeRTOS |
+| D | Lighting / LIN-CAN | STM32 Gateway + STM32 LIN Slave + FreeRTOS |
+| E | HPC + Front Camera Vision (COCO) | Raspberry Pi Linux |
 | F | VCU + DTC + CAN Integration | STM32 + FreeRTOS |
 
 ---
@@ -51,10 +53,10 @@ Watchdog / Health 구조
 |---|---|
 | A | Ultrasonic 1개 측정 → Timer ISR + UltrasonicTask 구조 |
 | B | TouchGFX Dummy UI → GuiTask + VehicleModelTask + CanRxTask skeleton |
-| C | PWM/DIR/Encoder/Servo → ControlTask + FeedbackTask skeleton |
-| D | Ambient/Lighting 단독 + Gateway/Slave FreeRTOS skeleton + LIN 기본 통신 |
-| E | Pi #1 Front / Pi #2 Rear camera capture, Linux service 구조 초안 |
-| F | Driver Input + VCU state dummy → SafetyTask/VcuControlTask/CanRxTask skeleton |
+| C | PWM/DIR/Servo + RF/가변저항 Driver Input → ControlTask + DriverInputTask skeleton |
+| D | Lighting 단독 + Gateway/Slave FreeRTOS skeleton + LIN 기본 통신 |
+| E | Pi Front camera capture, Linux service 구조 초안 |
+| F | VCU state dummy → SafetyTask/VcuControlTask/CanRxTask skeleton |
 
 ## Week 1 PASS
 
@@ -91,11 +93,11 @@ D Gateway LIN Master ↔ D LIN Slave
 
 | 담당 | Week 2 목표 |
 |---|---|
-| A | 여러 Ultrasonic, filtering, CAN status, queue/notification 검증 |
+| A | FL/FR/RL/RR 4방향 Ultrasonic, filtering, CAN status, queue/notification 검증 |
 | B | CAN RX → Queue → Vehicle Model → TouchGFX 연결 |
-| C | CAN command + timeout, ControlTask period 측정, RPM feedback |
+| C | CAN command + timeout, ControlTask period 측정, 명령값 기반 speed/rpm 추정 |
 | D | LinScheduleTask + CAN↔LIN MappingTask + Slave LightingTask |
-| E | Lane/Object baseline, Rear Parking baseline, result queue/interface |
+| E | COCO Object Detection baseline, result queue/interface |
 | F | CAN Matrix v0.1, Heartbeat, SafetyTask, VCU CAN arbitration, DTC table v0.1 |
 
 ## RTOS 공통 시험
@@ -114,13 +116,14 @@ D Gateway LIN Master ↔ D LIN Slave
 ## Drive Path
 
 ```text
-DriverInputTask
-→ VcuControlTask
-→ CAN
-→ Drive CanRxTask
+C DriverInputTask (RF/가변저항)
+→ Driver_Input (CAN)
+→ F VcuControlTask (Safety/Arbitration)
+→ Final_Drive_Command (CAN)
+→ C CanRxTask
 → ControlTask
-→ Motor/Servo
-→ StatusTask
+→ Motor/Servo (+ 명령값 기반 speed/rpm 추정)
+→ CanTxTask
 → H735
 ```
 
@@ -128,21 +131,20 @@ DriverInputTask
 
 ```text
 Front Camera
-→ Pi Vision
-→ ADAS Request
+→ Pi Vision (COCO)
+→ ADAS_Request
 → VCU CanRxTask
-→ Safety/VcuControlTask
+→ Safety/VcuControlTask (Ultrasonic Parking Critical이 항상 우선)
 → Drive ControlTask
 ```
 
 ## Parking
 
 ```text
-A UltrasonicTask ──────────┐
-                           ├→ F VCU Safety/Control → Final Stop/Speed
-E Rear Parking Vision ─────┘
+A UltrasonicTask (FL/FR/RL/RR 4방향)
+→ F VCU Safety/Control → Final Stop/Speed
 
-A/E Status → B VehicleModelTask → H735 Parking Screen
+A Status → B VehicleModelTask → H735 Parking Screen
 ```
 
 ## Body
@@ -183,24 +185,23 @@ Week 3에서는 Task를 일부러 멈추게 하는 시험을 바로 강제하지
 
 ## Vision
 
-개발용 Pi 두 대의 코드를 최종 Pi 한 대로 통합한다.
+Front Camera 1대 + COCO Object Detection을 Pi에서 최종 통합한다.
 
 ```text
-Gear D → Front Vision active
-Gear R → Rear Parking Vision active
+Front Vision 상시 active (Gear 무관)
 ```
 
 ## 차량 기능 시험
 
 - [ ] Gear P/R/N/D
-- [ ] Accelerator / Brake
+- [ ] RF/가변저항 Driver Input (accel/brake/steering)
 - [ ] Steering input → Servo
-- [ ] Encoder RPM
-- [ ] Ultrasonic warning/stop
-- [ ] Front Vision request
-- [ ] Rear Vision + Ultrasonic parking
+- [ ] 명령값 기반 speed/rpm 추정
+- [ ] Ultrasonic 4방향 warning/stop
+- [ ] Front Vision(COCO) ADAS request
+- [ ] Ultrasonic parking (Parking Critical이 ADAS_Request보다 항상 우선)
 - [ ] H735 Cluster/IVI
-- [ ] Ambient → LIN → CAN
+- [ ] 헤드램프 밝기 → LIN → CAN
 - [ ] CAN → LIN → Lighting
 - [ ] Heartbeat timeout
 - [ ] Sensor disconnect
@@ -233,19 +234,18 @@ Power ON
 → FreeRTOS Scheduler / Linux services start
 → MCU Health / Heartbeat
 → H735 Cluster READY
-→ Gear D
-→ Front Vision
-→ ADAS Request
+→ RF/가변저항 Driver Input → C → Driver_Input(CAN) → F
+→ Front Vision(COCO) → ADAS_Request
 → VCU Safety / Arbitration Task
 → Drive ControlTask
-→ Motor/Steering
+→ Motor/Steering (+ 명령값 기반 speed/rpm 추정)
 → Gear R
-→ Rear Vision + Ultrasonic
+→ Ultrasonic 4방향 Parking (Parking Critical이 ADAS_Request보다 항상 우선)
 → Parking Warning / Stop
-→ Ambient 변화
-→ LIN Slave → Gateway → CAN → H735
-→ Lamp Request
+→ H735 Parking Screen
+→ 헤드램프 밝기 요청
 → CAN → Gateway → LIN → Lamp
+→ 감속 감지 → brake_lamp 자동 점등 → CAN → Gateway → LIN → Lamp
 → Sensor/Camera/Communication Fault
 → DTC → Pi → H735
 ```

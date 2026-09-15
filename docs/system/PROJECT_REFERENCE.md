@@ -5,35 +5,34 @@
 > 현재 프로젝트에서 **어떤 보드가 무엇을 맡고, 어떤 센서/데이터를 소유하고, 어떤 RTOS Task 구조를 기본으로 하는지** 한 곳에서 확인하는 문서다.  
 > 핀 번호, CAN ID, 주기, 임계값, FreeRTOS numeric priority는 실제 보드/시험 후 확정하며 미정값은 `TBD`로 둔다.
 
+> **2026-09-15 범위 변경:** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall 실측 Feedback을 삭제했다. 주차는 Ultrasonic 4방향(FL/FR/RL/RR) 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md).
+
 # 1. 현재 전체 구조
 
 ```text
-Front Camera ─┐
-              ├→ Raspberry Pi Vision/HPC ─────────────┐
-Rear Camera ──┘                                      │
-                                                     │ CAN FD
-Ultrasonic → STM32 #1 ───────────────────────────────┤
-                                                     ├→ STM32 #5 VCU
-STM32H735 Cockpit ←───────────────────────────────────┤       │
-                                                     │       ↓
-STM32 #3 Body Gateway ←───────────────────────────────┘  STM32 #2 Drive/Steer
-        ↕ LIN
-STM32 #4 Body LIN Slave
-        ├ Ambient Sensor
-        └ Lighting
+Front Camera → Raspberry Pi Vision/HPC ────────────────┐
+                                                        │ CAN FD
+Ultrasonic(4방향) → STM32 #1 ───────────────────────────┤
+                                                        ├→ STM32 #5 VCU
+STM32H735 Cockpit ←──────────────────────────────────────┤       │
+                                                        │       ↓
+STM32 #3 Body Gateway ←──────────────────────────────────┘  STM32 #2 Drive/Steer
+        ↕ LIN                                                    ↑
+STM32 #4 Body LIN Slave                                RF 수신기/가변저항
+        └ Lighting (헤드램프 밝기/턴/브레이크)
 ```
 
 ## Board Mapping / Execution Model
 
 | Node | Hardware | 역할 | 실행 환경 |
 |---|---|---|---|
-| A | STM32 #1 + Ultrasonic | Parking distance perception | FreeRTOS |
+| A | STM32 #1 + Ultrasonic | Parking distance perception (4방향 FL/FR/RL/RR) | FreeRTOS |
 | B | STM32H735 + TouchGFX | Cluster + IVI | FreeRTOS + TouchGFX |
-| C | STM32 #2 + Motor Driver + Motor + Servo | Drive + Steering control | FreeRTOS |
+| C | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기/가변저항 | Drive + Steering control, Driver Input | FreeRTOS |
 | D-Gateway | STM32 #3 + CAN/LIN Transceiver | CAN FD ↔ LIN Gateway, LIN Master | FreeRTOS |
-| D-Slave | STM32 #4 + LIN Transceiver | Ambient + Lighting LIN Slave | FreeRTOS 기본 |
-| E | Raspberry Pi | Front/Rear Camera Vision, HPC services | Linux |
-| F | STM32 #5 | VCU, Driver Input, Safety, CAN Integration | FreeRTOS |
+| D-Slave | STM32 #4 + LIN Transceiver | Lighting LIN Slave | FreeRTOS 기본 |
+| E | Raspberry Pi | Front Camera Vision(COCO), HPC services | Linux |
+| F | STM32 #5 | VCU, Safety, CAN Integration | FreeRTOS |
 | Diagnostics | Raspberry Pi service | DTC History / Logger | Linux service |
 
 > STM32는 FreeRTOS + CMSIS-RTOS2 API를 기본안으로 한다. 실제 MCU 자원이 너무 작은 경우만 Architecture Decision을 남기고 예외를 검토한다.
@@ -77,16 +76,12 @@ Safety / Control
 
 | 영역 | 입력 / 센서 | Owner | Interface 후보 | 상태 |
 |---|---|---|---|---|
-| Driver | P/R/N/D | VCU | GPIO | 계획 |
-| Driver | Accelerator Position | VCU | ADC, Pot/Hall | 후보 |
-| Driver | Brake Position | VCU | ADC, Pot/Hall | 후보 |
-| Driver | Steering Wheel Angle | VCU | I2C/Analog, AS5600 후보 | 후보 |
-| Drive | Motor Encoder / Hall | Drive ECU | Timer/GPIO | 권장 |
+| Driver | P/R/N/D (Gear) | VCU | GPIO | 계획 |
+| Driver | E-Stop | VCU | GPIO | 계획 |
+| Driver | Accelerator/Brake/Steering (RF 리모컨 또는 가변저항) | Drive ECU(C) | PWM capture / ADC | `DEC-HW-024` 확정 전 |
 | Steering | Actual Steering Feedback | Drive ECU | ADC/I2C | 선택 확장 |
-| Parking | Ultrasonic Sensors | Ultrasonic ECU | GPIO/Timer | 계획 |
+| Parking | Ultrasonic Sensors (FL/FR/RL/RR 4방향 고정) | Ultrasonic ECU | GPIO/Timer | `FROZEN` |
 | Vision | Front Camera | Raspberry Pi | CSI | 계획 |
-| Vision | Rear Camera | Raspberry Pi | USB | 계획 |
-| Body | Ambient Light Sensor | LIN Slave | ADC/I2C | 계획 |
 | Thermal | Motor Temperature | Drive ECU | ADC/I2C | 선택 확장 |
 | Battery | Battery Voltage | VCU 또는 지정 Node | ADC measurement circuit | 후보 |
 | Battery | Battery Temperature | VCU 또는 지정 Node | ADC/I2C | 후보 |
@@ -98,12 +93,13 @@ Safety / Control
 
 | 데이터 | Owner | 주요 Consumer |
 |---|---|---|
-| Gear / Accelerator / Brake / Steering Input | VCU | Drive, HPC, H735 |
+| Gear / E-Stop | VCU | Drive, HPC, H735 |
+| Accelerator / Brake / Steering Input (`Driver_Input`) | Drive ECU(C) | VCU, HPC, H735 |
 | Final Speed / Steering Request | VCU | Drive + Steering ECU |
-| Motor RPM / Vehicle Speed | Drive ECU | VCU, H735, HPC |
-| Ultrasonic Distance / Warning | Ultrasonic ECU | VCU, H735, HPC |
-| Front/Rear Vision Result | Raspberry Pi HPC | VCU, H735 |
-| Ambient Light / Local Lamp Status | Body LIN Slave | Gateway → VCU/H735/HPC |
+| Motor RPM / Vehicle Speed (estimated, 명령값 기반) | Drive ECU | VCU, H735, HPC |
+| Ultrasonic Distance / Warning (FL/FR/RL/RR) | Ultrasonic ECU | VCU, H735, HPC |
+| Front Vision Result (detected_class/direction) | Raspberry Pi HPC | VCU, H735 |
+| Local Lamp Status | Body LIN Slave | Gateway → VCU/H735/HPC |
 | CAN↔LIN Gateway Status | Body Gateway | VCU/H735/HPC |
 | DTC History DB | Raspberry Pi DTC Manager | H735 / Debug tools |
 | 화면 값 | 원본 Node | H735는 Subscriber |
@@ -125,9 +121,9 @@ CanRxTask
 ## A. Ultrasonic
 
 ```text
-Input   : Trigger/Echo 또는 Sensor response
-Process : 거리 계산 → 유효성 → 필터 → Warning Level
-Output  : distance_mm, valid, warning_level
+Input   : FL/FR/RL/RR 4방향 Trigger/Echo
+Process : 거리 계산 → 유효성 → 필터 → Warning Level → 주차 판단(A 단독)
+Output  : zone_id, distance_mm, valid, warning_level
 Target  : VCU / H735 / HPC
 Fault   : timeout, invalid range, sensor unavailable
 ```
@@ -179,28 +175,30 @@ Fault   : CAN timeout, invalid data, UI task fault
 ## C. Motor + Steering
 
 ```text
-Input   : Final Speed/Steering Request, Encoder/Hall
-Process : Command validation → feedback/control → Motor/Servo mapping
-Output  : Motor PWM/DIR, Servo PWM, RPM/Drive Status
-Fault   : command timeout, encoder invalid, control output fault
+Input   : RF 수신기/가변저항(Driver Input), Final Drive Command
+Process : Driver Input 읽기 → Driver_Input 발행 / Command validation → control → Motor/Servo mapping → 명령값 기반 speed/rpm 추정
+Output  : Driver_Input, Motor PWM/DIR, Servo PWM, RPM(estimated)/Drive Status
+Fault   : command timeout, driver input invalid, control output fault
 ```
+
+Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) — Motor_RPM/Vehicle_Speed는 명령값(PWM) 기반 추정 함수 결과다.
 
 ### RTOS 구조 후보
 
 | Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
 |---|---|---|---|
-| Encoder ISR | edge/input capture | ISR | count/timestamp + notify |
+| Driver Input capture ISR | PWM capture/ADC event | ISR | raw sample + notify |
 | `CanRxTask` | event | High | latest VCU command update |
-| `ControlTask` | 5~10 ms 후보 | Highest application | speed/steering control, PWM update |
-| `FeedbackTask` | 5~10 ms 후보/event | High | RPM/feedback 계산 |
-| `StatusTask` | 20~50 ms 후보 | Normal | Drive_Status 송신 |
+| `ControlTask` | 5~10 ms 후보 | Highest application | speed/steering control, PWM update, speed/rpm 추정 |
+| `DriverInputTask` | 5~10 ms 후보/event | High | RF/가변저항 read → `Driver_Input` 산출 |
+| `CanTxTask` | 20~50 ms 후보 + event | Normal | `Driver_Input`/`Drive_Status` 송신 |
 | `HealthTask` | 50~100 ms 후보 | Low/Normal | command timeout / task health |
 
 ControlTask는 UART printf, blocking CAN TX, 느린 진단 처리에 의존하지 않는다.
 
 ---
 
-## D. Lighting + Ambient / LIN-CAN
+## D. Lighting / LIN-CAN
 
 ### Gateway
 
@@ -231,8 +229,7 @@ Body LIN Slave
 |---|---|---|---|
 | LIN ISR | frame event | ISR | wake LinRxTask |
 | `LinRxTask` | event | High | LIN command/status handling |
-| `AmbientTask` | 50~100 ms 후보 | Normal | ambient sampling/filter |
-| `LightingTask` | event / 10~20 ms 후보 | Normal/High | lamp state/output |
+| `LightingTask` | event / 10~20 ms 후보 | Normal/High | lamp state/output (헤드램프 밝기 포함) |
 | `StatusTask` | schedule event | Normal | slave status 준비 |
 | `HealthTask` | 100 ms 후보 | Low | sensor/output/task health |
 
@@ -240,20 +237,18 @@ Body LIN Slave
 
 ## E. HPC + Camera Vision
 
-Pi는 RTOS가 아니라 Linux다.
+Pi는 RTOS가 아니라 Linux다. Front Camera 1대로 COCO 기반 객체인식만 수행한다 (Rear Camera/Rear Vision/주차 Vision 삭제).
 
 ```text
-Pi #1 + Front Camera → Front Vision
-Pi #2 + Rear Camera  → Rear Vision
+Front Camera → front_vision (COCO Object Detection)
 ```
 
 최종:
 ```text
 front_vision service ─┐
-rear_vision service ──┤
-can_service ──────────┤→ vehicle_manager
-DTC manager ──────────┤
-logger ────────────────┘
+can_service ───────────┤→ vehicle_manager
+DTC manager ────────────┤
+logger ──────────────────┘
 ```
 
 Architecture에는 Process/Thread, Queue, service dependency, restart 정책을 기록한다.
@@ -265,14 +260,15 @@ Raw Camera frame은 Pi 내부에서 처리하고 CAN에는 semantic/control resu
 ## F. VCU + DTC + CAN Integration
 
 ```text
-Driver Input
-ADAS Request
-Ultrasonic Warning
+Gear/E-Stop (VCU 자체 입력)
+Driver_Input (CAN, C 발행)
+ADAS_Request
+Ultrasonic_Status (Parking Critical 포함)
 ECU Heartbeat/Fault
         ↓
 Vehicle State / Gear / Mode
         ↓
-Safety & Arbitration
+Safety & Arbitration (Parking Critical > ADAS_Request)
         ↓
 Final Speed / Steering Request
 ```
@@ -281,9 +277,9 @@ Final Speed / Steering Request
 
 | Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
 |---|---|---|---|
-| GPIO/ADC/Peripheral ISR | event | ISR | 최소 capture |
-| `CanRxTask` | event | High | ADAS/US/Drive/Body status 수신 |
-| `DriverInputTask` | 10 ms 후보 | High/Normal | Gear/Pedal/Steering input |
+| GPIO ISR (Gear/E-Stop) | event | ISR | 최소 capture |
+| `CanRxTask` | event | High | Driver_Input/ADAS/US/Drive/Body status 수신 |
+| `LocalInputTask` | 10 ms 후보 | High/Normal | Gear/E-Stop input |
 | `SafetyTask` | 5~10 ms/event 후보 | Highest application | E-Stop, heartbeat, critical fault |
 | `VcuControlTask` | 10 ms 후보 | High | mode/state/arbitration |
 | `CanTxTask` | 20 ms/event 후보 | Normal/High | final command/state TX |
@@ -293,10 +289,12 @@ Final Speed / Steering Request
 우선순위 기본 방향:
 ```text
 Critical Fault / E-Stop
-> Critical Obstacle Stop
-> ADAS Safety Request
+> Ultrasonic Parking Critical
+> ADAS_Request
 > Normal Driver / Mode Request
 ```
+
+Ultrasonic Parking Critical은 `ADAS_Request`보다 항상 우선하며, `ADAS_Request`가 이를 해제/override할 수 없다.
 
 RTOS Priority와 차량 Arbitration Priority는 다른 개념이다. 둘을 문서에서 혼동하지 않는다.
 
@@ -370,19 +368,19 @@ CAN ID와 bit layout은 확정 전이면 `TBD`로 둔다.
 | Signal | Owner | Consumer | Unit | Cycle | Timeout |
 |---|---|---|---|---|---|
 | `Vehicle_Gear` | VCU | All | enum | TBD | TBD |
+| `Driver_Input` | Drive ECU(C) | VCU | TBD | TBD | TBD |
 | `Final_Speed_Request` | VCU | Drive | % or m/s TBD | TBD | TBD |
 | `Final_Steering_Request` | VCU | Drive | deg/% TBD | TBD | TBD |
-| `Motor_RPM` | Drive | VCU/H735/HPC | rpm | TBD | TBD |
-| `Rear_Distance` | Ultrasonic | VCU/H735/HPC | mm | TBD | TBD |
-| `ADAS_Warning` | HPC | VCU/H735 | enum | TBD | TBD |
-| `Body_Ambient` | Gateway | VCU/H735/HPC | raw/% TBD | TBD | TBD |
+| `Motor_RPM` (estimated) | Drive | VCU/H735/HPC | rpm | TBD | TBD |
+| `Ultrasonic_Status` (FL/FR/RL/RR) | Ultrasonic | VCU/H735/HPC | mm/flags | TBD | TBD |
+| `ADAS_Request` | HPC(E) | VCU/H735 | enum | TBD | TBD |
+| `Body_Command.headlamp_brightness` | VCU | Gateway | 0-100% | TBD | TBD |
 
 LIN 후보:
 
 | Frame | Publisher | 역할 |
 |---|---|---|
-| `Ambient_Status` | LIN Slave | 조도 상태 |
-| `Lamp_Command` | Gateway Master | 조명 명령 |
+| `Lamp_Command` | Gateway Master | 조명 명령 (헤드램프 밝기 포함) |
 | `Lamp_Status` | LIN Slave | 실제 조명 상태 |
 | `Lamp_Diagnostic` | LIN Slave | Body fault 상태 |
 

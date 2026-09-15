@@ -25,7 +25,7 @@ Raspberry Pi 4 Vision/HPC · STM32 + FreeRTOS 분산 ECU · CAN FD Backbone · L
 > **MCU 실행 환경:** 가능한 STM32 Node는 **FreeRTOS + CMSIS-RTOS2**를 기본으로 설계한다.  
 > **HPC 실행 환경:** Raspberry Pi는 Linux 기반 Service / Process / Thread 구조를 사용한다.  
 > **Cockpit:** STM32H735 + TouchGFX 한 보드에서 Cluster와 IVI를 함께 구현한다.  
-> **Vision 개발:** 개발 중 Front/Rear Camera를 Raspberry Pi 2대로 병렬 개발하고, 최종 차량에서는 Pi 1대로 통합하는 것을 목표로 한다.  
+> **Vision:** Front Camera 1대로 COCO 기반 객체인식만 수행한다 (Rear Camera/Rear Vision/주차 Vision 삭제, 2026-09-15).  
 > **이전 계획 보존:** [Legacy Documentation](../archive)
 
 본 프로젝트는 실제 도로 차량용 제어기가 아니라 **저속 RC/모형 모빌리티 플랫폼에서 SDV의 데이터 흐름, 분산 ECU, RTOS, 차량 네트워크 구조를 축소 구현하는 프로젝트**다.
@@ -52,12 +52,12 @@ Raspberry Pi 4 Vision/HPC · STM32 + FreeRTOS 분산 ECU · CAN FD Backbone · L
 
 주요 기능은 다음과 같다.
 
-- **Ultrasonic Perception:** 초음파센서로 장애물 거리를 측정한다.
-- **Camera Vision:** Front/Rear Camera 영상을 Raspberry Pi에서 처리한다.
-- **HPC / Vision Decision:** 영상에서 차선, 물체, Parking 의미 정보를 만들고 요청을 생성한다.
-- **VCU / Final Arbitration:** 운전자 입력, Vision 요청, 초음파 위험 상태, Fault를 보고 최종 차량 명령을 정한다.
-- **Drive / Steering Control:** 브러시드 DC Motor와 RC Servo를 실제로 제어한다.
-- **Body / Lighting:** 조도센서와 램프를 LIN으로 연결하고 CAN FD와 Gateway한다.
+- **Ultrasonic Perception:** 초음파센서 4방향(FL/FR/RL/RR)으로 주차 거리를 측정하고 판단한다.
+- **Camera Vision:** Front Camera 1대 영상을 Raspberry Pi에서 COCO 기반으로 처리한다.
+- **HPC / Vision Decision:** 영상에서 객체(class/방향) 의미 정보를 만들고 회피 요청을 생성한다. 주차 판단은 하지 않는다.
+- **VCU / Final Arbitration:** Driver Input(RF/가변저항, C 발행), ADAS 요청, 초음파 Parking Critical(항상 최우선), Fault를 보고 최종 차량 명령을 정한다.
+- **Drive / Steering Control:** RF/가변저항 Driver 입력을 읽고, 브러시드 DC Motor와 RC Servo를 실제로 제어하며, 명령값 기반으로 speed/rpm을 추정한다.
+- **Body / Lighting:** 헤드램프 밝기/턴시그널/브레이크등을 LIN으로 연결하고 CAN FD와 Gateway한다.
 - **Cockpit:** STM32H735에서 Cluster + IVI UI를 구현한다.
 - **Diagnostics:** 각 Node의 고장을 DTC로 모으고 저장/표시한다.
 - **RTOS:** STM32의 주기 작업, 통신, 제어, UI, 진단을 Task 단위로 분리한다.
@@ -90,9 +90,9 @@ Ultrasonic Echo
 ```
 
 ```text
-Camera Frame
-→ Vision Pipeline
-→ Lane / Object / Parking Result
+Front Camera Frame
+→ Vision Pipeline (COCO)
+→ detected_class / direction Result
 ```
 
 ## 2.2 판단
@@ -179,64 +179,52 @@ Local Body LIN
 
 ```mermaid
 flowchart TB
-    FCAM["Front Camera"] -->|CSI| HPC["Raspberry Pi 4\nLinux Vision / HPC"]
-    RCAM["Rear Camera"] -->|USB| HPC
+    FCAM["Front Camera"] -->|CSI| HPC["Raspberry Pi 4\nLinux Vision / HPC (COCO)"]
 
     CAN{{"CAN FD Backbone"}}
     HPC <--> CAN
 
-    USS["STM32 #1 + FreeRTOS\nUltrasonic Perception"] <--> CAN
-    DRIVE["STM32 #2 + FreeRTOS\nDrive + Steering"] <--> CAN
+    USS["STM32 #1 + FreeRTOS\nUltrasonic Perception (4방향)"] <--> CAN
+    DRIVE["STM32 #2 + FreeRTOS\nDrive + Steering + Driver Input"] <--> CAN
     GW["STM32 #3 + FreeRTOS\nCAN↔LIN Gateway"] <--> CAN
     VCU["STM32 #5 + FreeRTOS\nVCU / Safety / CAN Integration"] <--> CAN
     COCKPIT["STM32H735 + FreeRTOS\nCluster + IVI / TouchGFX"] <--> CAN
 
-    USS --> US["Ultrasonic Sensors"]
+    USS --> US["Ultrasonic Sensors (FL/FR/RL/RR)"]
     DRIVE --> TB["TB6612FNG 후보\nBrushed DC Motor"]
     DRIVE --> SERVO["RC Steering Servo"]
+    DRIVERIN["RF 수신기 / 가변저항"] --> DRIVE
 
     GW <-->|LIN| BODY["STM32 #4 + FreeRTOS 기본\nBody LIN Slave"]
-    BODY --> ALS["Ambient Light Sensor"]
-    BODY --> LIGHT["Head / Tail / Brake / Turn / Hazard"]
+    BODY --> LIGHT["Headlamp(밝기) / Turn / Brake"]
 
-    DRIVER["Gear / Accelerator / Brake / Steering Input"] --> VCU
+    GEAR["Gear / E-Stop"] --> VCU
 ```
 
 ## 4.2 보드 / 실행환경
 
 | Hardware | 역할 | 실행 환경 |
 |---|---|---|
-| STM32 #1 | Ultrasonic Perception ECU | FreeRTOS |
-| STM32 #2 | Drive + Steering Control ECU | FreeRTOS |
+| STM32 #1 | Ultrasonic Perception ECU (4방향) | FreeRTOS |
+| STM32 #2 | Drive + Steering Control ECU + Driver Input | FreeRTOS |
 | STM32 #3 | Body CAN FD ↔ LIN Gateway / LIN Master | FreeRTOS |
-| STM32 #4 | Body LIN Slave / Ambient / Lighting | FreeRTOS 기본, 자원 부족 시 예외 검토 |
-| STM32 #5 | VCU / Driver Input / Safety / CAN Integration | FreeRTOS |
+| STM32 #4 | Body LIN Slave / Lighting | FreeRTOS 기본, 자원 부족 시 예외 검토 |
+| STM32 #5 | VCU / Safety / CAN Integration | FreeRTOS |
 | STM32H735 | Cluster + IVI Cockpit | FreeRTOS + TouchGFX |
-| Raspberry Pi 4 | Front + Rear Vision / HPC / DTC Manager | Linux |
+| Raspberry Pi 4 | Front Vision(COCO) / HPC / DTC Manager | Linux |
 
 > 실제 소형 STM32의 FDCAN 지원 여부, RAM/Flash 크기, FreeRTOS 적용 가능성은 최종 보드가 확정되면 확인한다. STM32 #4처럼 작은 Node가 자원상 RTOS 사용이 부적합하면 Bare-metal 예외를 허용하되 `ARCHITECTURE.md`에 이유를 기록한다.
 
-## 4.3 Vision 병렬 개발
+## 4.3 Vision
 
 ```text
-개발 Pi #1 + Front Camera
-→ Front ADAS Vision
-
-개발 Pi #2 + Rear Camera
-→ Rear Parking Vision
+Front Camera 1대
+→ Raspberry Pi HPC
+→ COCO Object Detection
+→ Vision_Status / ADAS_Request
 ```
 
-최종 차량에서는 한 Pi에 통합한다.
-
-```text
-Gear D
-→ Front Vision ACTIVE
-→ Rear Vision IDLE
-
-Gear R
-→ Front Vision PAUSE
-→ Rear Vision ACTIVE
-```
+Rear Camera/Rear Vision/주차 Vision은 삭제됐다 (2026-09-15). Front Vision은 Gear/Mode와 무관하게 항상 동작한다. 주차 판단은 Ultrasonic(A)이 전담한다.
 
 영상처리는 STM32가 아니라 Raspberry Pi가 담당한다. **Raw Camera Frame은 CAN FD로 전송하지 않고 의미 있는 결과값만 전송한다.**
 
@@ -297,10 +285,10 @@ Peripheral / CAN / Timer Interrupt
 |---|---|
 | Ultrasonic | `UltrasonicTask`, `CanTxTask`, `HealthTask` |
 | H735 Cockpit | `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask` |
-| Drive/Steering | `ControlTask`, `FeedbackTask`, `CanRxTask`, `StatusTask`, `HealthTask` |
+| Drive/Steering | `ControlTask`, `DriverInputTask`, `CanRxTask`, `CanTxTask`, `HealthTask` |
 | Body Gateway | `CanRxTask`, `LinScheduleTask`, `GatewayMappingTask`, `CanTxTask`, `HealthTask` |
-| Body LIN Slave | `LinRxTask`, `AmbientTask`, `LightingTask`, `StatusTask`, `HealthTask` |
-| VCU | `SafetyTask`, `VcuControlTask`, `DriverInputTask`, `CanRxTask`, `CanTxTask`, `DiagnosticTask`, `HealthTask` |
+| Body LIN Slave | `LinRxTask`, `LightingTask`, `StatusTask`, `HealthTask` |
+| VCU | `SafetyTask`, `VcuControlTask`, `CanRxTask`, `CanTxTask`, `DiagnosticTask`, `HealthTask` |
 
 정확한 Task 개수와 Priority 숫자는 기능 시험 전부터 고정하지 않는다. 실제 Timing / CPU Load / Stack 측정 후 조정한다.
 
@@ -349,29 +337,27 @@ Ultrasonic Sensor
 
 ```text
 Front Camera
-→ Raspberry Pi Linux Vision Service
-→ Lane / Object / Risk
-→ ADAS Speed / Steering Request
+→ Raspberry Pi Linux Vision Service (COCO)
+→ detected_class / direction / warning
+→ Vision_Status / ADAS_Request
 → CAN Service
 → VCU
 ```
 
-## 6.3 Rear Parking
+## 6.3 Parking
 
 ```text
-Rear Camera → Pi Rear Vision ─────────────┐
-                                           ├→ Parking Status / VCU 판단
-Ultrasonic → STM32 Ultrasonic Task ───────┘
+Ultrasonic(4방향) → STM32 Ultrasonic Task → Parking Status / VCU 판단
 ```
 
-Vision은 물체/위치 같은 의미 정보를 담당하고, Ultrasonic은 실제 근거리 거리값을 담당한다.
+주차 판단은 Ultrasonic(A)이 단독으로 담당한다. Vision(E)은 전방 객체 회피 요청만 만들고 주차에는 관여하지 않으며, `ADAS_Request`는 Ultrasonic Parking Critical을 override할 수 없다.
 
 ## 6.4 최종 차량 제어
 
 ```text
-Driver Input
-ADAS Request
-Ultrasonic Critical
+Driver_Input (CAN, C 발행)
+ADAS_Request
+Ultrasonic Parking Critical (항상 최우선)
 Fault / Heartbeat
        ↓
 VCU SafetyTask / VcuControlTask
@@ -382,24 +368,23 @@ Drive CanRxTask
        ↓
 ControlTask
        ↓
-Motor / Servo
+Motor / Servo (+ 명령값 기반 speed/rpm 추정)
 ```
 
 ## 6.5 Body LIN / CAN Gateway
 
 ```text
-Ambient Sensor
-→ LIN Slave AmbientTask
-→ LIN Status
+LIN Slave LightingTask
+→ Lamp_Status
 → Gateway LinScheduleTask
 → GatewayMappingTask
-→ CAN FD
+→ CAN FD Body_Status
 ```
 
 반대 방향:
 
 ```text
-Body_Command over CAN
+VCU Body_Command (headlamp_brightness/turn/brake_lamp) over CAN
 → Gateway CanRxTask
 → GatewayMappingTask
 → LIN Command
@@ -491,21 +476,21 @@ H735 상세 명세/설계 예시는 [`docs/ecus/IVI/`](../ecus/IVI)에서 확인
 
 | 담당 | 역할 | 주요 Hardware | 실행 환경 | 한 줄 설명 |
 |---|---|---|---|---|
-| **A** | **Ultrasonic / 인지** | STM32 #1 + Ultrasonic | FreeRTOS | 장애물까지 거리를 측정하고 Warning을 만든다. |
+| **A** | **Ultrasonic / 인지** | STM32 #1 + Ultrasonic | FreeRTOS | 4방향(FL/FR/RL/RR) 주차 거리를 측정하고 판단한다. |
 | **B** | **Cluster + IVI / UI** | STM32H735 + TouchGFX | FreeRTOS | 차량 상태, 경고, Parking, DTC를 보여준다. |
-| **C** | **Motor + Steering / 제어** | STM32 #2 + Motor Driver + Motor + Servo | FreeRTOS | 최종 명령대로 차량을 실제로 움직인다. |
-| **D** | **Lighting + Ambient / LIN-CAN** | STM32 #3 + #4 | FreeRTOS | 조도/조명을 LIN으로 연결하고 CAN FD와 Gateway한다. |
-| **E** | **HPC + Camera Vision / 인지·판단** | Raspberry Pi + Front/Rear Camera | Linux | 영상을 처리하고 ADAS/Parking 결과를 만든다. |
+| **C** | **Motor + Steering / 제어** | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기/가변저항 | FreeRTOS | Driver 입력을 읽고 최종 명령대로 차량을 실제로 움직인다. |
+| **D** | **Lighting / LIN-CAN** | STM32 #3 + #4 | FreeRTOS | 헤드램프 밝기/조명을 LIN으로 연결하고 CAN FD와 Gateway한다. |
+| **E** | **HPC + Camera Vision / 인지·판단** | Raspberry Pi + Front Camera | Linux | 전방 영상을 COCO로 처리하고 ADAS 회피 요청을 만든다. |
 | **F** | **VCU + DTC + CAN Integration / 최종 판단** | STM32 #5 + Pi Diagnostics 협업 | FreeRTOS | 최종 안전 판단, CAN 통합, DTC 규칙을 관리한다. |
 
 ### 역할 경계
 
-- A는 거리 측정/상태 생성까지 담당하고 Motor를 직접 제어하지 않는다.
+- A는 거리 측정/상태 생성과 주차 판단까지 담당하고 Motor를 직접 제어하지 않는다.
 - B는 표시와 사용자 Request가 중심이며 차량 최종 제어 권한은 없다.
-- C는 실제 Motor/Steering 제어와 Feedback을 담당한다.
+- C는 Driver 입력 읽기와 실제 Motor/Steering 제어(+ 명령값 기반 speed/rpm 추정)를 담당한다.
 - D는 Body Local LIN Network와 CAN↔LIN Gateway를 담당한다.
-- E는 Camera Vision과 고수준 요청을 담당한다.
-- F는 VCU Arbitration, Safety, CAN 통합, DTC 규칙을 담당한다.
+- E는 전방 Camera Vision과 고수준 회피 요청을 담당하며 주차 판단에는 관여하지 않는다.
+- F는 VCU Arbitration(Ultrasonic Parking Critical 최우선), Safety, CAN 통합, DTC 규칙을 담당한다.
 - 모든 STM32 담당자는 자기 기능뿐 아니라 **Task/ISR/Queue/Health 구조**도 설명할 수 있어야 한다.
 
 ---
@@ -517,12 +502,12 @@ H735 상세 명세/설계 예시는 [`docs/ecus/IVI/`](../ecus/IVI)에서 확인
 | Message | Tx | 주요 Rx | 내용 |
 |---|---|---|---|
 | `Vehicle_State` | VCU | All | Gear, Mode, Safety State |
-| `Driver_Input` | VCU | HPC / H735 | Accel, Brake, Steering |
-| `Ultrasonic_Status` | Ultrasonic ECU | VCU / H735 / HPC | Distance, Valid, Warning |
-| `Vision_Request` | HPC | VCU / H735 | ADAS/Parking semantic result / request |
-| `Drive_Status` | Drive ECU | VCU / H735 / HPC | RPM, Speed, Steering Status |
-| `Body_Status` | Gateway | VCU / H735 / HPC | Ambient, Lamp Status, LIN Health |
-| `Body_Command` | VCU / H735 | Gateway | Lighting Request |
+| `Driver_Input` | Drive ECU(C) | VCU | Accel, Brake, Steering |
+| `Ultrasonic_Status` | Ultrasonic ECU | VCU / H735 / HPC | Zone(FL/FR/RL/RR), Distance, Valid, Warning |
+| `Vision_Status` / `ADAS_Request` | HPC(E) | VCU / H735 | detected_class, direction, 회피 요청 |
+| `Drive_Status` | Drive ECU | VCU / H735 / HPC | RPM(estimated), Speed(estimated), Steering Status |
+| `Body_Status` | Gateway | VCU / H735 / HPC | Lamp Status, LIN Health |
+| `Body_Command` | VCU / H735 | Gateway | headlamp_brightness, turn, brake_lamp(F 자동생성) |
 | `DTC_Event` | All | HPC / H735 | Fault Code / Status |
 | `ECU_Heartbeat` | All | VCU / HPC | Node Alive |
 
@@ -532,8 +517,7 @@ H735 상세 명세/설계 예시는 [`docs/ecus/IVI/`](../ecus/IVI)에서 확인
 
 | Frame | Publisher | 의미 |
 |---|---|---|
-| `Ambient_Status` | Body LIN Slave | 조도 상태 |
-| `Lamp_Command` | Gateway Master | Lamp 명령 |
+| `Lamp_Command` | Gateway Master | Lamp 명령 (헤드램프 밝기 포함) |
 | `Lamp_Status` | Body LIN Slave | Lamp 상태 |
 | `Lamp_Diagnostic` | Body LIN Slave | Body local fault |
 
@@ -567,7 +551,7 @@ Peripheral 단독 확인
 - Stack high-water mark
 - Queue max occupancy / overflow
 - Watchdog / health response
-- Front/Rear Vision FPS / latency
+- Front Vision FPS / latency
 - LIN schedule period / jitter
 - DTC detection → H735 indication latency
 
@@ -605,19 +589,16 @@ Power ON
 → FreeRTOS / Linux services initialization
 → 모든 Node Heartbeat / Health 확인
 → H735 Cluster READY
-→ Gear D
-→ Front Vision Active
-→ ADAS Request
-→ VCU Safety / Arbitration
-→ Drive / Steering ControlTask
-→ Ultrasonic Obstacle Detection
+→ RF/가변저항 Driver Input → C → Driver_Input(CAN) → F
+→ Front Vision(COCO) Active → ADAS_Request
+→ VCU Safety / Arbitration (Ultrasonic Parking Critical 최우선)
+→ Drive / Steering ControlTask (+ 명령값 기반 speed/rpm 추정)
+→ Ultrasonic 4방향 Obstacle/Parking Detection
 → Warning / Safe Stop 판단
 → Gear R
-→ Rear Vision Active
-→ Rear Vision + Ultrasonic Parking Assist
-→ Ambient 변화
-→ LIN Slave → Gateway → CAN FD
-→ Lighting Request
+→ Ultrasonic Parking Assist
+→ LIN Slave → Gateway → CAN FD (Lamp_Status)
+→ 헤드램프 밝기 요청 / 감속 감지에 따른 brake_lamp 자동 생성
 → CAN FD → Gateway → LIN → Lamp
 → Sensor / CAN / LIN / Task Fault Injection
 → Local Fault / DTC

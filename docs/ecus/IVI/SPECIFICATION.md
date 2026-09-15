@@ -31,6 +31,7 @@
 | v0.1 | 2026-09-09 | Team | Initial filled example |
 | v0.2 | 2026-09-09 | Team | FreeRTOS task/timing/health requirements added |
 | v0.3 | 2026-09-10 | Team | Lighting request route aligned with final specification: IVI → VCU → Body Gateway |
+| v0.4 | 2026-09-15 | Team | `Body_Status.ambient` 소비 제거, `Vision_Status`를 새 계약(detected_class/direction, Rear Vision 없음)에 맞게 필드명만 조정. 화면 구성/TouchGFX 구조/테스트 기록은 유지 |
 
 ---
 
@@ -45,7 +46,7 @@
 - Digital Cluster 기본 화면
 - Speed / RPM / Gear / Battery / Temperature 표시
 - ADAS 상태 및 Warning
-- Ultrasonic / Rear Parking 상태
+- Ultrasonic Parking 상태 (4방향)
 - DTC 목록/상세
 - Lighting / Vehicle Setting Request UI
 - Touch 기반 단일 Screen 내 패널 표시·숨김
@@ -97,7 +98,7 @@
 
 | Item | Description |
 |---|---|
-| Actor / Trigger | Ultrasonic ECU / HPC Rear Vision |
+| Actor / Trigger | Ultrasonic ECU |
 | Preconditions | Cockpit READY |
 | Trigger | Parking status 수신 |
 | Normal Flow | CanRxTask → Model Queue → Warning evaluation → GuiTask overlay |
@@ -143,8 +144,8 @@ flowchart TD
 | IN-HMI-001 | `Vehicle_State` | VCU | CAN FD | Gear/Mode/Safety | valid payload | periodic |
 | IN-HMI-002 | `Drive_Status` | Drive ECU | CAN FD | rpm/speed/status | timeout 정상 | periodic |
 | IN-HMI-003 | `Ultrasonic_Status` | Ultrasonic ECU | CAN FD | mm/warning | sensor valid | periodic |
-| IN-HMI-004 | Vision status/request | Raspberry Pi | CAN FD | semantic result | source valid | periodic/event |
-| IN-HMI-005 | `Body_Status` | Body Gateway | CAN FD | ambient/lamp/LIN health | valid payload | periodic |
+| IN-HMI-004 | `Vision_Status` / `ADAS_Request` | HPC(E) | CAN FD | detected_class/direction/warning | source valid | periodic/event |
+| IN-HMI-005 | `Body_Status` | Body Gateway | CAN FD | lamp/LIN health | valid payload | periodic |
 | IN-HMI-006 | `DTC_Event` | ECU/Pi DTC Manager | CAN FD | code/status/severity | valid format | event |
 | IN-HMI-007 | `ECU_Heartbeat` | ECU Nodes | CAN FD | alive/status | timeout 정상 | periodic |
 | IN-HMI-008 | Touch Event | Driver | Touch | x/y/action | valid region | event |
@@ -224,8 +225,8 @@ flowchart TD
 | 단일 Screen 내 영역/패널 | Main Data |
 |---|---|
 | Cluster Main (기본 영역) | Speed, RPM, Gear, READY, Warning, Lamp |
-| ADAS 패널 | ADAS active, lane/object/warning semantic data |
-| Parking 패널 | Ultrasonic distance/warning + Rear Vision status |
+| ADAS 패널 | ADAS active, detected_class/direction/warning semantic data |
+| Parking 패널 | Ultrasonic distance/warning (4방향, Rear Vision 없음) |
 | Diagnostics 패널 | Active/History DTC list/detail |
 | Settings 패널 | Lighting/vehicle setting Request |
 
@@ -250,7 +251,7 @@ Raw Rear Camera 영상 자체를 CAN으로 받아 표시하는 것은 현재 범
 | `Vehicle_State` | RX | VCU | periodic | TBD | invalid state |
 | `Drive_Status` | RX | Drive | periodic | TBD | speed/rpm invalid |
 | `Ultrasonic_Status` | RX | Ultrasonic | periodic | TBD | sensor invalid |
-| Vision status | RX | HPC | periodic/event | TBD | vision unavailable |
+| `Vision_Status` / `ADAS_Request` | RX | HPC(E) | periodic/event | TBD | vision unavailable |
 | `Body_Status` | RX | Gateway | periodic | TBD | body warning |
 | `DTC_Event` | RX | All/Pi | event | N/A | list update |
 | `Body_User_Request` | TX | VCU | event | N/A | TX result/log |

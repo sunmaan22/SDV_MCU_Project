@@ -2,6 +2,8 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
+> **2026-09-15 범위 변경:** Sensor/Zone id를 전좌(FL)/전우(FR)/후좌(RL)/후우(RR) 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 주차 판단은 A(Ultrasonic) 단독이며, E(Vision)와의 fusion 판단은 없다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §3.4, §4.1](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: Ultrasonic Perception ECU가 **무엇을 측정하고 어떤 상태를 제공해야 하는지** 정의한다.  
@@ -27,6 +29,7 @@
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial filled example |
+| v0.2 | 2026-09-15 | Team | Sensor/Zone id를 FL/FR/RL/RR 4방향 고정으로 반영, Rear Vision과의 fusion 판단 서술 삭제 (주차는 A 단독 판단) |
 
 ---
 
@@ -34,17 +37,17 @@
 
 ## 1.1 한 문장 설명
 
-> Ultrasonic Perception ECU는 주변 Ultrasonic Sensor의 Echo 시간을 측정해 거리와 유효성을 계산하고, Filtering과 Warning Level을 적용한 결과를 CAN FD로 VCU/H735/HPC에 제공한다.
+> Ultrasonic Perception ECU는 전좌(FL)/전우(FR)/후좌(RL)/후우(RR) 4방향 고정 Sensor의 Echo 시간을 측정해 거리와 유효성을 계산하고, Filtering과 Warning Level을 적용한 결과를 CAN FD로 VCU/H735/HPC에 제공한다. 주차 판단은 A가 단독으로 담당하며 E(Vision)와의 fusion은 없다.
 
 ## 1.2 포함 범위
 
-- Ultrasonic Trigger 생성
+- Ultrasonic Trigger 생성 (FL/FR/RL/RR 4방향 고정)
 - Echo pulse time 측정
 - Echo time → distance 변환
 - 측정값 validity 판단
 - 기본 filtering
-- Sensor별 distance 관리
-- Sensor별/전체 Warning Level 생성
+- Zone(FL/FR/RL/RR)별 distance 관리
+- Zone별/전체 Warning Level 생성
 - Sensor timeout / out-of-range / unavailable 검출
 - CAN FD status 송신
 - Local fault / DTC candidate 생성
@@ -56,11 +59,11 @@
 - Motor PWM 또는 Steering PWM 직접 생성
 - 차량 정지 여부의 최종 판단
 - Camera Vision 처리
-- Rear Vision과의 최종 fusion 판단
+- Vision(E)과의 fusion 판단 (주차 판단은 A 단독; E는 관여하지 않음)
 - H735 UI 표시 로직
 - 최종 DTC history DB 저장
 
-A 담당의 책임은 **거리 인지와 그 결과의 신뢰성**까지다. `CRITICAL` 상태를 실제 정지 명령으로 바꾸는 것은 VCU의 책임이다.
+A 담당의 책임은 **거리 인지와 그 결과의 신뢰성, 그리고 주차 판단**까지다. `CRITICAL` 상태를 실제 정지 명령으로 바꾸는 것은 VCU의 책임이다.
 
 ---
 
@@ -86,15 +89,15 @@ A 담당의 책임은 **거리 인지와 그 결과의 신뢰성**까지다. `CR
 | Normal Flow | timeout 검출 → measurement invalid → fault counter 증가 → status update → 필요 시 DTC candidate 생성 |
 | Postconditions | 이전 정상 거리값을 최신 정상값처럼 사용하지 않고 `valid=false` 상태가 전달됨 |
 
-## 2.3 여러 Sensor 측정
+## 2.3 4방향 Sensor 측정
 
 | Item | Description |
 |---|---|
 | Actor / Trigger | Sensor scan scheduler |
-| Preconditions | 여러 Sensor가 설정되어 있음 |
+| Preconditions | FL/FR/RL/RR 4개 Sensor가 고정 설정되어 있음 |
 | Trigger | 다음 Sensor slot |
-| Normal Flow | Sensor를 순차 측정 → 각 결과 저장 → Zone별/전체 Warning 갱신 |
-| Postconditions | Sensor 간 간섭을 줄이면서 모든 활성 Sensor의 상태를 주기적으로 제공 |
+| Normal Flow | FL→FR→RL→RR 순으로 순차 측정 → 각 zone 결과 저장 → Zone별/전체 Warning 갱신 |
+| Postconditions | Sensor 간 간섭을 줄이면서 4개 zone 모두의 상태를 주기적으로 제공 |
 
 ---
 
@@ -125,7 +128,7 @@ flowchart TD
 | Input ID | Input | Source | Interface | Unit / Range | Valid Condition | Update / Trigger |
 |---|---|---|---|---|---|---|
 | IN-US-001 | Echo edge/time | Ultrasonic Sensor | GPIO + Timer Input Capture | timer tick / us | 정상 rising/falling capture | Sensor measurement event |
-| IN-US-002 | Sensor configuration | Static config / future CAN config | memory / optional CAN | sensor enable, zone, threshold | defined configuration | startup / config event |
+| IN-US-002 | Sensor configuration | Static config / future CAN config | memory / optional CAN | zone id(FL/FR/RL/RR 고정) + threshold | defined configuration | startup / config event |
 | IN-US-003 | Measurement schedule tick | FreeRTOS / timer | RTOS time base | ms | scheduler 정상 | periodic |
 | IN-US-004 | Optional enable/mode | VCU / project config | CAN FD 후보 | enum/bool | valid command | Event/Periodic TBD |
 
@@ -137,13 +140,14 @@ flowchart TD
 
 | Output ID | Output | Destination | Interface | Unit / Range | Update / Event | Valid Condition |
 |---|---|---|---|---|---|---|
-| OUT-US-001 | Sensor distance | VCU / H735 / HPC | CAN FD | mm | Periodic TBD | `valid=true` |
-| OUT-US-002 | Sensor validity | VCU / H735 / HPC | CAN FD | bool/flags | Periodic TBD | 항상 제공 |
+| OUT-US-000 | Zone id | VCU / H735 / HPC | CAN FD | enum FL/FR/RL/RR | Periodic TBD | 항상 제공 (`FROZEN`) |
+| OUT-US-001 | Zone distance | VCU / H735 / HPC | CAN FD | mm | Periodic TBD | `valid=true` |
+| OUT-US-002 | Zone validity | VCU / H735 / HPC | CAN FD | bool/flags | Periodic TBD | 항상 제공 |
 | OUT-US-003 | Warning level | VCU / H735 / HPC | CAN FD | SAFE/WARNING/CRITICAL/INVALID | Periodic/Event | configuration valid |
 | OUT-US-004 | Local fault status | Diagnostics / VCU | CAN FD | fault flags | Event/Periodic | fault 발생 시 |
 | OUT-US-005 | ECU heartbeat/health | VCU / HPC | CAN FD | alive/health | Periodic TBD | ECU 정상 동작 |
 
-Sensor 개수와 최종 Zone 구조는 TBD다. CAN payload는 Sensor array 또는 Zone status 형태 중 공통 CAN Matrix에서 확정한다.
+Zone 구조(FL/FR/RL/RR 4개)는 `FROZEN`이다 (`DEC-HW-025`, `DEC-PER-001`). CAN payload가 zone별 개별 신호인지 반복 구조인지는 공통 CAN Matrix에서 확정한다.
 
 ---
 
@@ -158,7 +162,7 @@ Sensor 개수와 최종 Zone 구조는 TBD다. CAN payload는 Sensor array 또�
 | REQ-US-005 | ECU는 구성된 threshold에 따라 SAFE/WARNING/CRITICAL 상태를 생성해야 한다. | MUST | Test | T-US-005 |
 | REQ-US-006 | ECU는 Echo timeout 발생 시 해당 측정값을 invalid로 처리해야 한다. | MUST | Fault Test | T-US-006 |
 | REQ-US-007 | ECU는 Sensor의 유효 측정 범위를 벗어난 값을 정상 거리로 제공하지 않아야 한다. | MUST | Boundary Test | T-US-007 |
-| REQ-US-008 | 여러 Sensor를 사용할 경우 측정 순서를 관리해 Sensor 간 상호 간섭을 줄이는 구조를 가져야 한다. | SHOULD | Test/Inspect | T-US-008 |
+| REQ-US-008 | ECU는 FL/FR/RL/RR 4개 Sensor의 측정 순서를 관리해 Sensor 간 상호 간섭을 줄이는 구조를 가져야 한다. | MUST | Test/Inspect | T-US-008 |
 | REQ-US-009 | ECU는 거리, validity, warning 상태를 CAN FD를 통해 송신할 수 있어야 한다. | MUST | Communication Test | T-US-009 |
 | REQ-US-010 | ECU는 Sensor fault를 local fault 상태로 관리하고 DTC candidate로 전달할 수 있어야 한다. | SHOULD | Fault Test | T-US-010 |
 | REQ-US-011 | Ultrasonic 측정 ISR은 긴 계산이나 blocking 동작을 수행하지 않아야 한다. | MUST | Inspect | T-US-011 |
@@ -177,7 +181,7 @@ Sensor 개수와 최종 Zone 구조는 TBD다. CAN payload는 Sensor array 또�
 | RULE-US-003 | 변환 거리 out-of-range | `valid=false` |
 | RULE-US-004 | `valid=false` | 해당 거리값으로 정상 Warning을 계산하지 않음 |
 | RULE-US-005 | 모든 Warning threshold | Config에서 관리하고 H735가 독자적으로 다른 threshold를 만들지 않음 |
-| RULE-US-006 | 여러 Sensor 활성 | 동시에 무질서하게 trigger하지 않고 scan/schedule 적용 |
+| RULE-US-006 | FL/FR/RL/RR 4개 Sensor 활성 | 동시에 무질서하게 trigger하지 않고 scan/schedule 적용 |
 | RULE-US-007 | Critical distance 감지 | `CRITICAL` 상태만 생성하며 Motor 직접 제어 금지 |
 | RULE-US-008 | Sensor 복구 | 연속 정상 측정 또는 정의된 recovery 조건 후 valid 복귀, 상세 조건 TBD |
 
@@ -216,7 +220,7 @@ H735 Parking 화면은 이 ECU가 제공하는 distance / validity / warning을 
 |---|---|---|---|
 | Ultrasonic Sensor | Trigger GPIO | Sensor datasheet 기준 | output pulse timing 확인 |
 | Ultrasonic Sensor | Echo → Timer Input Capture | Sensor logic level 기준 | MCU 입력 허용전압 확인, 필요 시 level shifting |
-| STM32 #1 | Timer / GPIO | board 기준 | 센서 수에 따른 channel/pin 확인 |
+| STM32 #1 | Timer / GPIO | board 기준 | FL/FR/RL/RR 4채널 고정, channel/pin 확인 |
 | CAN FD Transceiver | FDCAN ↔ CANH/L | 실제 부품 기준 | MCU와 CAN Bus 사이 Transceiver 필요 |
 
 센서가 5V Echo를 출력하는 모델일 수 있으므로 **실제 센서 모델 확인 전 MCU GPIO에 직접 연결한다고 가정하지 않는다.**
@@ -329,7 +333,7 @@ DTC code 숫자와 status lifecycle은 F 담당의 Diagnostics 규격과 통합 
 - [ ] 정상 측정과 timeout/invalid 측정을 구분한다.
 - [ ] Filtering 전/후 값을 비교할 수 있다.
 - [ ] SAFE/WARNING/CRITICAL 상태가 configurable threshold로 동작한다.
-- [ ] 여러 Sensor 사용 시 순차 scan 구조가 동작한다, 해당 시.
+- [ ] FL/FR/RL/RR 4개 Sensor 순차 scan 구조가 동작한다.
 - [ ] `Ultrasonic_Status` CAN 송신을 확인한다.
 - [ ] ISR에서 긴 계산/printf/blocking을 하지 않는다.
 - [ ] RTOS Task/Queue 구조가 문서와 일치한다.
@@ -345,7 +349,7 @@ DTC code 숫자와 status lifecycle은 F 담당의 Diagnostics 규격과 통합 
 | ID | Item | Owner | Target Date / Condition |
 |---|---|---|---|
 | TBD-US-001 | Sensor model 확정 | A/Team | 부품 선정 시 |
-| TBD-US-002 | Sensor 개수/Zone/장착 위치 | A/Team | 차량 layout 확정 시 |
+| TBD-US-002 | Sensor 개수/Zone/장착 위치 (FL/FR/RL/RR) | A/Team | `FROZEN` (`DEC-HW-025`, `DEC-PER-001`) — 정확한 물리 장착 위치·각도만 남음 |
 | TBD-US-003 | GPIO/Timer pin map | A | board + sensor 확정 후 |
 | TBD-US-004 | Echo voltage / level shifting | A | datasheet 확인 후 |
 | TBD-US-005 | distance conversion/calibration | A | Stage 1 측정 후 |

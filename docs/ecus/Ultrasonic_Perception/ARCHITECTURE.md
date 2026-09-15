@@ -2,6 +2,8 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
+> **2026-09-15 범위 변경:** Sensor/Zone id를 FL/FR/RL/RR 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 주차 판단은 A 단독이며 E(Vision)와의 fusion 구조는 없다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: Ultrasonic Perception ECU를 **어떤 Component와 FreeRTOS Task로 나눠 구현하는지** 설명한다.  
@@ -25,6 +27,7 @@
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial filled example |
+| v0.2 | 2026-09-15 | Team | Sensor/Zone id를 FL/FR/RL/RR 4방향 고정으로 반영, Rear Vision과의 fusion 판단 서술 삭제 |
 
 ---
 
@@ -62,7 +65,7 @@
 | A / Ultrasonic 담당 | 센서 측정, 필터, RTOS task, pin/timer 구조 |
 | F / VCU·CAN 통합 | distance/warning/validity, CAN cycle, timeout |
 | B / H735 | Parking 화면에서 사용할 distance/warning 의미 |
-| E / HPC | Rear Vision과 함께 참고할 ultrasonic status |
+| E / HPC | 참고용 ultrasonic status 소비 (fusion 판단 없음, 주차는 A 단독) |
 | 테스트 담당 | 거리 정확도, timeout, crosstalk, RTOS timing |
 
 ---
@@ -86,7 +89,7 @@
 | STM32 Node는 FreeRTOS 기본 | 프로젝트 RTOS 정책 |
 | CMSIS-RTOS2 API 권장 | STM32CubeMX 통합 |
 | Ultrasonic Sensor model TBD | Timing/range/electrical 조건 추후 확정 |
-| Sensor 개수/위치 TBD | scan period와 timer/pin 구조에 영향 |
+| Sensor 개수/위치 FL/FR/RL/RR 4개 고정 (`FROZEN`) | scan period와 timer/pin 구조는 4채널 기준으로 설계 |
 | Echo logic voltage TBD | level shifting 여부 확인 필요 |
 | CAN FD Backbone 목표 | VCU/H735/HPC와 status 교환 |
 | Motor 직접 제어 금지 | VCU/Drive 역할 분리 |
@@ -302,14 +305,16 @@ sequenceDiagram
     PT->>CT: valid=false status
 ```
 
-## 8.3 Multi-Sensor Scan
+## 8.3 4방향 Sensor Scan
 
 ```text
-Sensor 0 Trigger → Echo complete/timeout
+FL Trigger → Echo complete/timeout
         ↓ configured gap
-Sensor 1 Trigger → Echo complete/timeout
+FR Trigger → Echo complete/timeout
         ↓ configured gap
-Sensor 2 ...
+RL Trigger → Echo complete/timeout
+        ↓ configured gap
+RR Trigger → Echo complete/timeout
         ↓
 Scan complete
 ```
@@ -345,9 +350,14 @@ Ultrasonic Sensor Array
 
 | Function | Device | MCU/Board Pin | Peripheral | Direction | Voltage / Note |
 |---|---|---|---|---|---|
-| Sensor 0 Trigger | Ultrasonic | TBD | GPIO | OUT | datasheet 확인 |
-| Sensor 0 Echo | Ultrasonic | TBD | TIM Input Capture | IN | logic level 확인 |
-| Sensor N | Ultrasonic | TBD | GPIO/TIM | IN/OUT | sensor count 확정 후 |
+| FL Trigger | Ultrasonic | TBD | GPIO | OUT | datasheet 확인 |
+| FL Echo | Ultrasonic | TBD | TIM Input Capture | IN | logic level 확인 |
+| FR Trigger | Ultrasonic | TBD | GPIO | OUT | datasheet 확인 |
+| FR Echo | Ultrasonic | TBD | TIM Input Capture | IN | logic level 확인 |
+| RL Trigger | Ultrasonic | TBD | GPIO | OUT | datasheet 확인 |
+| RL Echo | Ultrasonic | TBD | TIM Input Capture | IN | logic level 확인 |
+| RR Trigger | Ultrasonic | TBD | GPIO | OUT | datasheet 확인 |
+| RR Echo | Ultrasonic | TBD | TIM Input Capture | IN | logic level 확인 |
 | CAN TX/RX | CAN FD Transceiver | TBD | FDCAN | OUT/IN | transceiver 필요 |
 
 ---
@@ -541,7 +551,7 @@ Queue/Sensor health ──┤
 | RISK-US-001 | Sensor model 미확정 | timing/range/power 설계 미확정 | 부품 확정 + datasheet review | A/Team |
 | RISK-US-002 | Echo voltage가 MCU 허용범위 초과 가능 | GPIO 손상/오동작 | logic level 확인 + level shifting | A |
 | RISK-US-003 | 여러 Sensor crosstalk | false distance | sequential scan + gap + physical layout test | A |
-| RISK-US-004 | sensor 수 증가로 scan period 증가 | stale parking data | sensor count/period profiling | A/F |
+| RISK-US-004 | 4방향 순차 scan으로 zone당 update 간격 증가 | stale parking data | scan period profiling | A/F |
 | RISK-US-005 | task priority/stack 미조정 | deadline miss/reset | RTOS profiling | A |
 | RISK-US-006 | CAN Matrix 미확정 | integration 재작업 | signal meaning/unit 먼저 freeze | A/F |
 

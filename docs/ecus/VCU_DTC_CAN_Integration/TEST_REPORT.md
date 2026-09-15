@@ -4,6 +4,8 @@
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
+> **2026-09-15 범위 변경:** `Driver_Input`(가속/브레이크/조향) 입력을 VCU가 직접 GPIO/ADC로 읽던 시험 항목을 삭제하고, C가 발행한 `Driver_Input` CAN 수신 시험으로 대체했다. Gear/E-Stop 시험은 유지한다. `Vision_Request`는 `ADAS_Request`로, Parking Critical 우선순위 시험을 강화했다.
+
 > 목적: VCU 기능 요구사항과 FreeRTOS 실행 구조를 실제 시험으로 검증한다. 현재는 실행 전 계획 상태이므로 결과는 `NOT RUN / TBD`로 둔다.
 
 ## Document Information
@@ -16,12 +18,12 @@
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
 | Firmware Commit | TBD |
 | Test Date | TBD |
-| Specification Revision | v0.1 |
-| Architecture Revision | v0.1 |
+| Specification Revision | v0.2 |
+| Architecture Revision | v0.2 |
 
 # 1. Test Objective
 
-Driver Input, CAN Request, Safety/Fault를 조합했을 때 VCU가 예상한 최종 명령을 만들고, timeout/critical fault/RTOS load 조건에서도 stale 또는 위험한 명령을 유지하지 않는지 검증한다.
+Gear/E-Stop(VCU 자체 입력), `Driver_Input`(CAN, C 발행), `ADAS_Request`, `Ultrasonic_Status`, Safety/Fault를 조합했을 때 VCU가 예상한 최종 명령을 만들고, timeout/critical fault/RTOS load 조건에서도 stale 또는 위험한 명령을 유지하지 않는지 검증한다. Ultrasonic Parking Critical이 `ADAS_Request`보다 항상 우선함을 별도로 검증한다.
 
 # 2. Test Environment
 
@@ -31,7 +33,8 @@ Driver Input, CAN Request, Safety/Fault를 조합했을 때 VCU가 예상한 최
 | RTOS | FreeRTOS version TBD |
 | CMSIS-RTOS | v2 |
 | CAN FD Transceiver | TBD |
-| Driver Input | Gear/Accel/Brake/Steering/E-Stop 후보 |
+| VCU 자체 물리 입력 | Gear/E-Stop |
+| `Driver_Input` 소스 | Drive ECU(C) CAN 발행, dummy/real |
 | Debug | STM32CubeIDE / ST-Link / UART / CAN logger 후보 |
 | CAN bitrate | TBD |
 
@@ -58,12 +61,12 @@ Driver Input, CAN Request, Safety/Fault를 조합했을 때 VCU가 예상한 최
 
 | Input | Condition | Expected | Actual | Result |
 |---|---|---|---|---|
-| Gear | P/R/N/D | defined enum | NOT RUN | TBD |
-| Accelerator | min/mid/max | calibrated normalized value | NOT RUN | TBD |
-| Brake | min/mid/max | calibrated normalized value | NOT RUN | TBD |
-| Steering | left/center/right | calibrated angle/value | NOT RUN | TBD |
-| E-Stop | inactive/active | safety flag follows | NOT RUN | TBD |
-| Invalid ADC | out-of-range | invalid/safe state | NOT RUN | TBD |
+| Gear (VCU 자체) | P/R/N/D | defined enum | NOT RUN | TBD |
+| E-Stop (VCU 자체) | inactive/active | safety flag follows | NOT RUN | TBD |
+| `Driver_Input.accel` (CAN, C 발행) | min/mid/max | 값 반영 | NOT RUN | TBD |
+| `Driver_Input.brake` (CAN, C 발행) | min/mid/max | 값 반영 | NOT RUN | TBD |
+| `Driver_Input.steer` (CAN, C 발행) | left/center/right | 값 반영 | NOT RUN | TBD |
+| `Driver_Input` invalid/timeout | out-of-range 또는 미수신 | invalid/safe state | NOT RUN | TBD |
 
 # 5. Arbitration Test
 
@@ -71,7 +74,8 @@ Driver Input, CAN Request, Safety/Fault를 조합했을 때 VCU가 예상한 최
 |---|---|---|---|---|---|---|
 | Normal drive | accel | none | safe | none | driver-based command | TBD |
 | ADAS request | accel | valid request | safe | none | policy result | TBD |
-| Parking critical | accel | none | critical | none | stop/limit policy | TBD |
+| Parking critical | accel | none | critical | none | stop/limit policy, ADAS_Request와 무관 | TBD |
+| Parking critical + ADAS request 동시 | accel | valid request | critical | none | Parking Critical이 ADAS_Request override, stop/limit policy 유지 | TBD |
 | E-Stop | accel | request | critical/none | E-Stop | safe/disable | TBD |
 | HPC timeout | accel | stale | safe | comm fault | ADAS ignored | TBD |
 | Drive ECU offline | any | any | any | drive timeout | safe state candidate | TBD |
@@ -111,7 +115,7 @@ Driver Input, CAN Request, Safety/Fault를 조합했을 때 VCU가 예상한 최
 | SafetyTask | event + fast periodic | Highest | NOT RUN | TBD |
 | VcuControlTask | 5~10 ms 후보 | High | NOT RUN | TBD |
 | CanRxTask | event | High | NOT RUN | TBD |
-| DriverInputTask | 10~20 ms 후보 | High/Normal | NOT RUN | TBD |
+| LocalInputTask | 10~20 ms 후보 | High/Normal | NOT RUN | TBD |
 | CanTxTask | event/periodic | Normal/High | NOT RUN | TBD |
 | DiagnosticTask | event/periodic | Normal/Low | NOT RUN | TBD |
 | HealthTask | 50~100 ms 후보 | Low/Normal | NOT RUN | TBD |
@@ -139,13 +143,14 @@ Driver Input, CAN Request, Safety/Fault를 조합했을 때 VCU가 예상한 최
 
 | Message | Direction | Expected | Timeout Test | Result |
 |---|---|---|---|---|
-| Vision_Request | RX | repository update | yes | TBD |
-| Ultrasonic_Status | RX | warning update | yes | TBD |
-| Drive_Status | RX | state update | yes | TBD |
-| Body_Status | RX | body update | yes | TBD |
-| ECU_Heartbeat | RX/TX | alive tracking | yes | TBD |
-| DTC_Event | RX/TX | diagnostic flow | event | TBD |
-| Vehicle_State | TX | gear/mode/safety | N/A | TBD |
+| `Driver_Input` | RX | repository update | yes | TBD |
+| `ADAS_Request` | RX | repository update | yes | TBD |
+| `Ultrasonic_Status` | RX | warning/Parking Critical update | yes | TBD |
+| `Drive_Status` | RX | state(estimated speed/rpm) update | yes | TBD |
+| `Body_Status` | RX | body update | yes | TBD |
+| `ECU_Heartbeat` | RX/TX | alive tracking | yes | TBD |
+| `DTC_Event` | RX/TX | diagnostic flow | event | TBD |
+| `Vehicle_State` | TX | gear/mode/safety | N/A | TBD |
 | Final_Drive_Command | TX | final speed/steer/enable | N/A | TBD |
 
 # 10. DTC / Diagnostics Test

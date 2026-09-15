@@ -4,6 +4,8 @@
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
+> **2026-09-15 범위 변경:** `Driver_Input`(가속/브레이크/조향) publisher가 F에서 C로 이전됐다. F는 accel/brake/steering을 더 이상 GPIO/ADC로 직접 읽지 않고 `Driver_Input`을 CAN RX로 수신한다 (Gear/E-Stop은 VCU 자체 물리 입력으로 유지). `Vision_Request`는 `ADAS_Request`로 명칭을 통일했고, Ultrasonic Parking Critical이 `ADAS_Request`보다 항상 우선함을 §7에서 재확인한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1.1, §1.2, §3.3](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+
 > 문서 목적: F 담당 VCU가 **무엇을 해야 하는지** 정의한다. 구현 구조는 `ARCHITECTURE.md`, 검증은 `TEST_REPORT.md`를 기준으로 한다.
 
 ## Document Information
@@ -26,23 +28,22 @@
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial filled example |
+| v0.2 | 2026-09-15 | Team | Driver_Input publisher를 C로 이전 반영(F는 CAN RX만), Vision_Request를 ADAS_Request로 명칭 통일, Ultrasonic Parking Critical 우선순위 재확인 |
 
 # 1. Purpose and Scope
 
 ## 1.1 한 문장 설명
 
-> VCU는 Driver Input, Vision/Ultrasonic 요청, ECU 상태와 Fault를 받아 안전 우선순위에 따라 최종 Speed/Steering/Enable 상태를 결정하고 CAN FD로 전달한다.
+> VCU는 Gear/E-Stop 등 자체 물리 입력과 C가 발행한 `Driver_Input`(CAN), ADAS/Ultrasonic 요청, ECU 상태와 Fault를 받아 안전 우선순위에 따라 최종 Speed/Steering/Enable 상태를 결정하고 CAN FD로 전달한다.
 
 ## 1.2 포함 범위
 
-- Gear P/R/N/D 입력
-- Accelerator / Brake 입력
-- Steering Wheel 입력
-- E-Stop 입력
-- Driver Input validation / scaling
+- Gear P/R/N/D 입력 (VCU 자체 물리 입력)
+- E-Stop 입력 (VCU 자체 물리 입력)
+- `Driver_Input`(가속/브레이크/조향) CAN 수신/validation (C가 발행, F는 직접 GPIO/ADC로 읽지 않음)
 - Vehicle State / Mode 관리
-- ADAS / Parking / Fault 요청 수신
-- Arbitration / Safety Override
+- `ADAS_Request` / `Ultrasonic_Status`(Parking Critical 포함) / Fault 요청 수신
+- Arbitration / Safety Override (Ultrasonic Parking Critical이 ADAS_Request보다 항상 우선)
 - Final Speed / Steering / Drive Enable 생성
 - CAN RX/TX와 Heartbeat
 - Local fault detection
@@ -51,6 +52,7 @@
 
 ## 1.3 제외 범위
 
+- Accelerator/Brake/Steering 입력의 직접 GPIO/ADC 획득 (C가 `Driver_Input`으로 발행, 삭제됨)
 - Motor PWM/DIR 직접 생성
 - Servo PWM 직접 생성
 - Camera image processing
@@ -65,9 +67,9 @@
 
 | Item | Description |
 |---|---|
-| Actor / Trigger | Driver Input + CAN status |
+| Actor / Trigger | `Driver_Input`(CAN, C 발행) + Gear/E-Stop(VCU 자체) + CAN status |
 | Preconditions | VCU READY, E-Stop 해제, 필수 ECU 상태 유효 |
-| Trigger | Gear D, Accelerator/Steering 입력 |
+| Trigger | Gear D, `Driver_Input`(accel/steering) 수신 |
 | Normal Flow | Input → Validate → Vehicle State → Arbitration → Final Command → CAN TX |
 | Postconditions | Drive ECU가 유효한 Final Command를 수신 |
 
@@ -86,9 +88,11 @@ Front Vision
 ```text
 Ultrasonic CRITICAL
 → VCU
-→ Parking safety rule
+→ Parking safety rule (ADAS_Request와 무관하게 항상 적용)
 → Speed limit / Stop request 후보
 ```
+
+Ultrasonic Parking Critical은 `ADAS_Request`보다 항상 우선하며, `ADAS_Request`가 이 상태를 해제/override할 수 없다 (§7 재확인).
 
 ## 2.4 E-Stop
 
@@ -102,7 +106,7 @@ E-Stop active
 
 ```mermaid
 flowchart TD
-    A[Driver Input / CAN Requests / Faults] --> B[Validation]
+    A[Gear/E-Stop 자체 입력 + Driver_Input/ADAS_Request/Ultrasonic_Status(CAN) / Faults] --> B[Validation]
     B --> C[Vehicle State Manager]
     C --> D[Safety & Arbitration]
     D --> E[Final Speed / Steering / Enable]
@@ -116,17 +120,15 @@ flowchart TD
 
 | Input ID | Input | Source | Interface | Valid Condition | Trigger |
 |---|---|---|---|---|---|
-| IN-VCU-001 | Gear P/R/N/D | Driver | GPIO | defined state | event/periodic |
-| IN-VCU-002 | Accelerator | Driver sensor | ADC | calibrated range | periodic |
-| IN-VCU-003 | Brake | Driver sensor | ADC | calibrated range | periodic |
-| IN-VCU-004 | Steering wheel | Driver sensor | I2C/ADC 후보 | calibrated range | periodic |
-| IN-VCU-005 | E-Stop | Driver | GPIO | defined state | event/periodic |
-| IN-VCU-006 | ADAS Request | HPC | CAN FD | valid/fresh | periodic/event |
-| IN-VCU-007 | Ultrasonic Warning | Ultrasonic ECU | CAN FD | valid/fresh | periodic |
-| IN-VCU-008 | Drive Status | Drive ECU | CAN FD | valid/fresh | periodic |
-| IN-VCU-009 | Body Status | Body Gateway | CAN FD | valid/fresh | periodic |
-| IN-VCU-010 | ECU Heartbeat | All | CAN FD | timeout 없음 | periodic |
-| IN-VCU-011 | DTC Event | All | CAN FD | valid format | event |
+| IN-VCU-001 | Gear P/R/N/D | Driver (VCU 자체 물리 입력) | GPIO | defined state | event/periodic |
+| IN-VCU-002 | `Driver_Input` (accel/brake/steering) | Drive ECU (C) | CAN FD | valid flag/freshness | periodic |
+| IN-VCU-003 | E-Stop | Driver (VCU 자체 물리 입력) | GPIO | defined state | event/periodic |
+| IN-VCU-004 | `ADAS_Request` | HPC(E) | CAN FD | valid/fresh | periodic/event |
+| IN-VCU-005 | `Ultrasonic_Status` (Warning/Parking Critical) | Ultrasonic ECU(A) | CAN FD | valid/fresh | periodic |
+| IN-VCU-006 | `Drive_Status` (estimated speed/rpm 포함) | Drive ECU(C) | CAN FD | valid/fresh | periodic |
+| IN-VCU-007 | Body Status | Body Gateway | CAN FD | valid/fresh | periodic |
+| IN-VCU-008 | ECU Heartbeat | All | CAN FD | timeout 없음 | periodic |
+| IN-VCU-009 | DTC Event | All | CAN FD | valid format | event |
 
 # 5. Outputs
 
@@ -136,16 +138,17 @@ flowchart TD
 | OUT-VCU-002 | Final Steering Request | Drive ECU | CAN FD | command valid |
 | OUT-VCU-003 | Drive Enable / Stop | Drive ECU | CAN FD | state valid |
 | OUT-VCU-004 | Vehicle State | All/H735/HPC | CAN FD | periodic |
-| OUT-VCU-005 | Driver Input Status | HPC/H735 | CAN FD | periodic |
-| OUT-VCU-006 | ECU Heartbeat | VCU peers | CAN FD | periodic |
-| OUT-VCU-007 | VCU DTC Event | Pi/H735 | CAN FD | event |
+| OUT-VCU-005 | ECU Heartbeat | VCU peers | CAN FD | periodic |
+| OUT-VCU-006 | VCU DTC Event | Pi/H735 | CAN FD | event |
+
+`Driver_Input`은 더 이상 VCU가 발행하지 않는다 (publisher가 C로 이전, 2026-09-15). H735/HPC가 driver 입력을 참고해야 하면 C가 발행한 `Driver_Input`을 직접 구독한다.
 
 # 6. Functional Requirements
 
 | Requirement ID | Requirement | Priority | Verification | Test |
 |---|---|---|---|---|
-| REQ-VCU-001 | VCU는 Gear/Accel/Brake/Steering/E-Stop 입력을 읽고 유효성을 판단해야 한다. | MUST | Test | T-VCU-001 |
-| REQ-VCU-002 | VCU는 Vision Request와 Ultrasonic Warning을 CAN으로 수신해야 한다. | MUST | Test | T-VCU-002 |
+| REQ-VCU-001 | VCU는 Gear/E-Stop(자체 물리 입력)과 `Driver_Input`(CAN, C 발행)을 읽고 유효성을 판단해야 한다. | MUST | Test | T-VCU-001 |
+| REQ-VCU-002 | VCU는 `ADAS_Request`와 `Ultrasonic_Status`(Warning 포함)를 CAN으로 수신해야 한다. | MUST | Test | T-VCU-002 |
 | REQ-VCU-003 | VCU는 요청의 freshness/timeout을 관리해야 한다. | MUST | Fault Test | T-VCU-003 |
 | REQ-VCU-004 | E-Stop/critical fault는 일반 Driver/ADAS 요청보다 우선해야 한다. | MUST | Test | T-VCU-004 |
 | REQ-VCU-005 | Parking critical은 normal driver request보다 높은 안전 우선순위를 가져야 한다. | MUST | Test | T-VCU-005 |
@@ -161,23 +164,23 @@ flowchart TD
 
 # 7. Arbitration Rules
 
-초기 개념 우선순위:
+우선순위 (`FINAL_IMPLEMENTATION_SPEC.md` §1.2와 동일, 재확인):
 
 ```text
 E-Stop / Critical Fault
-> Parking Critical
-> ADAS Safety Request
+> Ultrasonic Parking Critical
+> ADAS_Request (전방 회피)
 > Normal Driver Request
 ```
 
-세부 규칙은 최종 시험과 팀 합의 후 확정한다.
+**`Ultrasonic_Status`의 Parking Critical은 `ADAS_Request`보다 항상 우선한다.** `ADAS_Request`는 Parking Critical을 해제/override할 수 없으며, VCU 중재 로직은 이 순서를 코드에서도 강제해야 한다. 세부 규칙은 최종 시험과 팀 합의 후 확정한다.
 
 | Rule ID | Condition | Result |
 |---|---|---|
 | RULE-VCU-001 | E-Stop active | Drive Enable OFF / safe command |
 | RULE-VCU-002 | Critical peer fault | 해당 기능 제한 또는 safe state |
-| RULE-VCU-003 | Ultrasonic CRITICAL | speed limit/stop policy 적용 |
-| RULE-VCU-004 | ADAS request valid | driver/mode/safety 조건과 함께 arbitration |
+| RULE-VCU-003 | Ultrasonic Parking CRITICAL | speed limit/stop policy 적용, `ADAS_Request`와 무관하게 항상 적용 |
+| RULE-VCU-004 | `ADAS_Request` valid + Ultrasonic CRITICAL 아님 | driver/mode/safety 조건과 함께 arbitration |
 | RULE-VCU-005 | request timeout | 해당 request invalid 처리 |
 | RULE-VCU-006 | undefined Gear/input | safe/degraded state |
 
@@ -185,9 +188,9 @@ E-Stop / Critical Fault
 
 | Case | Detection | Expected Behavior | Recovery |
 |---|---|---|---|
-| Accelerator out-of-range | ADC validation | invalid / safe default | valid input 복귀 |
-| Steering sensor timeout | input timeout | steering request 제한 | sensor recovery |
-| HPC request timeout | CAN freshness | ADAS request 제거 | valid frame 재수신 |
+| `Driver_Input` out-of-range | range validation | invalid / safe default | valid input 복귀 |
+| `Driver_Input` timeout | CAN freshness | steering/speed request 제한 | valid frame 재수신 |
+| HPC(`ADAS_Request`) timeout | CAN freshness | ADAS request 제거 | valid frame 재수신 |
 | Drive ECU heartbeat timeout | heartbeat | drive disable 후보 + DTC | ECU recovery |
 | Queue overflow | RTOS health | fault flag / bounded policy | load 원인 수정 |
 | CAN bus-off | controller state | communication degraded / DTC | CAN recovery |
@@ -198,9 +201,10 @@ E-Stop / Critical Fault
 
 | Message | Direction | Peer | Content | Timeout |
 |---|---|---|---|---|
-| `Vision_Request` | RX | HPC | ADAS/Parking request | TBD |
-| `Ultrasonic_Status` | RX | Ultrasonic | distance warning | TBD |
-| `Drive_Status` | RX | Drive | rpm/speed/status | TBD |
+| `Driver_Input` | RX | Drive ECU(C) | 가속/브레이크/조향 driver 입력 | TBD |
+| `ADAS_Request` | RX | HPC(E) | 전방 객체 회피/감속 요청 (주차 사유 없음) | TBD |
+| `Ultrasonic_Status` | RX | Ultrasonic | distance/warning/Parking Critical | TBD |
+| `Drive_Status` | RX | Drive | rpm(estimated)/speed(estimated)/status | TBD |
 | `Body_Status` | RX | Gateway | body/lin status | TBD |
 | `DTC_Event` | RX/TX | All/Pi/H735 | code/status/severity | event |
 | `ECU_Heartbeat` | RX/TX | All | alive | TBD |
@@ -215,7 +219,7 @@ CAN ID/DLC/bit layout은 공통 CAN Matrix에서 확정한다.
 |---|---|
 | SafetyTask response | TBD |
 | VcuControlTask period | 5~10 ms 후보 |
-| DriverInputTask period | 10~20 ms 후보 |
+| LocalInputTask period (Gear/E-Stop) | 10~20 ms 후보 |
 | CAN RX → arbitration latency | TBD |
 | command timeout detection | TBD |
 | Heartbeat period | TBD |
@@ -226,8 +230,8 @@ CAN ID/DLC/bit layout은 공통 CAN Matrix에서 확정한다.
 |---|---|---|---|
 | `SafetyTask` | E-Stop / critical fault / safety override | event + fast periodic | Highest |
 | `VcuControlTask` | state + arbitration + final command | 5~10 ms 후보 | High |
-| `DriverInputTask` | GPIO/ADC/I2C input + validation | 10~20 ms 후보 | High/Normal |
-| `CanRxTask` | peer message decode/freshness update | event | High |
+| `LocalInputTask` | Gear/E-Stop 등 VCU 자체 GPIO 입력 | 10~20 ms 후보 | High/Normal |
+| `CanRxTask` | peer message decode(`Driver_Input` 포함)/freshness update | event | High |
 | `CanTxTask` | final command/state/heartbeat TX | event/periodic | Normal/High |
 | `DiagnosticTask` | DTC/status management | event/periodic | Normal/Low |
 | `HealthTask` | task/queue/stack/watchdog health | periodic | Low/Normal |
@@ -260,7 +264,7 @@ ISR에서는 긴 arbitration, printf, DTC table 처리 등을 하지 않는다.
 # 14. Open Issues / TBD
 
 - 실제 MCU / FDCAN
-- Driver sensor / pin / voltage
+- Gear/E-Stop pin / voltage (VCU 자체 물리 입력)
 - Arbitration 세부 규칙
 - safe output policy
 - command/heartbeat timing

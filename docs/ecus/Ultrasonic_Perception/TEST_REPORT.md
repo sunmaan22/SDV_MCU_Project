@@ -2,6 +2,8 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
+> **2026-09-15 범위 변경:** Sensor 구성을 FL/FR/RL/RR 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 시험 항목은 4개 zone 기준으로 갱신했다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 목적: `SPECIFICATION.md`의 Requirement를 실제 시험으로 검증하고, FreeRTOS 기반 Sensor Node의 거리 측정뿐 아니라 Task/Timing/Stack/Queue/Watchdog 상태까지 확인한다.  
@@ -25,6 +27,7 @@
 | Revision | Date | Author | Change |
 |---|---|---|---|
 | v0.1 | 2026-09-09 | Team | Initial planned test example |
+| v0.2 | 2026-09-15 | Team | Sensor Count/구성을 FL/FR/RL/RR 4방향 고정으로 갱신 |
 
 ---
 
@@ -42,7 +45,7 @@ Ultrasonic Sensor의 Trigger/Echo 측정이 반복 가능하게 동작하고, Ec
 | RTOS / OS | FreeRTOS version TBD |
 | CMSIS-RTOS API | v2 목표 |
 | Sensor | Ultrasonic Sensor model TBD |
-| Sensor Count | Stage 1: 1개, 이후 실제 구성 TBD |
+| Sensor Count | FL/FR/RL/RR 4개 (`FROZEN`), Stage 1은 1개부터 점진 확장 가능 |
 | Power | Sensor/board datasheet 기준, 실제 시험 시 기록 |
 | Interface | Trigger GPIO / Echo Timer Input Capture / FDCAN |
 | CAN Bitrate | TBD |
@@ -293,11 +296,11 @@ N/A.
 Stage 1 예시 로그 형식:
 
 ```text
-[US][INIT] sensor_count=1
-[US][TRIG] id=0
-[US][ECHO] id=0 pulse_us=...
-[US][DATA] id=0 dist_mm=... valid=1 level=SAFE
-[US][TIMEOUT] id=0
+[US][INIT] sensor_count=4 zones=FL,FR,RL,RR
+[US][TRIG] id=FL
+[US][ECHO] id=FL pulse_us=...
+[US][DATA] id=FL dist_mm=... valid=1 level=SAFE
+[US][TIMEOUT] id=FL
 [US][HEALTH] queue_overflow=0 task_overrun=0
 ```
 
@@ -336,7 +339,7 @@ RESULT: NOT RUN
 
 ## Remaining Issues
 
-- 실제 Sensor model / count / placement 확정 필요
+- 실제 Sensor model / 정확한 물리 장착 위치·각도 확정 필요 (개수/zone은 FL/FR/RL/RR로 `FROZEN`)
 - Echo voltage / level shifting 확인 필요
 - 실제 distance calibration 필요
 - Warning threshold / filter parameter 확정 필요

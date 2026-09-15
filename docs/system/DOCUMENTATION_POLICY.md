@@ -61,14 +61,14 @@ TEST_REPORT.md
 | Motor / Servo actual output | C |
 | `Drive_Status` | C |
 | LIN schedule / CAN↔LIN mapping | D Gateway |
-| Ambient / Lamp actual state | D Slave |
+| Lamp actual state | D Slave |
 | `Body_Status` | D Gateway |
 | `Vision_Status` | E |
 | `ADAS_Request` | E |
 | `Final_Drive_Command` | F |
 | `Body_Command` | F |
 | `Vehicle_State` | F |
-| `Driver_Input` | F |
+| `Driver_Input` | C |
 | DTC History DB | Raspberry Pi DTC Manager |
 
 같은 최종 데이터를 여러 Node가 동시에 publish하지 않는다.
@@ -82,7 +82,7 @@ E-Stop / Critical Fault
 > Normal Driver Request
 ```
 
-- Ultrasonic `CRITICAL`을 Rear Vision이 해제하지 않는다.
+- Ultrasonic Parking `CRITICAL`을 `ADAS_Request`가 해제/override하지 않는다.
 - `valid=false`인 센서값은 정상 판단에 사용하지 않는다.
 - H735는 `Body_Command`를 직접 publish하지 않고 `Body_User_Request`만 보낸다.
 - `Final_Drive_Command`의 Publisher는 VCU 하나다.

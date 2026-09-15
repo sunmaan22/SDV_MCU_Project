@@ -2,9 +2,11 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
+> **2026-09-15 범위 변경:** `Driver_Input`(가속/브레이크/조향) publisher가 F에서 C로 이전됐다 (`FINAL_IMPLEMENTATION_SPEC.md` §1.1, §3.3). F는 더 이상 GPIO/ADC로 Driver Input을 직접 읽지 않으며, `DriverInputTask`/`DriverInputAdapter`는 제거하고 C가 발행한 `Driver_Input`을 CAN RX로 수신해 arbitration에 사용한다. Gear/E-Stop 등 VCU 자체 물리 입력은 유지된다. `Vision_Request`는 `ADAS_Request`로 명칭을 통일했다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
-> 문서 목적: VCU가 Driver Input, CAN Request, Fault를 어떤 FreeRTOS 구조로 받아 최종 차량 명령으로 만드는지 설명한다.
+> 문서 목적: VCU가 Driver_Input(CAN), CAN Request, Fault를 어떤 FreeRTOS 구조로 받아 최종 차량 명령으로 만드는지 설명한다.
 
 ## Document Information
 
@@ -14,7 +16,7 @@
 | Owner | F |
 | Board / Platform | STM32G431KB (STM32 #5) |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
-| Revision | v0.1 |
+| Revision | v0.2 |
 | Status | Draft |
 | Related Specification | `SPECIFICATION.md` |
 | Related Test | `TEST_REPORT.md` |
@@ -26,9 +28,9 @@
 VCU는 프로젝트에서 **최종 차량 판단과 안전 우선순위 적용**을 담당한다.
 
 ```text
-Driver Input
-Vision Request
-Ultrasonic Warning
+Driver_Input (CAN, C 발행)
+ADAS_Request
+Ultrasonic_Status (Parking Critical 포함)
 Peer ECU Status/Fault
         ↓
        VCU
@@ -39,7 +41,8 @@ Final Speed / Steering / Enable
 ## Scope
 
 포함:
-- Driver input acquisition/validation
+- Driver_Input(CAN) 수신/validation (accel/brake/steering 직접 GPIO/ADC 획득은 하지 않음)
+- Gear/E-Stop 등 VCU 자체 물리 입력 수집
 - vehicle mode/state
 - arbitration
 - safety override
@@ -78,10 +81,11 @@ Final Speed / Steering / Enable
 
 ```mermaid
 flowchart LR
-    DRIVER[Driver Input] --> VCU[VCU]
-    HPC[HPC Vision] -->|Vision Request| VCU
-    US[Ultrasonic ECU] -->|Warning| VCU
-    DRIVE[Drive ECU] -->|Drive Status| VCU
+    GEAR[Gear/E-Stop 등 VCU 자체 물리 입력] --> VCU[VCU]
+    DRIVE[Drive ECU] -->|Driver_Input| VCU
+    HPC[HPC Vision] -->|ADAS_Request| VCU
+    US[Ultrasonic ECU] -->|Ultrasonic_Status| VCU
+    DRIVE -->|Drive_Status| VCU
     BODY[Body Gateway] -->|Body Status| VCU
     ALL[All ECUs] -->|Heartbeat / DTC| VCU
     VCU -->|Final Drive Command| DRIVE
@@ -94,7 +98,7 @@ flowchart LR
 | Strategy | Reason |
 |---|---|
 | SafetyTask를 일반 ControlTask와 분리 | critical condition latency 분리 |
-| Driver input을 dedicated task에서 validation | ADC/GPIO handling과 arbitration 분리 |
+| `Driver_Input`은 CAN RX로 수신, freshness/validation을 CanRxTask에서 처리 | GPIO/ADC 직접 획득 대신 C가 발행한 CAN 신호를 신뢰 경계로 검증 |
 | CAN RX는 event-driven task | ISR 최소화 |
 | VcuControlTask가 final command single owner | 여러 task가 최종 명령을 동시에 수정하지 않게 함 |
 | CanTxTask가 CAN TX single owner | bus access 충돌과 blocking 감소 |
@@ -104,10 +108,10 @@ flowchart LR
 # 6. Component View
 
 ```text
-GPIO / ADC / I2C / FDCAN
-        ↓
-DriverInputAdapter / CanRxAdapter
-        ↓
+Gear/E-Stop GPIO         FDCAN (Driver_Input/ADAS_Request/Ultrasonic_Status 등)
+        ↓                        ↓
+LocalInputAdapter        CanRxAdapter
+        ↓                        ↓
 InputValidator / SignalFreshness
         ↓
 VehicleStateManager
@@ -132,13 +136,13 @@ Local/Peer Fault
 
 | Component | Responsibility |
 |---|---|
-| `DriverInputAdapter` | gear/accel/brake/steering/E-stop 읽기 |
-| `InputValidator` | range, calibration, invalid 판단 |
-| `CanRxAdapter` | CAN frame 수신/queue |
+| `LocalInputAdapter` | gear/E-Stop 등 VCU 자체 물리 입력 읽기 |
+| `InputValidator` | `Driver_Input`(CAN) range/freshness, local input calibration/invalid 판단 |
+| `CanRxAdapter` | CAN frame 수신/queue (`Driver_Input` 포함) |
 | `SignalFreshnessManager` | timeout/timestamp 관리 |
 | `VehicleStateManager` | P/R/N/D, ready/mode/state 관리 |
 | `SafetyManager` | E-Stop, critical fault, override |
-| `ArbitrationManager` | Driver/ADAS/Parking request 우선순위 적용 |
+| `ArbitrationManager` | Driver/ADAS/Ultrasonic Parking 우선순위 적용 (Parking Critical이 ADAS_Request보다 항상 우선) |
 | `FinalCommandRepository` | final speed/steering/enable single writer data |
 | `DtcManager` | local/peer fault code/status/severity 통합 |
 | `CanTxService` | final command/state/heartbeat/dtc TX |
@@ -152,8 +156,8 @@ Local/Peer Fault
 |---|---|---|---|---|
 | `SafetyTask` | E-Stop/critical fault/safety override | event + fast periodic | Highest | blocking 금지 |
 | `VcuControlTask` | vehicle state + arbitration + final command | 5~10 ms 후보 | High | logging/CAN blocking 금지 |
-| `CanRxTask` | RX decode, freshness repository update | event | High | short processing |
-| `DriverInputTask` | GPIO/ADC/I2C acquisition + validation | 10~20 ms 후보 | High/Normal | long I/O 금지 |
+| `CanRxTask` | RX decode(`Driver_Input` 포함), freshness repository update | event | High | short processing |
+| `LocalInputTask` | Gear/E-Stop 등 VCU 자체 GPIO 획득 | 10~20 ms 후보 | High/Normal | long I/O 금지 |
 | `CanTxTask` | command/state/heartbeat/DTC 송신 | event/periodic | Normal/High | bounded queue |
 | `DiagnosticTask` | DTC state/table/event handling | event/periodic | Normal/Low | control path block 금지 |
 | `HealthTask` | task alive/queue/stack/watchdog | 50~100 ms 후보 | Low/Normal | bounded |
@@ -163,7 +167,7 @@ Local/Peer Fault
 ```text
 SafetyTask
 > VcuControlTask / critical CanRx
-> DriverInputTask
+> LocalInputTask
 > CanTxTask
 > DiagnosticTask / HealthTask
 ```
@@ -175,8 +179,8 @@ SafetyTask
 | Interrupt | ISR Responsibility | Wake-up Target |
 |---|---|---|
 | FDCAN RX | frame metadata 저장 / queue notify | `CanRxTask` |
-| ADC DMA complete 후보 | buffer ready flag | `DriverInputTask` |
 | GPIO EXTI E-Stop 후보 | state/timestamp capture | `SafetyTask` |
+| Gear GPIO change 후보 | state capture | `LocalInputTask` |
 
 ISR에서는 arbitration, printf, DTC table lookup, CAN application decode 전체를 수행하지 않는다.
 
@@ -196,11 +200,15 @@ ISR에서는 arbitration, printf, DTC table lookup, CAN application decode 전�
 
 ```mermaid
 sequenceDiagram
-    participant DI as DriverInputTask
+    participant DR0 as Drive ECU (C)
+    participant RX as CanRxTask
+    participant LI as LocalInputTask
     participant VC as VcuControlTask
     participant TX as CanTxTask
     participant DR as Drive ECU
-    DI->>VC: validated accel/brake/steering/gear
+    DR0->>RX: Driver_Input (accel/brake/steering)
+    LI->>VC: gear/E-Stop local state
+    RX->>VC: validated Driver_Input
     VC->>VC: state + arbitration
     VC->>TX: final command
     TX->>DR: CAN Final_Drive_Command
@@ -210,13 +218,13 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant HPC as HPC
+    participant HPC as HPC (E)
     participant RX as CanRxTask
     participant VC as VcuControlTask
     participant TX as CanTxTask
-    HPC->>RX: Vision_Request
+    HPC->>RX: ADAS_Request
     RX->>VC: valid/fresh request
-    VC->>VC: driver + safety + mode arbitration
+    VC->>VC: driver + Ultrasonic Parking Critical + safety + mode arbitration
     VC->>TX: final command
 ```
 
@@ -246,17 +254,17 @@ Heartbeat missing
 # 9. Deployment View
 
 ```text
-Gear buttons / Pot / Hall / E-Stop
-        ↓ GPIO / ADC / I2C
+Gear buttons / E-Stop
+        ↓ GPIO
      STM32 #5 VCU
      + FreeRTOS
-        ↕ FDCAN
+        ↕ FDCAN (Driver_Input 포함 수신)
  CAN FD Transceiver
         ↕
  CAN FD Backbone
 ```
 
-실제 pin, ADC channel, transceiver는 TBD.
+Accelerator/Brake/Steering 입력은 더 이상 VCU에 직접 연결하지 않는다 (C의 `DriverInputTask`가 읽어 `Driver_Input`으로 발행). 실제 Gear/E-Stop pin, transceiver는 TBD.
 
 # 10. Interfaces & Contracts
 
@@ -264,9 +272,10 @@ Gear buttons / Pot / Hall / E-Stop
 
 | Signal | Sender | Use |
 |---|---|---|
-| `Vision_Request` | HPC | ADAS/Parking request |
-| `Ultrasonic_Status` | A | warning/critical |
-| `Drive_Status` | C | RPM/speed/health |
+| `Driver_Input` | C | 가속/브레이크/조향 driver 입력 (publisher가 C로 이전) |
+| `ADAS_Request` | E(HPC) | 전방 객체 회피 요청 (주차 사유 없음) |
+| `Ultrasonic_Status` | A | distance/warning/Parking Critical |
+| `Drive_Status` | C | RPM(estimated)/speed(estimated)/health |
 | `Body_Status` | D | body/LIN status |
 | `ECU_Heartbeat` | All | peer health |
 | `DTC_Event` | All | diagnostic integration |
@@ -277,7 +286,6 @@ Gear buttons / Pot / Hall / E-Stop
 |---|---|---|
 | `Final_Drive_Command` 후보 | Drive ECU | final speed/steering/enable |
 | `Vehicle_State` | H735/HPC/All | gear/mode/safety |
-| `Driver_Input` | H735/HPC | normalized driver input |
 | `ECU_Heartbeat` | All | VCU alive |
 | `DTC_Event` | Pi/H735 | VCU/local fault |
 
@@ -287,10 +295,11 @@ Gear buttons / Pot / Hall / E-Stop
 
 | Data | Owner | Meaning |
 |---|---|---|
-| `driver_input` | DriverInputTask | normalized driver input |
+| `driver_input` | CanRxTask repository | C가 발행한 `Driver_Input`의 최신 유효값 |
+| `local_input` | LocalInputTask | gear/E-Stop 등 VCU 자체 입력 |
 | `vehicle_state` | VcuControlTask | mode/gear/readiness |
-| `vision_request` | CanRxTask repository | latest valid request |
-| `parking_warning` | CanRxTask repository | latest ultrasonic status |
+| `adas_request` | CanRxTask repository | latest valid `ADAS_Request` |
+| `parking_status` | CanRxTask repository | latest `Ultrasonic_Status` (Critical 포함) |
 | `safety_override` | SafetyTask | critical override |
 | `final_command` | VcuControlTask | final speed/steer/enable |
 | `dtc_state` | DiagnosticTask | active/pending/history candidate |
@@ -335,7 +344,7 @@ Local Fault Detection
 SafetyTask heartbeat
 VcuControlTask heartbeat
 CanRxTask heartbeat
-DriverInputTask heartbeat
+LocalInputTask heartbeat
         ↓
 HealthTask
         ↓
@@ -353,6 +362,7 @@ all required healthy?
 | ADR-VCU-003 | actuator PWM은 Drive ECU 소유 | 판단과 actuator control 분리 |
 | ADR-VCU-004 | DTC History DB는 Pi에 둠 | STM32는 runtime fault/safety에 집중 |
 | ADR-VCU-005 | CAN TX single owner task | 통신 자원 충돌 감소 |
+| ADR-VCU-006 | `Driver_Input` publisher를 F에서 C로 이전, F의 `DriverInputTask` 제거 | accel/brake/steering 입력 하드웨어가 실제로 C에 붙기 때문 (2026-09-15, `FINAL_IMPLEMENTATION_SPEC.md` §1.1) |
 
 # 14. Risks
 
@@ -367,7 +377,7 @@ all required healthy?
 
 | Requirement | Component | Task | Test |
 |---|---|---|---|
-| REQ-VCU-001 | DriverInputAdapter/InputValidator | DriverInputTask | T-VCU-001 |
+| REQ-VCU-001 | InputValidator (Driver_Input CAN + local Gear/E-Stop) | CanRxTask/LocalInputTask | T-VCU-001 |
 | REQ-VCU-004 | SafetyManager | SafetyTask | T-VCU-004 |
 | REQ-VCU-005 | ArbitrationManager | VcuControlTask | T-VCU-005 |
 | REQ-VCU-006 | FinalCommandRepository/CanTx | VcuControlTask/CanTxTask | T-VCU-006 |

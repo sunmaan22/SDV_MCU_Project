@@ -163,44 +163,50 @@ GUI가 바쁘다고 CAN timeout 검출이 멈추거나, CAN frame을 많이 받�
 **한마디:** VCU가 정한 명령을 실제 움직임으로 바꾼다.
 
 ```text
+RF 수신기 / 가변저항
+→ DriverInputTask → Driver_Input(CAN)
+
 VCU Final Command
 → STM32
 ├ Motor PWM / Direction → Motor Driver → Brushed DC Motor
 └ Steering PWM → RC Servo
 
-Motor Encoder/Hall
-→ RPM Feedback
+Motor PWM 명령값
+→ 추정 함수 → RPM/Speed (estimated, 실측 아님)
 ```
+
+Encoder/Hall은 사용하지 않는다 — Speed/RPM 표시값은 명령값(PWM) 기반 추정 함수의 결과다.
 
 ### RTOS에서 중요한 부분
 
 ```text
 CanRxTask
    ↓ latest command
-ControlTask  ← Encoder/Feedback
+ControlTask  → 명령값 기반 speed/rpm 추정
    ↓
 PWM / Servo Output
 
-StatusTask → CAN
-HealthTask → command timeout / sensor fault
+DriverInputTask → Driver_Input(CAN)
+CanTxTask → CAN
+HealthTask → command timeout / driver input fault
 ```
 
 `ControlTask`는 이 Node에서 가장 중요한 Task 중 하나다.
 
 초기 후보:
 - `ControlTask`: 5~10 ms
-- `FeedbackTask`: 5~10 ms 또는 ISR+Task
-- `StatusTask`: 20~50 ms
+- `DriverInputTask`: 5~10 ms 또는 ISR+Task
+- `CanTxTask`: 20~50 ms
 - `HealthTask`: 50~100 ms
 
 중요:
 - ControlTask 안에서 느린 `printf` 금지
 - CAN 송신 때문에 ControlTask가 오래 block되지 않게 함
-- Encoder edge ISR에서 PID 계산하지 않음
+- Driver Input capture ISR에서 선형 매핑/제어 계산하지 않음
 
 ---
 
-## D — Lighting + Ambient / LIN-CAN
+## D — Lighting / LIN-CAN
 
 **한마디:** 차체 조명 기능을 LIN으로 만들고 CAN FD 차량망과 연결한다.
 
@@ -211,9 +217,10 @@ STM32 Gateway
 CAN ↔ LIN Mapping / LIN Master
 ↕ LIN
 STM32 LIN Slave
-├ Ambient Sensor
-└ Head / Tail / Brake / Turn / Hazard
+└ Headlamp(밝기) / Turn / Brake
 ```
+
+Ambient Sensor는 삭제됐다. Headlamp는 on/off가 아니라 밝기값이고, brake는 사용자 요청이 아니라 F(VCU)가 감속을 감지해 자동 생성한다 — D는 그 값을 그대로 LIN으로 중계한다.
 
 ### Gateway RTOS 예
 
@@ -239,7 +246,6 @@ HealthTask
 
 ```text
 LinRxTask
-AmbientTask
 LightingTask
 StatusTask
 HealthTask
@@ -251,28 +257,18 @@ HealthTask
 
 ## E — HPC + Camera Vision / 인지·판단
 
-**한마디:** 카메라 영상을 보고 무엇이 보이는지 판단한다.
+**한마디:** 전방 카메라 영상을 보고 무엇이 보이는지(COCO 객체인식) 판단한다. 주차 판단은 하지 않는다 (A 전담).
 
-개발 단계:
 ```text
-Pi #1 + Front Camera → Front ADAS Vision
-Pi #2 + Rear Camera  → Rear Parking Vision
+Front Camera → Raspberry Pi HPC (COCO Object Detection)
 ```
 
-최종 단계:
-```text
-Front Camera ─┐
-              ├→ Raspberry Pi HPC
-Rear Camera ──┘
-```
-
-Pi는 Linux이므로 FreeRTOS Task를 만들지 않는다.
+Rear Camera/Rear Vision/주차 Vision은 삭제됐다. Pi는 Linux이므로 FreeRTOS Task를 만들지 않는다.
 
 대신 Software Architecture에는 다음을 적는다.
 
 ```text
 front_vision service
-rear_vision service
 can_service
 dtc_manager
 vehicle_manager
@@ -366,8 +362,8 @@ Sensor Voltage
 사용 예:
 - DC Motor PWM
 - RC Servo
-- Encoder/Hall
-- LED brightness
+- RF 수신기 Driver Input capture
+- LED brightness (헤드램프 밝기 등)
 - Ultrasonic Echo timing
 
 ## 4.5 UART / I2C / SPI

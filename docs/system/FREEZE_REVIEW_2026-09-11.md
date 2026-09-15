@@ -2,6 +2,8 @@
 
 [최상위 명세](FINAL_IMPLEMENTATION_SPEC.md) · [문서 정책](DOCUMENTATION_POLICY.md)
 
+> **2026-09-15 참고:** 이 문서는 2026-09-11 시점 하드웨어 모델 freeze 기록이다. 이후(2026-09-15) front-only scope 전환으로 Encoder/Hall, Ambient Sensor, Rear Camera/Rear Vision은 삭제되었다 — 아래 "OPEN" 서술 중 encoder/ambient 관련 항목은 더 이상 검증 대상이 아니라 REMOVED다. 최신 기준은 [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md)를 따른다.
+
 ## 판정
 
 **부분 동결. Implementation Baseline v1.0은 아직 아니다.** Owner가 H735 이외 STM 보드를 G431KB로 구매 완료했다고 알리고, 문서·test 근거가 있으면 동결하라고 지시한 범위에서 적용했다. 새로운 성능값이나 안전 임계값을 만들어 확정하지 않았다.

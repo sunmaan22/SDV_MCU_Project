@@ -7,6 +7,8 @@
 > 목적: `SPECIFICATION.md` 요구사항을 실제 시험으로 검증한다.  
 > Reference board bring-up은 2026-09-10에 실제 STM32H735G-DK에서 수행했으며, 이후 SDV IVI 기능 시험은 단계적으로 추가한다.
 
+> **2026-09-15 범위 변경 (최소 수정):** 아직 `NOT RUN`인 계획 항목에서 `Body_Status.ambient` 소비와 `Vision_Status`의 ADAS/Parking 필드명만 새 계약에 맞게 조정했다. 기존 bring-up/실기 시험 결과(§0)는 변경하지 않았다.
+
 ## Document Information
 
 | Item | Value |
@@ -38,6 +40,7 @@
 | v0.7 | 2026-09-15 | Team | §0.4 hang/tearing·FDCAN2 loopback 행을 §0.5/§0.7 결과로 갱신(PARTIAL, 물리 CAN·응답시간은 여전히 NOT RUN), Remaining Issues에서 완료된 `Error_Handler` 수정(`0a06b06`) 및 MPU 커밋(`a226f9a`) 반영 |
 | v0.8 | 2026-09-15 | Team | §0.8 VehicleModel + DummyDataProvider bench(가이드 §2-4, pre-GUI) 결과 반영 — DUMMY-01~07/09 PASS, DUMMY-08 NOT RUN(GUI 없음), DUMMY-10 PARTIAL. Final Result / 완료된 항목 / Remaining Issues 갱신 |
 | v0.9 | 2026-09-15 | Team | §0.9 Cluster 기본 표시/외부 로더 사용자 확인과 정적·증분 빌드 검사 기록; GUI 상태 전이/터치·부하 시험은 미실시 유지 |
+| v0.10 | 2026-09-15 | Team | Body_Status.ambient 소비 제거, Vision_Status ADAS/Parking 필드명 조정(계획 항목만, 기존 실기 결과 §0 유지) |
 
 ---
 
@@ -526,8 +529,8 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 | `Vehicle_State` | RX | gear/mode update | NOT RUN | planned | TBD |
 | `Drive_Status` | RX | speed/rpm update | NOT RUN | planned | TBD |
 | `Ultrasonic_Status` | RX | distance/warning | NOT RUN | planned | TBD |
-| `Vision_Status` | RX | ADAS/Parking update | NOT RUN | planned | TBD |
-| `Body_Status` | RX | lamp/ambient | NOT RUN | planned | TBD |
+| `Vision_Status` / `ADAS_Request` | RX | detected_class/direction/warning update | NOT RUN | planned | TBD |
+| `Body_Status` | RX | lamp | NOT RUN | planned | TBD |
 | `DTC_Event` | RX | DTC model update | NOT RUN | event | TBD |
 | `Body_User_Request` | TX | UI request transmitted | NOT RUN | N/A | TBD |
 

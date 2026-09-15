@@ -1,5 +1,7 @@
 # Ultrasonic Perception Documentation
 
+> **2026-09-15 범위 변경:** Sensor/Zone id를 FL/FR/RL/RR 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 주차 판단은 A 단독이며 E(Vision)와의 fusion은 없다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > **최상위 구현 기준:** [`../FINAL_IMPLEMENTATION_SPEC.md`](../../system/FINAL_IMPLEMENTATION_SPEC.md)  
@@ -26,9 +28,9 @@ A는 거리 인지와 결과 신뢰성까지 담당한다. Motor 정지 판단�
 - `valid=false`이면 해당 측정값을 정상 판단에 사용하지 않는다.
 - warning은 정상 데이터에 대해 `SAFE / WARNING / CRITICAL`을 사용한다.
 - `Ultrasonic_Status` Publisher는 A다.
-- Ultrasonic `CRITICAL`은 VCU에 직접 전달하며 Rear Vision이 이를 해제하지 않는다.
+- Ultrasonic `CRITICAL`은 VCU에 직접 전달하며 E(Vision)의 `ADAS_Request`가 이를 해제/override하지 않는다.
 - Local fault는 `fault_flags`, confirmed fault는 공통 `DTC_Event`를 사용한다.
-- 여러 센서는 순차 Scan을 기본으로 한다.
+- FL/FR/RL/RR 4개 센서는 순차 Scan을 기본으로 한다.
 - ISR에서는 timestamp/capture만 처리하고 계산/filter/CAN은 Task에서 수행한다.
 
 ## FreeRTOS 구조
@@ -47,12 +49,12 @@ HealthTask
 
 ## 구현해야 할 것
 
-- Sensor 1개 Trigger/Echo Input Capture
+- Sensor 1개부터 Trigger/Echo Input Capture (최종 FL/FR/RL/RR 4개로 확장)
 - 3-point distance 검증
 - timeout / out-of-range / disconnect → `valid=false`
 - raw / filtered distance 비교
-- Sensor scan 구조
-- `Ultrasonic_Status` 생성
+- FL/FR/RL/RR 4방향 Sensor scan 구조
+- `Ultrasonic_Status` 생성 (zone id 포함)
 - FreeRTOS task/queue/health 구조
 - period/jitter/stack/queue 측정
 

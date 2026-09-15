@@ -9,6 +9,8 @@
 
 > **최상위 구현 기준:** [FINAL_IMPLEMENTATION_SPEC.md](../../system/FINAL_IMPLEMENTATION_SPEC.md). 조명 요청은 `IVI → Body_User_Request → VCU → Body_Command → Body Gateway`를 따른다. IVI는 `Body_Command`를 직접 송신하지 않는다.
 
+> **2026-09-15 범위 변경 (최소 수정):** `Body_Status.ambient` 소비를 제거하고, `Vision_Status`/`ADAS_Request` 필드명을 새 계약(detected_class/direction, Rear Vision 없음)에 맞게만 조정했다. 화면 구성, TouchGFX 구조, 실기 테스트 기록은 변경하지 않았다.
+
 ## Document Information
 
 | Item | Value |
@@ -17,7 +19,7 @@
 | Owner | B |
 | Board / Platform | STM32H735 + TouchGFX |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 |
-| Revision | v0.3 |
+| Revision | v0.4 |
 | Status | Draft |
 | Related Specification | `SPECIFICATION.md` |
 | Related Test | `TEST_REPORT.md` |
@@ -29,6 +31,7 @@
 | v0.1 | 2026-09-09 | Team | Initial filled example |
 | v0.2 | 2026-09-09 | Team | FreeRTOS task/ISR/queue/watchdog architecture added |
 | v0.3 | 2026-09-10 | Team | Lighting request route aligned with final specification: IVI → VCU → Body Gateway |
+| v0.4 | 2026-09-15 | Team | Body_Status.ambient 소비 제거, Vision_Status/ADAS_Request 필드명 조정 (최소 수정) |
 
 ---
 
@@ -69,7 +72,7 @@
 | A Ultrasonic | Parking data display |
 | C Drive | speed/rpm/status contract |
 | D Body | body status/request |
-| E Vision | ADAS/Parking semantic result |
+| E Vision | ADAS semantic result (detected_class/direction, Parking 없음) |
 | Test | timing, queue, stack, warning, timeout |
 
 ---
@@ -109,7 +112,7 @@ flowchart LR
     VCU[VCU] -->|Vehicle State| HMI[STM32H735 Cockpit]
     DRIVE[Drive ECU] -->|Speed/RPM| HMI
     US[Ultrasonic ECU] -->|Distance/Warning| HMI
-    HPC[Pi Vision/HPC] -->|ADAS/Parking Result| HMI
+    HPC[Pi Vision/HPC] -->|Vision_Status / ADAS_Request| HMI
     BODY[Body Gateway] -->|Body Status| HMI
     DTC[Pi DTC Manager] -->|DTC Data| HMI
     HMI -->|Body_User_Request| VCU
@@ -369,8 +372,8 @@ Pin map은 CubeMX/board schematic 확인 후 작성한다.
 | `Vehicle_State` | gear/mode/safety | VCU | state invalid/warning |
 | `Drive_Status` | speed/rpm | Drive | widgets invalid |
 | `Ultrasonic_Status` | distance/warning | Ultrasonic | sensor invalid |
-| Vision status | ADAS/Parking result | HPC | vision unavailable |
-| `Body_Status` | ambient/lamp/LIN | Gateway | body warning |
+| `Vision_Status` / `ADAS_Request` | detected_class/direction/warning result | HPC(E) | vision unavailable |
+| `Body_Status` | lamp/LIN | Gateway | body warning |
 | `DTC_Event` | fault code/status | All/Pi | raw code라도 표시 |
 | `ECU_Heartbeat` | alive | all | offline warning |
 
