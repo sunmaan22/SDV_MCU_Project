@@ -2,7 +2,7 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
-> **2026-09-15 범위 변경:** Sensor/Zone id를 전좌(FL)/전우(FR)/후좌(RL)/후우(RR) 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 주차 판단은 A(Ultrasonic) 단독이며, E(Vision)와의 fusion 판단은 없다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §3.4, §4.1](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경:** Sensor/Zone id를 전좌(FL)/전우(FR)/후좌(RL)/후우(RR) 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 초음파 충돌 위험도 판단은 A(Ultrasonic) 단독이며, E(Vision)와의 fusion 판단은 없다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §3.4, §4.1](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -16,7 +16,7 @@
 | Feature ID | `FEAT-US-001` |
 | Feature / Node Name | Ultrasonic Perception ECU |
 | Owner | A |
-| Role | 인지 / Parking Distance Perception |
+| Role | 인지 / Collision Distance Perception |
 | Status | Draft |
 | Priority | MUST |
 | Board / Platform | STM32G431KB (STM32 #1) + Ultrasonic Sensor Array |
@@ -37,7 +37,7 @@
 
 ## 1.1 한 문장 설명
 
-> Ultrasonic Perception ECU는 전좌(FL)/전우(FR)/후좌(RL)/후우(RR) 4방향 고정 Sensor의 Echo 시간을 측정해 거리와 유효성을 계산하고, Filtering과 Warning Level을 적용한 결과를 CAN FD로 VCU/H735/HPC에 제공한다. 주차 판단은 A가 단독으로 담당하며 E(Vision)와의 fusion은 없다.
+> Ultrasonic Perception ECU는 전좌(FL)/전우(FR)/후좌(RL)/후우(RR) 4방향 고정 Sensor의 Echo 시간을 측정해 거리와 유효성을 계산하고, Filtering과 Warning Level을 적용한 결과를 CAN FD로 VCU/H735/HPC에 제공한다. 초음파 충돌 위험도 판단은 A가 단독으로 담당하며 E(Vision)와의 fusion은 없다.
 
 ## 1.2 포함 범위
 
@@ -59,11 +59,11 @@
 - Motor PWM 또는 Steering PWM 직접 생성
 - 차량 정지 여부의 최종 판단
 - Camera Vision 처리
-- Vision(E)과의 fusion 판단 (주차 판단은 A 단독; E는 관여하지 않음)
+- Vision(E)과의 fusion 판단 (초음파 충돌 위험도 판단은 A 단독; E는 관여하지 않음)
 - H735 UI 표시 로직
 - 최종 DTC history DB 저장
 
-A 담당의 책임은 **거리 인지와 그 결과의 신뢰성, 그리고 주차 판단**까지다. `CRITICAL` 상태를 실제 정지 명령으로 바꾸는 것은 VCU의 책임이다.
+A 담당의 책임은 **거리 인지와 그 결과의 신뢰성, 그리고 초음파 충돌 위험도 판단**까지다. `CRITICAL` 상태를 실제 정지 명령으로 바꾸는 것은 VCU의 책임이다.
 
 ---
 
@@ -105,20 +105,20 @@ A 담당의 책임은 **거리 인지와 그 결과의 신뢰성, 그리고 주�
 
 ```mermaid
 flowchart TD
-    A[Measurement Slot] --> B[Trigger Sensor]
-    B --> C[Echo Input Capture]
+    A["Measurement Slot"] --> B["Trigger Sensor"]
+    B --> C["Echo Input Capture"]
     C --> D{Echo complete before timeout?}
-    D -->|No| E[valid=false / timeout fault]
-    D -->|Yes| F[Pulse Width Calculation]
-    F --> G[Distance Conversion]
+    D -->|"No"| E["valid=false / timeout fault"]
+    D -->|"Yes"| F["Pulse Width Calculation"]
+    F --> G["Distance Conversion"]
     G --> H{Range / Plausibility Valid?}
-    H -->|No| I[valid=false / invalid fault]
-    H -->|Yes| J[Filtering]
-    J --> K[Warning Level]
-    E --> L[Status Update]
+    H -->|"No"| I["valid=false / invalid fault"]
+    H -->|"Yes"| J["Filtering"]
+    J --> K["Warning Level"]
+    E --> L["Status Update"]
     I --> L
     K --> L
-    L --> M[CAN Status Queue]
+    L --> M["CAN Status Queue"]
 ```
 
 ---
@@ -208,7 +208,7 @@ Warning threshold와 recovery count는 Stage 1 측정 후 확정한다.
 
 N/A. Ultrasonic ECU 자체에는 사용자 UI가 없다.
 
-H735 Parking 화면은 이 ECU가 제공하는 distance / validity / warning을 소비한다.
+H735 Collision Warning 화면은 이 ECU가 제공하는 distance / validity / warning을 소비한다.
 
 ---
 
@@ -356,3 +356,7 @@ DTC code 숫자와 status lifecycle은 F 담당의 Diagnostics 규격과 통합 
 | TBD-US-006 | filter와 warning threshold | A/F | Stage 1 + VCU policy 협의 후 |
 | TBD-US-007 | CAN cycle/ID/payload | A/F | CAN Matrix v0.1 |
 | TBD-US-008 | Task priority/stack/queue depth | A | RTOS profiling 후 |
+
+## 충돌주의 전환 적용 (2026-09-15)
+
+기능은 4방향 거리 기반 충돌주의이며 Gear R 전용 주차 모드가 아니다. A는 각 zone의 distance/valid/warning을 계속 제공하고, B는 모든 기어에서 패널 접근과 CRITICAL 상시 경고를 제공한다. F의 기존 안전 개입은 유지하며 A/B/E가 최종 Drive 명령을 발행하지 않는다. 방향별 제어 zone과 감속·정지·복구 수치는 [최상위 명세 §1.3](../../system/FINAL_IMPLEMENTATION_SPEC.md#13-충돌주의-기능-범위-2026-09-15-사용자-결정)의 OPEN 항목이다.

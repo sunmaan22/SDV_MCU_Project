@@ -1,6 +1,6 @@
 # Ultrasonic Perception Documentation
 
-> **2026-09-15 범위 변경:** Sensor/Zone id를 FL/FR/RL/RR 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 주차 판단은 A 단독이며 E(Vision)와의 fusion은 없다.
+> **2026-09-15 범위 변경:** Sensor/Zone id를 FL/FR/RL/RR 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 초음파 충돌 위험도 판단은 A 단독이며 E(Vision)와의 fusion은 없다.
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 

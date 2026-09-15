@@ -54,10 +54,10 @@ Raspberry Pi 4 Vision/HPC · STM32 + FreeRTOS 분산 ECU · CAN FD Backbone · L
 
 주요 기능은 다음과 같다.
 
-- **Ultrasonic Perception:** 초음파센서 4방향(FL/FR/RL/RR)으로 주차 거리를 측정하고 판단한다.
+- **Ultrasonic Perception:** 초음파센서 4방향(FL/FR/RL/RR)으로 장애물 거리를 측정하고 판단한다.
 - **Camera Vision:** Front Camera 1대 영상을 Raspberry Pi에서 COCO 기반으로 처리한다.
-- **HPC / Vision Decision:** 영상에서 객체(class/방향) 의미 정보를 만들고 회피 요청을 생성한다. 주차 판단은 하지 않는다.
-- **VCU / Final Arbitration:** Driver Input(RF/가변저항, C 발행), ADAS 요청, 초음파 Parking Critical(항상 최우선), Fault를 보고 최종 차량 명령을 정한다.
+- **HPC / Vision Decision:** 영상에서 객체(class/방향) 의미 정보를 만들고 회피 요청을 생성한다. 초음파 충돌 위험도 판단은 하지 않는다.
+- **VCU / Final Arbitration:** Driver Input(RF/가변저항, C 발행), ADAS 요청, 초음파 Collision Critical(ADAS보다 우선, E-Stop/Critical Fault 다음), Fault를 보고 최종 차량 명령을 정한다.
 - **Drive / Steering Control:** RF/가변저항 Driver 입력을 읽고, 브러시드 DC Motor와 RC Servo를 실제로 제어하며, 명령값 기반으로 speed/rpm을 추정한다.
 - **Body / Lighting:** 헤드램프 밝기/턴시그널/브레이크등을 LIN으로 연결하고 CAN FD와 Gateway한다.
 - **Cockpit:** STM32H735에서 Cluster + IVI UI를 구현한다.
@@ -70,12 +70,12 @@ Raspberry Pi 4 Vision/HPC · STM32 + FreeRTOS 분산 ECU · CAN FD Backbone · L
 
 ```mermaid
 flowchart LR
-    SENSE["인지\nCamera / Ultrasonic / Driver Input"] --> THINK["판단\nVision / VCU / Safety"]
-    THINK --> CTRL["제어\nMotor / Steering / Lighting"]
-    SENSE --> UI["표시\nCluster + IVI"]
+    SENSE["인지 / Camera / Ultrasonic / Driver Input"] --> THINK["판단 / Vision / VCU / Safety"]
+    THINK --> CTRL["제어 / Motor / Steering / Lighting"]
+    SENSE --> UI["표시 / Cluster + IVI"]
     THINK --> UI
     CTRL --> UI
-    SENSE --> DIAG["진단\nFault / DTC"]
+    SENSE --> DIAG["진단 / Fault / DTC"]
     THINK --> DIAG
     CTRL --> DIAG
 ```
@@ -135,7 +135,7 @@ Final Steering Request
 
 ## 2.4 UI / 통신 / 진단
 
-- **UI:** Speed, RPM, Gear, ADAS, Parking, Body, DTC를 보여준다.
+- **UI:** Speed, RPM, Gear, ADAS, Collision Warning, Body, DTC를 보여준다.
 - **통신:** CAN FD와 LIN으로 각 Node가 데이터를 주고받는다.
 - **진단:** Sensor/Control/Network/Task 문제가 생기면 Fault와 DTC로 관리한다.
 
@@ -181,23 +181,23 @@ Local Body LIN
 
 ```mermaid
 flowchart TB
-    FCAM["Front Camera"] -->|CSI| HPC["Raspberry Pi 4\nLinux Vision / HPC (COCO)"]
+    FCAM["Front Camera"] -->|"CSI"| HPC["Raspberry Pi 4 / Linux Vision / HPC (COCO)"]
 
     CAN{{"CAN FD Backbone"}}
     HPC <--> CAN
 
-    USS["STM32 #1 + FreeRTOS\nUltrasonic Perception (4방향)"] <--> CAN
-    DRIVE["STM32 #2 + FreeRTOS\nDrive + Steering + Driver Input"] <--> CAN
-    GW["STM32 #3 + FreeRTOS\nCAN↔LIN Gateway"] <--> CAN
-    VCU["STM32 #5 + FreeRTOS\nVCU / Safety / CAN Integration"] <--> CAN
-    COCKPIT["STM32H735 + FreeRTOS\nCluster + IVI / TouchGFX"] <--> CAN
+    USS["STM32 #1 + FreeRTOS / Ultrasonic Perception (4방향)"] <--> CAN
+    DRIVE["STM32 #2 + FreeRTOS / Drive + Steering + Driver Input"] <--> CAN
+    GW["STM32 #3 + FreeRTOS / CAN↔LIN Gateway"] <--> CAN
+    VCU["STM32 #5 + FreeRTOS / VCU / Safety / CAN Integration"] <--> CAN
+    COCKPIT["STM32H735 + FreeRTOS / Cluster + IVI / TouchGFX"] <--> CAN
 
     USS --> US["Ultrasonic Sensors (FL/FR/RL/RR)"]
-    DRIVE --> TB["TB6612FNG 후보\nBrushed DC Motor"]
+    DRIVE --> TB["TB6612FNG 후보 / Brushed DC Motor"]
     DRIVE --> SERVO["RC Steering Servo"]
     DRIVERIN["RF 수신기 / 가변저항"] --> DRIVE
 
-    GW <-->|LIN| BODY["STM32 #4 + FreeRTOS 기본\nBody LIN Slave"]
+    GW <-->|"LIN"| BODY["STM32 #4 + FreeRTOS 기본 / Body LIN Slave"]
     BODY --> LIGHT["Headlamp(밝기) / Turn / Brake"]
 
     GEAR["Gear / E-Stop"] --> DRIVE
@@ -226,7 +226,7 @@ Front Camera 1대
 → Vision_Status / ADAS_Request
 ```
 
-Rear Camera/Rear Vision/주차 Vision은 삭제됐다 (2026-09-15). Front Vision은 Gear/Mode와 무관하게 항상 동작한다. 주차 판단은 Ultrasonic(A)이 전담한다.
+Rear Camera/Rear Vision/주차 Vision은 삭제됐다 (2026-09-15). Front Vision은 Gear/Mode와 무관하게 항상 동작한다. 초음파 충돌 위험도 판단은 Ultrasonic(A)이 전담한다.
 
 영상처리는 STM32가 아니라 Raspberry Pi가 담당한다. **Raw Camera Frame은 CAN FD로 전송하지 않고 의미 있는 결과값만 전송한다.**
 
@@ -346,20 +346,20 @@ Front Camera
 → VCU
 ```
 
-## 6.3 Parking
+## 6.3 Collision Warning
 
 ```text
-Ultrasonic(4방향) → STM32 Ultrasonic Task → Parking Status / VCU 판단
+Ultrasonic(4방향) → STM32 Ultrasonic Task → Ultrasonic_Status → VCU 판단 / H735 충돌주의 표시
 ```
 
-주차 판단은 Ultrasonic(A)이 단독으로 담당한다. Vision(E)은 전방 객체 회피 요청만 만들고 주차에는 관여하지 않으며, `ADAS_Request`는 Ultrasonic Parking Critical을 override할 수 없다.
+초음파 충돌 위험도 판단은 Ultrasonic(A)이 단독으로 담당한다. Vision(E)은 전방 객체 회피 요청만 만들고 초음파 위험도 판단에는 관여하지 않으며, `ADAS_Request`는 Ultrasonic Collision Critical을 override할 수 없다.
 
 ## 6.4 최종 차량 제어
 
 ```text
 Driver_Input (CAN, C 발행)
 ADAS_Request
-Ultrasonic Parking Critical (항상 최우선)
+Ultrasonic Collision Critical (ADAS보다 우선, E-Stop/Critical Fault 다음)
 Fault / Heartbeat
        ↓
 VCU SafetyTask / VcuControlTask
@@ -431,13 +431,13 @@ H735 한 보드에서 Cluster와 IVI를 함께 구현한다.
 - P/R/N/D
 - READY
 - Turn / Headlamp
-- ADAS / Parking Warning
+- ADAS / Collision Warning
 - General Fault
 
 ### IVI 메뉴
 
 - ADAS Status
-- Parking Assist
+- Collision Warning
 - Diagnostics / DTC
 - Lighting / Vehicle Settings
 - System Status
@@ -476,8 +476,8 @@ H735 상세 명세/설계 예시는 [`docs/ecus/IVI/`](../ecus/IVI)에서 확인
 
 | 담당 | 역할 | 주요 Hardware | 실행 환경 | 한 줄 설명 |
 |---|---|---|---|---|
-| **A** | **Ultrasonic / 인지** | STM32 #1 + Ultrasonic | FreeRTOS | 4방향(FL/FR/RL/RR) 주차 거리를 측정하고 판단한다. |
-| **B** | **Cluster + IVI / UI** | STM32H735 + TouchGFX | FreeRTOS | 차량 상태, 경고, Parking, DTC(실시간)를 보여준다. |
+| **A** | **Ultrasonic / 인지** | STM32 #1 + Ultrasonic | FreeRTOS | 4방향(FL/FR/RL/RR) 장애물 거리를 측정하고 판단한다. |
+| **B** | **Cluster + IVI / UI** | STM32H735 + TouchGFX | FreeRTOS | 차량 상태, 경고, Collision Warning, DTC(실시간)를 보여준다. |
 | **C** | **Motor + Steering / 제어** | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기/가변저항 + Gear/E-Stop | FreeRTOS | Driver/Gear/E-Stop 입력을 읽고 최종 명령대로 차량을 실제로 움직인다. E-Stop은 로컬 즉시 차단. |
 | **D** | **Lighting / LIN-CAN** | STM32 #3 + #4 | FreeRTOS | 헤드램프 밝기/조명을 LIN으로 연결하고 CAN FD와 Gateway한다. |
 | **E** | **HPC + Camera Vision / 인지·판단** | Raspberry Pi + Front Camera | Linux | 전방 영상을 COCO로 처리하고 ADAS 회피 요청을 만든다. |
@@ -485,12 +485,12 @@ H735 상세 명세/설계 예시는 [`docs/ecus/IVI/`](../ecus/IVI)에서 확인
 
 ### 역할 경계
 
-- A는 거리 측정/상태 생성과 주차 판단까지 담당하고 Motor를 직접 제어하지 않는다.
+- A는 거리 측정/상태 생성과 초음파 충돌 위험도 판단까지 담당하고 Motor를 직접 제어하지 않는다.
 - B는 표시와 사용자 Request가 중심이며 차량 최종 제어 권한은 없다. `DTC_Event`를 각 ECU로부터 직접 구독해 실시간 표시한다.
 - C는 Driver/Gear/E-Stop 입력 읽기와 실제 Motor/Steering 제어(+ 명령값 기반 speed/rpm 추정)를 담당한다. E-Stop은 CAN과 무관하게 로컬에서 즉시 차단한다.
 - D는 Body Local LIN Network와 CAN↔LIN Gateway를 담당한다.
-- E는 전방 Camera Vision과 고수준 회피 요청을 담당하며 주차 판단에는 관여하지 않는다.
-- F는 VCU Arbitration(Ultrasonic Parking Critical 최우선), Safety, CAN 통합, DTC 실시간 발행을 담당한다. 물리 GPIO는 갖지 않으며 모든 입력은 CAN으로 받는다.
+- E는 전방 Camera Vision과 고수준 회피 요청을 담당하며 초음파 충돌 위험도 판단에는 관여하지 않는다.
+- F는 VCU Arbitration(Ultrasonic Collision Critical은 E-Stop/Critical Fault 다음), Safety, CAN 통합, DTC 실시간 발행을 담당한다. Driver/Gear/E-Stop 물리 입력은 C가 소유하고 F는 CAN으로 받는다.
 - 모든 STM32 담당자는 자기 기능뿐 아니라 **Task/ISR/Queue/Health 구조**도 설명할 수 있어야 한다.
 
 ---
@@ -504,10 +504,11 @@ H735 상세 명세/설계 예시는 [`docs/ecus/IVI/`](../ecus/IVI)에서 확인
 | `Vehicle_State` | VCU | All | Gear, Mode, Safety State |
 | `Driver_Input` | Drive ECU(C) | VCU | Accel, Brake, Steering, Gear, E-Stop Status |
 | `Ultrasonic_Status` | Ultrasonic ECU | VCU / H735 / HPC | Zone(FL/FR/RL/RR), Distance, Valid, Warning |
-| `Vision_Status` / `ADAS_Request` | HPC(E) | VCU / H735 | detected_class, direction, 회피 요청 |
+| `Vision_Status` | HPC(E) | VCU / H735 | detected_class, direction, warning |
+| `ADAS_Request` | HPC(E) | VCU | 전방 회피/감속 요청 |
 | `Drive_Status` | Drive ECU | VCU / H735 / HPC | RPM(estimated), Speed(estimated), Steering Status |
 | `Body_Status` | Gateway | VCU / H735 / HPC | Lamp Status, LIN Health |
-| `Body_Command` | VCU / H735 | Gateway | headlamp_brightness, turn, brake_lamp(F 자동생성) |
+| `Body_Command` | VCU | Gateway | headlamp_brightness, turn, brake_lamp(F 자동생성) |
 | `DTC_Event` | All | H735 (실시간, 저장 없음) | Fault Code / Status |
 | `ECU_Heartbeat` | All | VCU / HPC | Node Alive |
 
@@ -591,12 +592,12 @@ Power ON
 → H735 Cluster READY
 → RF/가변저항/Gear/E-Stop Input → C → Driver_Input(CAN) → F
 → Front Vision(COCO) Active → ADAS_Request
-→ VCU Safety / Arbitration (Ultrasonic Parking Critical 최우선)
+→ VCU Safety / Arbitration (Ultrasonic Collision Critical은 E-Stop/Critical Fault 다음)
 → Drive / Steering ControlTask (+ 명령값 기반 speed/rpm 추정)
-→ Ultrasonic 4방향 Obstacle/Parking Detection
+→ Ultrasonic 4방향 Obstacle/Collision Warning Detection
 → Warning / Safe Stop 판단
 → Gear R
-→ Ultrasonic Parking Assist
+→ Ultrasonic Collision Warning
 → LIN Slave → Gateway → CAN FD (Lamp_Status)
 → 헤드램프 밝기 요청 / 감속 감지에 따른 brake_lamp 자동 생성
 → CAN FD → Gateway → LIN → Lamp

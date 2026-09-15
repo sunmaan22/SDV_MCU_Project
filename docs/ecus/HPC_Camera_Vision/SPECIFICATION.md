@@ -2,7 +2,7 @@
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
-> **2026-09-15 범위 변경:** Rear Camera / Rear Vision / 주차 Vision 기능을 삭제했다. HPC는 전방 카메라 1대의 COCO 기반 객체인식만 담당하며, 주차 판단은 Ultrasonic(A)이 전담한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §3.4, §4.2, §4.3, §8 E HPC](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경:** Rear Camera / Rear Vision / 주차 Vision 기능을 삭제했다. HPC는 전방 카메라 1대의 COCO 기반 객체인식만 담당하며, 초음파 충돌 위험도 판단은 Ultrasonic(A)이 전담한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §3.4, §4.2, §4.3, §8 E HPC](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
 > 문서 목적: Raspberry Pi 기반 Front Camera Vision과 HPC 기능이 **무엇을 해야 하는지** 정의한다.
 > 구현 구조는 `ARCHITECTURE.md`, 검증 결과는 `TEST_REPORT.md`에서 관리한다.
@@ -51,7 +51,7 @@
 ## 1.3 제외 범위
 
 - Rear Camera capture / Rear Vision pipeline (삭제됨, `DEC-HW-016`/`DEC-VIS-002/006/007` REMOVED)
-- 주차 판단 및 주차 관련 semantic result (주차는 A Ultrasonic 4방향이 전담; E는 관여하지 않음)
+- 초음파 충돌 위험도 재판정 (A Ultrasonic 4방향 전담) 및 주차 경로/주차 semantic 생성
 - Gear D/R에 따른 카메라 전환 (카메라는 전방 1대 상시 동작, 모드 전환 없음)
 - Lane detection (COCO 객체인식 범위 밖)
 - Motor PWM / Direction 직접 출력
@@ -63,7 +63,7 @@
 - Camera raw frame을 CAN FD로 전송
 - 모든 DTC 규격의 최종 소유
 
-Vision/HPC는 **고수준 인지와 회피 요청 생성**을 담당하고, 실제 차량 최종 판단은 VCU(F)가, 주차 판단은 A가 담당한다. Ultrasonic Parking Critical은 ADAS_Request보다 항상 우선한다 (`FINAL_IMPLEMENTATION_SPEC.md` §1.2).
+Vision/HPC는 **고수준 인지와 회피 요청 생성**을 담당하고, 실제 차량 최종 판단은 VCU(F)가, 초음파 충돌 위험도 판단은 A가 담당한다. Ultrasonic Collision Critical은 ADAS_Request보다 항상 우선한다 (`FINAL_IMPLEMENTATION_SPEC.md` §1.2).
 
 ---
 
@@ -95,12 +95,12 @@ Vision/HPC는 **고수준 인지와 회피 요청 생성**을 담당하고, 실�
 
 ```mermaid
 flowchart TD
-    A[Front Camera Frame] --> B[Front Capture]
-    B --> C[COCO Object Detection Pipeline]
-    C --> D[detected_class / direction·zone 산출]
-    D --> E[Vision_Status / ADAS_Request Publisher]
-    E --> F[CAN FD]
-    B --> G[Health Monitor]
+    A["Front Camera Frame"] --> B["Front Capture"]
+    B --> C["COCO Object Detection Pipeline"]
+    C --> D["detected_class / direction·zone 산출"]
+    D --> E["Vision_Status / ADAS_Request Publisher"]
+    E --> F["CAN FD"]
+    B --> G["Health Monitor"]
     C --> G
     G --> E
 ```
@@ -140,13 +140,13 @@ flowchart TD
 | REQ-VIS-002 | Front Vision은 COCO 기반 `detected_class` + `direction/zone` semantic result를 생성해야 한다. | MUST | Test | T-VIS-002 |
 | REQ-VIS-003 | Vision 결과는 raw image가 아니라 semantic/control result 형태로 CAN에 제공해야 한다. | MUST | Inspect/Test | T-VIS-003 |
 | REQ-VIS-004 | HPC는 Motor/Servo PWM을 직접 생성하지 않아야 한다. | MUST | Inspect | T-VIS-004 |
-| REQ-VIS-005 | HPC는 주차 판단(semantic result 또는 request)을 생성하지 않아야 한다 — 주차는 A(Ultrasonic) 전담. | MUST | Inspect | T-VIS-005 |
+| REQ-VIS-005 | HPC는 초음파 충돌 위험도 판단(semantic result 또는 request)을 생성하지 않아야 한다 — 충돌주의는 A(Ultrasonic) 전담. | MUST | Inspect | T-VIS-005 |
 | REQ-VIS-006 | Camera frame timeout/disconnect를 감지하고 `front_valid=false` 또는 fault 상태를 제공해야 한다. | MUST | Fault Test | T-VIS-006 |
 | REQ-VIS-007 | Vision process crash 시 시스템이 fault를 감지하고 정의된 recovery/restart 정책을 수행해야 한다. | SHOULD | Fault Test | T-VIS-007 |
 | REQ-VIS-008 | 각 결과에는 timestamp 또는 freshness 판단이 가능한 정보를 유지해야 한다. | SHOULD | Inspect/Test | T-VIS-008 |
 | REQ-VIS-009 | CAN service 장애가 Vision capture/inference process 전체를 불필요하게 중단시키지 않도록 구성해야 한다. | SHOULD | Fault Test | T-VIS-009 |
 | REQ-VIS-010 | Vision FPS, processing latency, CPU, memory를 측정 가능해야 한다. | MUST | Measure | T-VIS-010 |
-| REQ-VIS-011 | `ADAS_Request`는 Ultrasonic Parking Critical을 해제/override할 수 없어야 한다 (§1.2 우선순위는 F 중재 로직에서 강제). | MUST | Inspect | T-VIS-011 |
+| REQ-VIS-011 | `ADAS_Request`는 Ultrasonic Collision Critical을 해제/override할 수 없어야 한다 (§1.2 우선순위는 F 중재 로직에서 강제). | MUST | Inspect | T-VIS-011 |
 
 ---
 
@@ -157,7 +157,7 @@ flowchart TD
 | RULE-VIS-001 | Front Camera 상시 동작 | Gear/Mode와 무관하게 Front Vision ACTIVE |
 | RULE-VIS-002 | Camera invalid | `front_valid=false` |
 | RULE-VIS-003 | Result stale | 이전 값을 최신 정상값처럼 재사용하지 않음 |
-| RULE-VIS-004 | ADAS request 생성 | VCU(F)가 최종 승인할 Request로만 취급, Ultrasonic Parking Critical보다 우선하지 않음 |
+| RULE-VIS-004 | ADAS request 생성 | VCU(F)가 최종 승인할 Request로만 취급, Ultrasonic Collision Critical보다 우선하지 않음 |
 | RULE-VIS-005 | Raw frame | Pi 내부 pipeline에서만 사용, CAN 전송 금지 |
 | RULE-VIS-006 | 주차 관련 semantic/request | 생성하지 않음 (A 전담) |
 
@@ -298,7 +298,7 @@ N/A. HPC는 LIN에 직접 연결하지 않는다.
 | CAN communication lost | CAN state | local processing 유지 가능, publish unavailable | `HPC_CAN_xxx` 후보 | reconnect |
 | Excessive latency | timestamp | stale result invalid 처리 | `VIS_LATENCY_xxx` 후보 | load/model/config 조정 |
 
-VCU는 Vision valid/fault를 보고 최종 차량 안전동작을 결정한다. Ultrasonic Parking Critical은 이 fault 상태와 무관하게 항상 우선한다.
+VCU는 Vision valid/fault를 보고 최종 차량 안전동작을 결정한다. Ultrasonic Collision Critical은 이 fault 상태와 무관하게 항상 우선한다.
 
 ---
 
@@ -311,7 +311,7 @@ VCU는 Vision valid/fault를 보고 최종 차량 안전동작을 결정한다. 
 - [ ] Camera disconnect 시 valid/fault가 갱신된다.
 - [ ] Process crash/restart 정책을 시험할 수 있다.
 - [ ] FPS / latency / CPU / memory 측정값을 남긴다.
-- [ ] `ADAS_Request`가 주차 판단을 포함하지 않고, Ultrasonic Parking Critical을 override하지 않음을 확인한다.
+- [ ] `ADAS_Request`가 초음파 충돌 위험도 판단을 포함하지 않고, Ultrasonic Collision Critical을 override하지 않음을 확인한다.
 
 ---
 

@@ -83,9 +83,9 @@ FreeRTOS를 사용하지 않는 STM32 Node가 있다면 이유를 ADR과 Risk에
 
 ```mermaid
 flowchart LR
-    EXT1[External Input / Node] --> NODE[This Node]
-    NODE --> EXT2[External Output / Node]
-    NODE <--> BUS[CAN / LIN / API]
+    EXT1["External Input / Node"] --> NODE["This Node"]
+    NODE --> EXT2["External Output / Node"]
+    NODE <--> BUS["CAN / LIN / API"]
 ```
 
 ## External Interfaces

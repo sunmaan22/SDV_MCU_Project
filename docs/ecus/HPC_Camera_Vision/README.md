@@ -2,7 +2,7 @@
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
-> **2026-09-15 범위 변경:** Rear Camera / Rear Vision / 주차 Vision 기능을 삭제했다. Front Camera 1대의 COCO 기반 객체인식만 담당한다. 주차 판단은 A(Ultrasonic)가 전담한다.
+> **2026-09-15 범위 변경:** Rear Camera / Rear Vision / 주차 Vision 기능을 삭제했다. Front Camera 1대의 COCO 기반 객체인식만 담당한다. 초음파 충돌 위험도 판단은 A(Ultrasonic)가 전담한다.
 
 > **최상위 구현 기준:** [`../FINAL_IMPLEMENTATION_SPEC.md`](../../system/FINAL_IMPLEMENTATION_SPEC.md)
 > Camera/Vision/IPC/CAN/Timing 최종값은 Project Owner가 `FROZEN`한 값만 사용한다.
@@ -18,13 +18,13 @@ Front Camera (1대)
 → VCU / H735
 ```
 
-E는 고수준 인지와 회피 요청 생성까지 담당한다. 최종 차량 명령과 Motor/Servo PWM은 만들지 않으며, 주차 판단도 만들지 않는다 (A 전담).
+E는 고수준 인지와 회피 요청 생성까지 담당한다. 최종 차량 명령과 Motor/Servo PWM은 만들지 않으며, 초음파 충돌 위험도 판단도 만들지 않는다 (A 전담).
 
 ## 이미 고정된 규칙
 
 - `Vision_Status`와 `ADAS_Request`를 분리한다.
 - `Vision_Status`는 상태/semantic data(`detected_class`, `direction`/`zone`), `ADAS_Request`는 VCU용 고수준 회피 요청이다.
-- `ADAS_Request`는 Ultrasonic `Parking Critical`을 해제/override하지 않는다 (항상 Ultrasonic이 우선).
+- `ADAS_Request`는 Ultrasonic `Collision Critical`을 해제/override하지 않는다 (ADAS보다 우선하며 E-Stop/Critical Fault는 그보다 우선).
 - Raw Camera frame은 CAN으로 보내지 않는다.
 - semantic result는 valid/freshness 정보를 가진다.
 - frame queue는 bounded 구조이며 최신성을 우선한다.

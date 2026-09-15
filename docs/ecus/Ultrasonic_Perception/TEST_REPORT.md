@@ -345,3 +345,12 @@ RESULT: NOT RUN
 - Warning threshold / filter parameter 확정 필요
 - CAN Matrix 확정 필요
 - RTOS priority / stack / queue depth profiling 필요
+
+## 2026-09-15 변경 회귀 시험 계획
+
+추가 계획이며 기존 실기 PASS의 범위를 확대하지 않는다. 수치 기준은 최상위 명세 동결 후 적용한다.
+
+| ID | 입력/조건 | 기대 결과 | 결과 |
+|---|---|---|---|
+| CW-US-01 | P/R/N/D 상태에서 FL/FR/RL/RR 입력 | R 진입에 종속되지 않는 4개 zone 상태 발행 | NOT RUN |
+| CW-US-02 | 한 zone invalid/stale, 다른 zone CRITICAL | invalid를 SAFE로 치환하지 않고 다른 유효 CRITICAL 유지 | NOT RUN |

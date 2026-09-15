@@ -1,13 +1,13 @@
 # Cluster + IVI Cockpit Test Report
 
-> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Parking/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
+> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Collision Warning/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 목적: `SPECIFICATION.md` 요구사항을 실제 시험으로 검증한다.  
 > Reference board bring-up은 2026-09-10에 실제 STM32H735G-DK에서 수행했으며, 이후 SDV IVI 기능 시험은 단계적으로 추가한다.
 
-> **2026-09-15 범위 변경 (최소 수정):** 아직 `NOT RUN`인 계획 항목에서 `Body_Status.ambient` 소비와 `Vision_Status`의 ADAS/Parking 필드명만 새 계약에 맞게 조정했다. 기존 bring-up/실기 시험 결과(§0)는 변경하지 않았다.
+> **2026-09-15 범위 변경 (최소 수정):** 아직 `NOT RUN`인 계획 항목에서 `Body_Status.ambient` 소비와 `Vision_Status`의 ADAS/Collision Warning 필드명만 새 계약에 맞게 조정했다. 기존 bring-up/실기 시험 결과(§0)는 변경하지 않았다.
 >
 > **2026-09-15 추가 변경:** Pi DTC Manager/History 삭제에 따라 DTC 시험을 "저장 확인"이 아닌 "실시간 표시 + 해소 시 소멸 확인"으로 변경했다.
 
@@ -466,7 +466,7 @@ FULL IVI INTEGRATION: NOT RUN
 
 # 1. Test Objective
 
-H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 정상 표시하는지 검증한다. 동시에 FreeRTOS 기반 `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask`가 의도한 구조로 실행되고, CAN burst나 UI load에서도 queue overflow, stack overflow, starvation 없이 주요 Timing 요구사항을 만족하는지 확인한다.
+H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Collision Warning/Diagnostics/Settings 화면을 정상 표시하는지 검증한다. 동시에 FreeRTOS 기반 `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask`가 의도한 구조로 실행되고, CAN burst나 UI load에서도 queue overflow, stack overflow, starvation 없이 주요 Timing 요구사항을 만족하는지 확인한다.
 
 ---
 
@@ -492,7 +492,7 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 | T-HMI-001 | REQ-HMI-001 | Speed/RPM/Gear 표시 | DUMMY BASIC DISPLAY PASS (사용자 확인, §0.9) / 실제 CAN·경계값 NOT RUN |
 | T-HMI-002 | REQ-HMI-002 | READY/Warning 표시 | NOT RUN |
 | T-HMI-003 | REQ-HMI-003 | ADAS 상태 표시 | NOT RUN |
-| T-HMI-004 | REQ-HMI-004 | Parking 거리/Warning 표시 | NOT RUN |
+| T-HMI-004 | REQ-HMI-004 | Collision Warning 거리/Warning 표시 | NOT RUN |
 | T-HMI-005 | REQ-HMI-005 | DTC list/detail | NOT RUN |
 | T-HMI-006 | REQ-HMI-006 | 단일 Screen 내 패널 열기·닫기 | REFERENCE TOUCH PASS / IVI UI NOT RUN |
 | T-HMI-007 | REQ-HMI-007 | timeout data invalid 표시 | NOT RUN |
@@ -515,7 +515,7 @@ H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Par
 | Test | Input | Expected | Actual | Result |
 |---|---|---|---|---|
 | Cluster | Dummy speed/rpm/gear (정확한 관찰값 미기록) | 값 표시 | 사용자 기본 표시 확인 (§0.9); 고정 입력 24/1250/D 별도 재시험 필요 | BASIC DISPLAY PASS / 고정값·경계값 NOT RUN |
-| Parking | RR=180 mm, CRITICAL | right critical UI | NOT RUN | TBD |
+| Collision Warning | RR=180 mm, CRITICAL | right critical UI | NOT RUN | TBD |
 | DTC | 2 entries | list/detail | NOT RUN | TBD |
 | Panel Flow | 동일 Screen에서 4개 패널 열기·닫기 | Cluster 유지, hang/잔상 없음 | NOT RUN | TBD |
 | Warning Overlay | Settings + CRITICAL injection | warning 우선 표시 | NOT RUN | TBD |
@@ -531,7 +531,7 @@ Stage 1에서도 가능하면 DummyDataProvider가 직접 GUI를 건드리지 �
 | `Vehicle_State` | RX | gear/mode update | NOT RUN | planned | TBD |
 | `Drive_Status` | RX | speed/rpm update | NOT RUN | planned | TBD |
 | `Ultrasonic_Status` | RX | distance/warning | NOT RUN | planned | TBD |
-| `Vision_Status` / `ADAS_Request` | RX | detected_class/direction/warning update | NOT RUN | planned | TBD |
+| `Vision_Status` | RX | detected_class/direction/warning update | NOT RUN | planned | TBD |
 | `Body_Status` | RX | lamp | NOT RUN | planned | TBD |
 | `DTC_Event` | RX | DTC model update | NOT RUN | event | TBD |
 | `Body_User_Request` | TX | UI request transmitted | NOT RUN | N/A | TBD |
@@ -709,7 +709,7 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 [RTOS][STACK] GuiTask watermark=TBD
 [CAN][RX] Drive_Status
 [MODEL] speed=24 rpm=1250
-[HMI][WARN] PARKING_CRITICAL
+[HMI][WARN] COLLISION_WARNING_CRITICAL
 ```
 
 ---
@@ -790,4 +790,14 @@ FULL IVI INTEGRATION: NOT RUN
 | PANEL-07 | 패널 전환과 명시적 조명 조작 분리 | 전환만으로 TX 없음; 조명 조작은 기존 VCU 요청 경로 | NOT RUN |
 | PANEL-08 | 패널 연타·CAN burst·장시간 실행 | 기존 timing 목표, stack/queue/메모리 예산 검증 | NOT RUN |
 
-Gear R 자동 호출/복귀 시험은 DEC-HMI-003 확정 후 추가한다.
+모든 기어에서 충돌주의 패널 접근, 패널을 닫아도 CRITICAL 경고 유지, invalid/stale 표시를 시험한다. 상세 자동 팝업/복귀 시험은 DEC-HMI-003 확정 후 추가한다.
+
+## 2026-09-15 변경 회귀 시험 계획
+
+추가 계획이며 기존 실기 PASS의 범위를 확대하지 않는다. 수치 기준은 최상위 명세 동결 후 적용한다.
+
+| ID | 입력/조건 | 기대 결과 | 결과 |
+|---|---|---|---|
+| CW-HMI-01 | 모든 기어에서 충돌주의 패널 열기 | 동일 Screen 유지, 4방향 거리/상태 표시 | NOT RUN |
+| CW-HMI-02 | CRITICAL 중 패널 닫기 | 기본 계기판 CRITICAL 유지, 제어/해제 명령 TX 없음 | NOT RUN |
+| CW-HMI-03 | source invalid / timeout / recovery 주입 | 센서 무효와 통신 stale을 SAFE와 구분하고 최신 상태로 복구 | NOT RUN |

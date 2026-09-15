@@ -104,17 +104,20 @@
 # 4. Context & Scope View
 
 ```mermaid
-flowchart LR
-    RFIN[RF 수신기 / 가변저항] --> DRIVE[Drive + Steering ECU]
-    VCU[VCU] -->|Final Speed / Steering / Enable / Gear| DRIVE
-    DRIVE -->|Driver_Input| VCU
-    DRIVE -->|PWM / DIR| MD[Motor Driver]
-    MD --> MOTOR[Brushed DC Motor]
-    DRIVE -->|Servo PWM| SERVO[RC Servo]
-    DRIVE -->|RPM(est) / Speed(est) / Steering / Fault| CAN[CAN FD]
+flowchart TD
+    RFIN["RF 수신기 / 가변저항"] --> DRIVE["Drive + Steering ECU"]
+    GEAR["Gear GPIO"] --> DRIVE
+    ESTOP["E-Stop GPIO/EXTI"] --> DRIVE
+    ESTOP -->|"로컬 출력 차단"| MD
+    VCU["VCU"] -->|"Final Speed / Steering / Enable / Gear"| DRIVE
+    DRIVE -->|"Driver_Input"| VCU
+    DRIVE -->|"PWM / DIR"| MD["Motor Driver"]
+    MD --> MOTOR["Brushed DC Motor"]
+    DRIVE -->|"Servo PWM"| SERVO["RC Servo"]
+    DRIVE -->|"RPM(est) / Speed(est) / Steering / Fault"| CAN["CAN FD"]
     CAN --> VCU
-    CAN --> HMI[H735 Cockpit]
-    CAN --> HPC[Raspberry Pi HPC]
+    CAN --> HMI["H735 Cockpit"]
+    CAN --> HPC["Raspberry Pi HPC"]
 ```
 
 ## External Interfaces
@@ -319,7 +322,6 @@ sequenceDiagram
     participant RX as CanRxTask
     participant CTRL as ControlTask
     participant OUT as Motor/Servo HW
-    participant TX as CanTxTask
 
     VCU->>ISR: Final Command frame
     ISR->>RX: queue/notify
@@ -327,8 +329,7 @@ sequenceDiagram
     RX->>CTRL: validated command
     CTRL->>CTRL: speed/steering control + speed/rpm 추정
     CTRL->>OUT: PWM/DIR + Servo PWM
-    CTRL->>TX: output/state(estimated) snapshot
-    TX->>VCU: Drive_Status
+    CTRL-->>VCU: Drive_Status via CanTxTask (estimated)
 ```
 
 ## 8.2 Driver Input Read
@@ -341,9 +342,9 @@ sequenceDiagram
     participant TX as CanTxTask
     participant VCU
 
-    IN->>ADC: raw signal
+    IN->>ADC: raw signal (Gear/E-Stop 상태 포함)
     ADC->>DI: sample notify
-    DI->>DI: accel/brake/steer 값 산출 + validity
+    DI->>DI: accel/brake/steer + gear/estop_status + validity
     DI->>TX: Driver_Input snapshot
     TX->>VCU: Driver_Input
 ```

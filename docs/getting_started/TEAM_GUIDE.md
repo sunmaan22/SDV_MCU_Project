@@ -131,7 +131,7 @@ HealthTask
 CAN FD
 → H735 Vehicle Data Model
 → TouchGFX
-→ Cluster Main / ADAS / Parking / DTC / Settings
+→ Cluster Main / ADAS / Collision Warning / DTC / Settings
 ```
 
 ### RTOS에서 나누는 예
@@ -259,7 +259,7 @@ HealthTask
 
 ## E — HPC + Camera Vision / 인지·판단
 
-**한마디:** 전방 카메라 영상을 보고 무엇이 보이는지(COCO 객체인식) 판단한다. 주차 판단은 하지 않는다 (A 전담).
+**한마디:** 전방 카메라 영상을 보고 무엇이 보이는지(COCO 객체인식) 판단한다. 초음파 충돌 위험도 판단은 하지 않는다 (A 전담).
 
 ```text
 Front Camera → Raspberry Pi HPC (COCO Object Detection)

@@ -66,11 +66,11 @@
 
 ```mermaid
 flowchart TD
-    A[Input / Trigger] --> B[Validation]
+    A["Input / Trigger"] --> B["Validation"]
     B --> C{Valid?}
-    C -->|Yes| D[Process]
-    C -->|No| E[Fault / Safe Action]
-    D --> F[Output]
+    C -->|"Yes"| D["Process"]
+    C -->|"No"| E["Fault / Safe Action"]
+    D --> F["Output"]
 ```
 
 ---

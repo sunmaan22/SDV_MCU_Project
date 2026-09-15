@@ -4,7 +4,7 @@
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
-> **2026-09-15 범위 변경 (1차):** `Driver_Input`(가속/브레이크/조향) 입력을 VCU가 직접 GPIO/ADC로 읽던 시험 항목을 삭제하고, C가 발행한 `Driver_Input` CAN 수신 시험으로 대체했다. `Vision_Request`는 `ADAS_Request`로, Parking Critical 우선순위 시험을 강화했다.
+> **2026-09-15 범위 변경 (1차):** `Driver_Input`(가속/브레이크/조향) 입력을 VCU가 직접 GPIO/ADC로 읽던 시험 항목을 삭제하고, C가 발행한 `Driver_Input` CAN 수신 시험으로 대체했다. `Vision_Request`는 `ADAS_Request`로, Collision Critical 우선순위 시험을 강화했다.
 >
 > **2026-09-15 범위 변경 (2차):** Gear/E-Stop을 VCU 자체 GPIO로 시험하던 항목을 삭제했다. F는 Driver/Gear/E-Stop 입력용 GPIO가 없으며, `Driver_Input.gear`/`estop_status` CAN 수신 시험으로 대체한다. DTC는 Pi 저장 시험 없이 실시간 표시만 확인한다.
 
@@ -25,7 +25,7 @@
 
 # 1. Test Objective
 
-`Driver_Input`(CAN, C 발행 — gear/estop_status 포함), `ADAS_Request`, `Ultrasonic_Status`, Safety/Fault를 조합했을 때 VCU가 예상한 최종 명령을 만들고, timeout/critical fault/RTOS load 조건에서도 stale 또는 위험한 명령을 유지하지 않는지 검증한다. Ultrasonic Parking Critical이 `ADAS_Request`보다 항상 우선함을 별도로 검증한다.
+`Driver_Input`(CAN, C 발행 — gear/estop_status 포함), `ADAS_Request`, `Ultrasonic_Status`, Safety/Fault를 조합했을 때 VCU가 예상한 최종 명령을 만들고, timeout/critical fault/RTOS load 조건에서도 stale 또는 위험한 명령을 유지하지 않는지 검증한다. Ultrasonic Collision Critical이 `ADAS_Request`보다 항상 우선함을 별도로 검증한다.
 
 # 2. Test Environment
 
@@ -48,7 +48,7 @@
 | T-VCU-002 | REQ-VCU-002 | CAN request injection | request repository update | NOT RUN |
 | T-VCU-003 | REQ-VCU-003 | stop periodic request | stale request invalid | NOT RUN |
 | T-VCU-004 | REQ-VCU-004 | E-Stop during normal request | safety override wins | NOT RUN |
-| T-VCU-005 | REQ-VCU-005 | parking critical + driver accel | safety rule wins | NOT RUN |
+| T-VCU-005 | REQ-VCU-005 | collision_warning critical + driver accel | safety rule wins | NOT RUN |
 | T-VCU-006 | REQ-VCU-006 | inspect CAN TX | only final command to Drive | NOT RUN |
 | T-VCU-007 | REQ-VCU-007 | peer heartbeat timeout | fault detected | NOT RUN |
 | T-VCU-008 | REQ-VCU-008 | periodic state/heartbeat | messages observed | NOT RUN |
@@ -72,12 +72,12 @@
 
 # 5. Arbitration Test
 
-| Scenario | Driver | ADAS | Parking | Fault | Expected Final | Result |
+| Scenario | Driver | ADAS | Collision Warning | Fault | Expected Final | Result |
 |---|---|---|---|---|---|---|
 | Normal drive | accel | none | safe | none | driver-based command | TBD |
 | ADAS request | accel | valid request | safe | none | policy result | TBD |
-| Parking critical | accel | none | critical | none | stop/limit policy, ADAS_Request와 무관 | TBD |
-| Parking critical + ADAS request 동시 | accel | valid request | critical | none | Parking Critical이 ADAS_Request override, stop/limit policy 유지 | TBD |
+| Collision Warning critical | accel | none | critical | none | stop/limit policy, ADAS_Request와 무관 | TBD |
+| Collision Warning critical + ADAS request 동시 | accel | valid request | critical | none | Collision Critical이 ADAS_Request override, stop/limit policy 유지 | TBD |
 | E-Stop | accel | request | critical/none | E-Stop | safe/disable | TBD |
 | HPC timeout | accel | stale | safe | comm fault | ADAS ignored | TBD |
 | Drive ECU offline | any | any | any | drive timeout | safe state candidate | TBD |
@@ -89,7 +89,7 @@
 | Fault | Expected Detection | Expected Action | Actual | Result |
 |---|---|---|---|---|
 | Vision request timeout | freshness timeout | request invalid | NOT RUN | TBD |
-| Ultrasonic timeout | status timeout | parking info invalid + DTC 후보 | NOT RUN | TBD |
+| Ultrasonic timeout | status timeout | collision_warning info invalid + DTC 후보 | NOT RUN | TBD |
 | Drive heartbeat timeout | heartbeat timeout | safe command/disable 후보 | NOT RUN | TBD |
 | CAN bus-off | controller status | degraded + DTC | NOT RUN | TBD |
 | DTC unknown code | format valid/code unknown | raw source/code 유지 | NOT RUN | TBD |
@@ -146,7 +146,7 @@
 |---|---|---|---|---|
 | `Driver_Input` | RX | repository update | yes | TBD |
 | `ADAS_Request` | RX | repository update | yes | TBD |
-| `Ultrasonic_Status` | RX | warning/Parking Critical update | yes | TBD |
+| `Ultrasonic_Status` | RX | warning/Collision Critical update | yes | TBD |
 | `Drive_Status` | RX | state(estimated speed/rpm) update | yes | TBD |
 | `Body_Status` | RX | body update | yes | TBD |
 | `ECU_Heartbeat` | RX/TX | alive tracking | yes | TBD |
@@ -213,3 +213,13 @@ RESULT: NOT RUN
 - [ ] RTOS timing/stack/queue 확인
 - [ ] Watchdog/Health 정책 확인
 - [ ] load/soak에서 deadlock/starvation 없음
+
+## 2026-09-15 변경 회귀 시험 계획
+
+추가 계획이며 기존 실기 PASS의 범위를 확대하지 않는다. 수치 기준은 최상위 명세 동결 후 적용한다.
+
+| ID | 입력/조건 | 기대 결과 | 결과 |
+|---|---|---|---|
+| CW-VCU-01 | 유효 초음파 CRITICAL + ADAS + Driver 가속 | 초음파 안전 개입이 ADAS/Driver보다 우선 | NOT RUN |
+| CW-VCU-02 | 초음파 CRITICAL + E-Stop/Critical Fault | E-Stop/Critical Fault 최우선 유지 | NOT RUN |
+| CW-VCU-03 | 전/후방 위험과 D/R/P/N 조합 | DEC-CTRL-011/012에서 확정한 대상 zone·정지/복구 정책 적용; 동결 전 판정 보류 | NOT RUN |

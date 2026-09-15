@@ -10,7 +10,7 @@
 > 주차 경과는 동결 근거가 아니다. 계측용 bench/skeleton은 OPEN 값으로 가능하며 최종 상수와 구분한다.
 > 상세 조건: [최상위 명세 §7.1](../system/FINAL_IMPLEMENTATION_SPEC.md#71-단계별-동결-시점).
 
-> **2026-09-15 범위 변경 (1차):** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. 주차는 Ultrasonic 4방향 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
+> **2026-09-15 범위 변경 (1차):** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. 충돌주의는 Ultrasonic 4방향 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
 >
 > **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear/E-Stop 입력용 GPIO가 없다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
 
@@ -136,17 +136,17 @@ Front Camera
 → Pi Vision (COCO)
 → ADAS_Request
 → VCU CanRxTask
-→ Safety/VcuControlTask (Ultrasonic Parking Critical이 항상 우선)
+→ Safety/VcuControlTask (Ultrasonic Collision Critical이 ADAS보다 우선, E-Stop/Critical Fault 다음)
 → Drive ControlTask
 ```
 
-## Parking
+## Collision Warning
 
 ```text
 A UltrasonicTask (FL/FR/RL/RR 4방향)
 → F VCU Safety/Control → Final Stop/Speed
 
-A Status → B VehicleModelTask → H735 Parking Screen
+A Status → B VehicleModelTask → H735 동일 Screen의 충돌주의 패널
 ```
 
 ## Body
@@ -200,7 +200,7 @@ Front Vision 상시 active (Gear 무관)
 - [ ] 명령값 기반 speed/rpm 추정
 - [ ] Ultrasonic 4방향 warning/stop
 - [ ] Front Vision(COCO) ADAS request
-- [ ] Ultrasonic parking (Parking Critical이 ADAS_Request보다 항상 우선)
+- [ ] Ultrasonic collision_warning (Collision Critical이 ADAS_Request보다 항상 우선)
 - [ ] H735 Cluster/IVI
 - [ ] 헤드램프 밝기 → LIN → CAN
 - [ ] CAN → LIN → Lighting
@@ -241,9 +241,9 @@ Power ON
 → Drive ControlTask
 → Motor/Steering (+ 명령값 기반 speed/rpm 추정)
 → Gear R
-→ Ultrasonic 4방향 Parking (Parking Critical이 ADAS_Request보다 항상 우선)
-→ Parking Warning / Stop
-→ H735 Parking Screen
+→ Ultrasonic 4방향 Collision Warning (Collision Critical이 ADAS_Request보다 항상 우선)
+→ Collision Warning / Stop
+→ H735 동일 Screen의 충돌주의 패널
 → 헤드램프 밝기 요청
 → CAN → Gateway → LIN → Lamp
 → 감속 감지 → brake_lamp 자동 점등 → CAN → Gateway → LIN → Lamp

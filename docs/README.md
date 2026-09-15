@@ -25,9 +25,9 @@
 
 | 담당 | 역할 | 시작 | 기능 명세 | 구조 | 시험 기록 |
 |---|---|---|---|---|---|
-| A | 초음파 4방향(FL/FR/RL/RR) 주차 감지 전담 | [안내](ecus/Ultrasonic_Perception/README.md) | [명세](ecus/Ultrasonic_Perception/SPECIFICATION.md) | [아키텍처](ecus/Ultrasonic_Perception/ARCHITECTURE.md) | [테스트](ecus/Ultrasonic_Perception/TEST_REPORT.md) |
+| A | 초음파 4방향(FL/FR/RL/RR) 충돌 위험 감지 전담 | [안내](ecus/Ultrasonic_Perception/README.md) | [명세](ecus/Ultrasonic_Perception/SPECIFICATION.md) | [아키텍처](ecus/Ultrasonic_Perception/ARCHITECTURE.md) | [테스트](ecus/Ultrasonic_Perception/TEST_REPORT.md) |
 | B | 화면·사용자 요청(턴시그널/헤드램프 밝기) | [안내](ecus/IVI/README.md) | [명세](ecus/IVI/SPECIFICATION.md) | [아키텍처](ecus/IVI/ARCHITECTURE.md) | [테스트](ecus/IVI/TEST_REPORT.md) |
-| C | 모터·조향 출력 + Driver 입력(RF/가변저항) | [안내](ecus/Motor_Steering_Control/README.md) | [명세](ecus/Motor_Steering_Control/SPECIFICATION.md) | [아키텍처](ecus/Motor_Steering_Control/ARCHITECTURE.md) | [테스트](ecus/Motor_Steering_Control/TEST_REPORT.md) |
+| C | 모터·조향 출력 + Driver/Gear/E-Stop 물리 입력 | [안내](ecus/Motor_Steering_Control/README.md) | [명세](ecus/Motor_Steering_Control/SPECIFICATION.md) | [아키텍처](ecus/Motor_Steering_Control/ARCHITECTURE.md) | [테스트](ecus/Motor_Steering_Control/TEST_REPORT.md) |
 | D | 조명(턴시그널/헤드램프/브레이크등)·CAN/LIN Gateway | [안내](ecus/Lighting_LIN_CAN/README.md) | [명세](ecus/Lighting_LIN_CAN/SPECIFICATION.md) | [아키텍처](ecus/Lighting_LIN_CAN/ARCHITECTURE.md) | [테스트](ecus/Lighting_LIN_CAN/TEST_REPORT.md) |
 | E | 전방 카메라 COCO 객체인식·ADAS 요청 (Rear/주차 Vision 없음) | [안내](ecus/HPC_Camera_Vision/README.md) | [명세](ecus/HPC_Camera_Vision/SPECIFICATION.md) | [아키텍처](ecus/HPC_Camera_Vision/ARCHITECTURE.md) | [테스트](ecus/HPC_Camera_Vision/TEST_REPORT.md) |
 | F | VCU·최종 명령 중재·DTC | [안내](ecus/VCU_DTC_CAN_Integration/README.md) | [명세](ecus/VCU_DTC_CAN_Integration/SPECIFICATION.md) | [아키텍처](ecus/VCU_DTC_CAN_Integration/ARCHITECTURE.md) | [테스트](ecus/VCU_DTC_CAN_Integration/TEST_REPORT.md) |
@@ -36,9 +36,10 @@
 
 | 찾는 내용 | 우선 볼 문서 |
 |---|---|
-| 기어·후진 요청, 차량 상태, 최종 명령 중재 | [VCU 기능 명세](ecus/VCU_DTC_CAN_Integration/SPECIFICATION.md) |
+| Gear/E-Stop/Driver 물리 입력 | [Drive 기능 명세](ecus/Motor_Steering_Control/SPECIFICATION.md) |
+| 차량 상태·안전 중재·최종 명령 | [VCU 기능 명세](ecus/VCU_DTC_CAN_Integration/SPECIFICATION.md) |
 | 모터·조향 출력, Drive 상태 | [Drive 기능 명세](ecus/Motor_Steering_Control/SPECIFICATION.md) |
-| 초음파 4방향 거리·주차 경고 | [초음파 기능 명세](ecus/Ultrasonic_Perception/SPECIFICATION.md) |
+| 초음파 4방향 거리·충돌 경고 | [초음파 기능 명세](ecus/Ultrasonic_Perception/SPECIFICATION.md) |
 | 전방 카메라 객체인식(COCO)·ADAS 회피 요청 | [Vision 기능 명세](ecus/HPC_Camera_Vision/SPECIFICATION.md) |
 | 화면·사용자 입력·상태 표시 | [IVI 기능 명세](ecus/IVI/SPECIFICATION.md) |
 | 조명·LIN·CAN Gateway | [Body 기능 명세](ecus/Lighting_LIN_CAN/SPECIFICATION.md) |

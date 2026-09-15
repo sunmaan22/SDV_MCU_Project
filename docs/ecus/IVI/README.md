@@ -1,6 +1,6 @@
 # IVI / Cluster Cockpit Documentation
 
-> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Parking/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
+> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Collision Warning/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md)
 
@@ -101,7 +101,7 @@ HealthTask
 - [x] STM32H735G-DK Reference LCD / Touch / TouchGFX bring-up
 - [x] 우리 IVI project에서 LCD / Touch / HyperRAM / external Flash 설정 재현 (§0.6, OCTOSPI1 NOR + OCTOSPI2 HyperRAM PASS)
 - [~] FDCAN2 loopback / physical CAN test — internal loopback bench PASS (2026-09-10, [TEST_REPORT §0.5](TEST_REPORT.md)), physical CAN 미실시
-- [ ] 단일 Cockpit Screen + ADAS / Parking / Diagnostics / Settings 표시·숨김 패널
+- [ ] 단일 Cockpit Screen + ADAS / Collision Warning / Diagnostics / Settings 표시·숨김 패널
 - [ ] DummyDataProvider
 - [ ] VehicleDataRepository
 - [ ] invalid / timeout / unknown DTC 표시

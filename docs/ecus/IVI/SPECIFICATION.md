@@ -1,6 +1,6 @@
 # Cluster + IVI Cockpit Functional Specification
 
-> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Parking/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
+> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Collision Warning/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -44,14 +44,14 @@
 
 ## 1.1 한 문장 설명
 
-> H735 Cockpit은 CAN FD로 전달되는 차량 상태, ADAS, Parking, Body, DTC 정보를 운전자에게 보여주고, 일부 사용자 요청을 CAN으로 전달하며, UI/CAN/진단 기능을 FreeRTOS Task로 분리해 실행한다.
+> H735 Cockpit은 CAN FD로 전달되는 차량 상태, ADAS, Collision Warning, Body, DTC 정보를 운전자에게 보여주고, 일부 사용자 요청을 CAN으로 전달하며, UI/CAN/진단 기능을 FreeRTOS Task로 분리해 실행한다.
 
 ## 1.2 포함 범위
 
 - Digital Cluster 기본 화면
 - Speed / RPM / Gear / Battery / Temperature 표시
 - ADAS 상태 및 Warning
-- Ultrasonic Parking 상태 (4방향)
+- Ultrasonic Collision Warning 상태 (4방향)
 - DTC 목록/상세
 - Lighting / Vehicle Setting Request UI
 - Touch 기반 단일 Screen 내 패널 표시·숨김
@@ -65,13 +65,13 @@
 
 - 기존 Screen1을 Cockpit의 단일 Screen으로 사용한다. 5개 기능 영역은 유지하되 별도 Screen 전환을 요구하지 않는다.
 - Cluster의 속도/RPM/기어/READY와 경고 상태를 기본 영역에 표시한다. 480×272에서 모든 상세 항목을 동시에 펼치지 않고 필요한 패널을 여는 방식이다.
-- ADAS/Parking/Diagnostics/Settings는 Custom Container로 분리하고 일반 상세 패널은 한 번에 하나만 연다. 닫기/뒤로는 패널만 숨기며 기본 계기판으로 돌아간다.
+- ADAS/Collision Warning/Diagnostics/Settings는 Custom Container로 분리하고 일반 상세 패널은 한 번에 하나만 연다. 닫기/뒤로는 패널만 숨기며 기본 계기판으로 돌아간다.
 - 패널이 기본 계기판 영역을 덮는 배치에서는 속도·기어·READY와 주요 경고를 읽을 수 있는 축약 영역을 유지한다. 최종 픽셀 배치는 구현 시 확인한다.
 - 표시·숨김에는 Container의 가시성 제어와 redraw를 사용한다. 배경 터치를 차단해야 하는 확인 창은 ModalWindow를 사용할 수 있다.
 - 숨김 패널에는 터치가 전달되지 않아야 하며, 모달 배경 터치가 설정 요청을 발생시키면 안 된다. 단순 투명도 0을 숨김 처리로 사용하지 않는다.
 - 패널이 숨겨져도 Repository 수신·validity·timeout 처리는 계속한다. 다시 열면 최신 snapshot을 표시한다.
 - Critical Warning은 모든 일반 패널·확인 창보다 우선 보인다. 활성 critical 상태를 일반 패널 닫기로 해제하지 않는다.
-- Gear R 관련 자동 패널 호출/복귀 조건은 DEC-HMI-003의 기존 OPEN 결정을 유지한다. 수동 Parking 패널 접근은 제공한다.
+- 모든 기어에서 충돌주의 패널에 접근한다. Gear R 전용 자동 전환은 요구하지 않는다. CRITICAL 경고는 패널 표시 여부와 무관하게 유지하며, 상세 팝업/복귀 정책은 DEC-HMI-003의 OPEN 결정이다.
 - 패널 열기·닫기 자체는 CAN 요청을 발생시키지 않는다. 명시적 조명 조작만 기존 UiCommandQueue → Body_User_Request → VCU 경로를 따른다.
 - 애니메이션은 선택 사항이다. 기본은 즉시 표시·숨김이며 부하·경고 지연을 실측한 후 효과를 추가한다.
 
@@ -99,13 +99,13 @@
 | Normal Flow | FDCAN ISR → CanRxTask → decode → VehicleModelTask → GuiTask |
 | Postconditions | Speed/RPM/Gear/READY/Warning 최신 상태 표시 |
 
-## 2.2 Parking Warning
+## 2.2 Collision Warning
 
 | Item | Description |
 |---|---|
 | Actor / Trigger | Ultrasonic ECU |
 | Preconditions | Cockpit READY |
-| Trigger | Parking status 수신 |
+| Trigger | 유효하고 최신인 `Ultrasonic_Status` 수신 |
 | Normal Flow | CanRxTask → Model Queue → Warning evaluation → GuiTask overlay |
 | Postconditions | 운전자가 위험 위치/상태 확인 가능 |
 
@@ -125,19 +125,19 @@
 
 ```mermaid
 flowchart TD
-    A[FDCAN ISR / Touch Event] --> B[Task Wake-up]
+    A["FDCAN ISR / Touch Event"] --> B["Task Wake-up"]
     B --> C{CAN or UI?}
-    C -->|CAN| D[CanRxTask]
-    D --> E[VehicleModelTask]
-    E --> F[Validity / Warning / DTC]
-    F --> G[GuiTask / TouchGFX]
-    C -->|Touch| G
+    C -->|"CAN"| D["CanRxTask"]
+    D --> E["VehicleModelTask"]
+    E --> F["Validity / Warning / DTC"]
+    F --> G["GuiTask / TouchGFX"]
+    C -->|"Touch"| G
     G --> H{User Request?}
-    H -->|Yes| I[Command Queue]
-    I --> J[CommandTxTask]
-    J --> K[Body_User_Request CAN TX]
-    K --> L[VCU]
-    L -->|Body_Command| M[Body Gateway]
+    H -->|"Yes"| I["Command Queue"]
+    I --> J["CommandTxTask"]
+    J --> K["Body_User_Request CAN TX"]
+    K --> L["VCU"]
+    L -->|"Body_Command"| M["Body Gateway"]
 ```
 
 ---
@@ -149,7 +149,7 @@ flowchart TD
 | IN-HMI-001 | `Vehicle_State` | VCU | CAN FD | Gear/Mode/Safety | valid payload | periodic |
 | IN-HMI-002 | `Drive_Status` | Drive ECU | CAN FD | rpm/speed/status | timeout 정상 | periodic |
 | IN-HMI-003 | `Ultrasonic_Status` | Ultrasonic ECU | CAN FD | mm/warning | sensor valid | periodic |
-| IN-HMI-004 | `Vision_Status` / `ADAS_Request` | HPC(E) | CAN FD | detected_class/direction/warning | source valid | periodic/event |
+| IN-HMI-004 | `Vision_Status` | HPC(E) | CAN FD | detected_class/direction/warning | source valid | periodic/event |
 | IN-HMI-005 | `Body_Status` | Body Gateway | CAN FD | lamp/LIN health | valid payload | periodic |
 | IN-HMI-006 | `DTC_Event` | 각 ECU (직접 CAN, Pi DTC Manager 없음) | CAN FD | code/status/severity | valid format | event |
 | IN-HMI-007 | `ECU_Heartbeat` | ECU Nodes | CAN FD | alive/status | timeout 정상 | periodic |
@@ -175,9 +175,9 @@ flowchart TD
 | REQ-HMI-001 | Cockpit은 Speed, RPM, Gear를 Cluster 기본 화면에 표시해야 한다. | MUST | Test | T-HMI-001 |
 | REQ-HMI-002 | READY 및 General Warning을 표시해야 한다. | MUST | Test | T-HMI-002 |
 | REQ-HMI-003 | ADAS 상태와 Warning을 표시해야 한다. | MUST | Test | T-HMI-003 |
-| REQ-HMI-004 | Ultrasonic 거리/Warning을 Parking 화면에 표시해야 한다. | MUST | Test | T-HMI-004 |
+| REQ-HMI-004 | Ultrasonic 거리/Warning을 Collision Warning 화면에 표시해야 한다. | MUST | Test | T-HMI-004 |
 | REQ-HMI-005 | DTC 목록과 상세 상태를 표시해야 한다. | MUST | Test | T-HMI-005 |
-| REQ-HMI-006 | 하나의 Cockpit Screen을 유지하고 Touch로 ADAS/Parking/Diagnostics/Settings 패널을 열고 닫아야 한다. Cluster 기본 정보는 계속 표시한다. | MUST | Test | T-HMI-006 |
+| REQ-HMI-006 | 하나의 Cockpit Screen을 유지하고 Touch로 ADAS/Collision Warning/Diagnostics/Settings 패널을 열고 닫아야 한다. Cluster 기본 정보는 계속 표시한다. | MUST | Test | T-HMI-006 |
 | REQ-HMI-007 | Timeout/Invalid 차량 데이터를 정상 최신값처럼 표시하지 않아야 한다. | MUST | Fault Test | T-HMI-007 |
 | REQ-HMI-008 | Lighting 설정은 Body_User_Request로 VCU에 전송해야 하며, Body_Command 발행과 Lamp GPIO 직접 제어를 수행하지 않아야 한다. | MUST | Test/Inspect | T-HMI-008 |
 | REQ-HMI-009 | Raw Camera Frame을 CAN으로 수신하도록 설계하지 않아야 한다. | MUST | Inspect | T-HMI-009 |
@@ -200,7 +200,7 @@ flowchart TD
 | Rule ID | Condition | Result |
 |---|---|---|
 | RULE-HMI-001 | Power ON | Cluster Main 기본 진입 |
-| RULE-HMI-002 | Gear R | Parking 정보 접근성 강화 |
+| RULE-HMI-002 | 모든 기어 / 유효한 초음파 위험도 | 4방향 충돌주의 접근 제공, CRITICAL은 패널 밖에서도 표시 |
 | RULE-HMI-003 | Critical Warning | 일반 화면보다 Warning 우선 |
 | RULE-HMI-004 | CAN Signal timeout | `valid=false` + Comm Warning |
 | RULE-HMI-005 | Lighting 설정 | Command Queue → Body_User_Request → VCU |
@@ -217,7 +217,7 @@ flowchart TD
 | EDGE-HMI-002 | Unknown DTC | lookup miss | raw code/source 표시 | table update |
 | EDGE-HMI-003 | Touch 연타 | event validation | hang 없이 처리/무시 | automatic |
 | EDGE-HMI-004 | CAN unavailable | controller/error state | Comm Fault 표시 | bus recovery |
-| EDGE-HMI-005 | Parking sensor invalid | `valid=false` | Sensor Invalid 표시 | source recovery |
+| EDGE-HMI-005 | Collision Warning sensor invalid | `valid=false` | Sensor Invalid 표시 | source recovery |
 | EDGE-HMI-006 | Vision unavailable | timeout | Vision unavailable | service recovery |
 | EDGE-HMI-007 | CAN RX queue full | queue send failure/high-water | overflow count/diagnostic, critical data 정책 적용 | load 감소/queue tuning |
 | EDGE-HMI-008 | GuiTask 지연 | task health/timing | CAN model ingestion 계속 유지, health warning | profiling/tuning |
@@ -230,7 +230,7 @@ flowchart TD
 |---|---|
 | Cluster Main (기본 영역) | Speed, RPM, Gear, READY, Warning, Lamp |
 | ADAS 패널 | ADAS active, detected_class/direction/warning semantic data |
-| Parking 패널 | Ultrasonic distance/warning (4방향, Rear Vision 없음) |
+| Collision Warning 패널 | Ultrasonic distance/warning (4방향, Rear Vision 없음) |
 | Diagnostics 패널 | Active DTC list/detail (실시간, History 없음) |
 | Settings 패널 | Lighting/vehicle setting Request |
 
@@ -255,7 +255,7 @@ Raw Rear Camera 영상 자체를 CAN으로 받아 표시하는 것은 현재 범
 | `Vehicle_State` | RX | VCU | periodic | TBD | invalid state |
 | `Drive_Status` | RX | Drive | periodic | TBD | speed/rpm invalid |
 | `Ultrasonic_Status` | RX | Ultrasonic | periodic | TBD | sensor invalid |
-| `Vision_Status` / `ADAS_Request` | RX | HPC(E) | periodic/event | TBD | vision unavailable |
+| `Vision_Status` | RX | HPC(E) | periodic/event | TBD | vision unavailable |
 | `Body_Status` | RX | Gateway | periodic | TBD | body warning |
 | `DTC_Event` | RX | All ECU (직접 CAN) | event | N/A | list update (실시간, 지속 저장 없음) |
 | `Body_User_Request` | TX | VCU | event | N/A | TX result/log |
