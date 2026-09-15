@@ -1,5 +1,7 @@
 # Cluster + IVI Cockpit Software Architecture
 
+> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Parking/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
+
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
 > 문서 목적: STM32H735 Cockpit을 **어떤 구조로 구현하는지**, TouchGFX와 FreeRTOS Task가 어떻게 협력하는지 설명한다.  
@@ -154,7 +156,7 @@ flowchart LR
                    ↓ snapshot/event
                 GuiTask
                    ↓
-          TouchGFX MVP Screens
+          TouchGFX 단일 Screen / MVP + Custom Containers
      Cluster / ADAS / Parking / DTC / Settings
                    │
              UI Command Event
@@ -395,21 +397,17 @@ H735는 LIN 직접 사용 없음.
 | `lamp_status` | Gateway | body state | Body timeout |
 | `dtc_list` | Diagnostics | DTC entries | malformed/unknown handled |
 
-UI state:
+UI state는 Screen 전이가 아닌 동일 Screen의 패널 선택 상태다:
 
-```mermaid
-stateDiagram-v2
-    [*] --> BOOT
-    BOOT --> CLUSTER
-    CLUSTER --> ADAS
-    CLUSTER --> PARKING
-    CLUSTER --> DIAGNOSTICS
-    CLUSTER --> SETTINGS
-    ADAS --> CLUSTER
-    PARKING --> CLUSTER
-    DIAGNOSTICS --> CLUSTER
-    SETTINGS --> CLUSTER
-```
+| 상태 | 표시 |
+|---|---|
+| NONE | Cluster 기본 영역 |
+| ADAS | Cluster + ADAS 패널 |
+| PARKING | Cluster + Parking 패널 |
+| DIAGNOSTICS | Cluster + Diagnostics 패널 |
+| SETTINGS | Cluster + Settings 패널 |
+
+버튼 선택으로 panel 상태를 변경하며 닫기는 NONE으로 복귀한다. Critical overlay는 별도 상태로 유지한다.
 
 Warning overlay는 screen state와 독립된 공통 계층이다.
 
@@ -548,3 +546,16 @@ TouchGFX GUI 자체 hang을 감지할 수 있는 heartbeat 지점을 실제 구�
 - [ ] stack/queue 측정 계획이 있다.
 - [ ] Watchdog refresh 조건이 task health와 연결된다.
 - [ ] Requirement → Component/Task → Test traceability가 있다.
+
+## 19. 단일 Screen 구현 계약 (2026-09-15)
+
+- Screen1 View/Presenter와 기존 Model snapshot 경로를 유지한다. ADAS/Parking/Diagnostics/Settings를 Custom Container로 구성하고 PanelController가 하나의 활성 패널을 관리한다.
+- Box는 패널 배경으로 사용하고 텍스트·버튼 등을 부모 Container에 묶는다. Container 가시성을 바꾸고 해당 영역을 invalidate하여 잔상을 지운다. 숨김 패널의 입력·불필요한 애니메이션도 중지한다.
+- 확인 창은 ModalWindow의 show()/hide()를 사용할 수 있다. 공식 API에 따라 배경 이미지를 지정하고 화면 원점에 배치한다. 모달의 입력 차단 특성을 유지한다.
+- Critical 표시가 modal shade 뒤에 가려지지 않게 한다. 필요하면 일반 모달을 닫거나 숨긴 뒤 최상위 경고를 표시한다. 모달을 닫는 동작은 CAN 명령이나 critical 해제를 발생시키지 않는다.
+- GUI 가시성/입력 변경은 GuiTask에서만 한다. CanRxTask/VehicleModelTask는 계속 실행하며 숨김 상태와 무관하게 데이터를 갱신한다.
+- 패널은 고정 멤버로 보관하는 구성을 우선한다. 숨김은 메모리 해제가 아니므로 모든 패널의 RAM/asset 예산을 합산하고 실측한다.
+- 기존 100ms 모델 반영 / 150ms 터치 / 200ms critical 표시 목표는 유지한다. 패널·모달 상태별 GUI 부하 시험은 NOT RUN이다.
+- 이 변경으로 다른 ECU의 메시지 계약이나 Body_User_Request 경로를 추가·수정하지 않는다.
+
+공식 근거: [TouchGFX 4.26 ModalWindow API](https://support.touchgfx.com/docs/api/classes/classtouchgfx_1_1_modal_window), [Container API](https://support.touchgfx.com/docs/api/classes/classtouchgfx_1_1_container).
