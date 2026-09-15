@@ -27,6 +27,8 @@
 /* USER CODE BEGIN Includes */
 #include "cmsis_os2.h"
 #include <string.h>
+#include "vehicle_data.h"
+#include "dummy_data_provider.h"
 
 /* USER CODE END Includes */
 
@@ -200,6 +202,217 @@ void CanLoopback_Create(void)
     g_fdcan_loopback.api_error = 1;
     g_fdcan_loopback.state = 3;
   }
+}
+
+/* ---- VehicleModelTask + VehicleDataRepository (see Core/Inc/vehicle_data.h) ---- */
+
+#define VEHICLE_MODEL_PERIOD_MS   100u
+#define DRIVE_TIMEOUT_MS          500u
+#define GEAR_READY_TIMEOUT_MS     800u
+#define WARNING_TIMEOUT_MS        3000u
+#define UPDATE_QUEUE_DEPTH        8u
+#define REPO_LOCK_WAIT_MS         20u
+
+VehicleDataSnapshot g_vehicle_data;
+
+static osMessageQueueId_t s_updateQueue;
+static osMutexId_t s_repoMutex;
+
+static DriveSignal s_drive;
+static GearReadySignal s_gearReady;
+static WarningSignal s_warning;
+
+static const osThreadAttr_t vehicleModelTaskAttr = {
+  .name = "VehicleModel", .stack_size = 1024, .priority = (osPriority_t) osPriorityAboveNormal
+};
+
+static uint32_t VehicleModelTicks(uint32_t ms)
+{
+  return (osKernelGetTickFreq() * ms + 999u) / 1000u;
+}
+
+/* now - last_update_tick as unsigned wraps correctly across tick overflow. */
+static SignalStatus ComputeSignalStatus(uint8_t received, uint8_t source_valid,
+                                         uint32_t last_update_tick, uint32_t now,
+                                         uint32_t timeout_ticks)
+{
+  if (!received) return SIGNAL_NO_DATA;
+  if (!source_valid) return SIGNAL_INVALID;
+  if ((uint32_t)(now - last_update_tick) > timeout_ticks) return SIGNAL_TIMEOUT;
+  return SIGNAL_VALID;
+}
+
+static void VehicleModel_ApplyUpdate(const VehicleUpdateMsg *msg, uint32_t now)
+{
+  switch (msg->type) {
+    case VEHICLE_UPDATE_DRIVE:
+      s_drive.speed_kmh = msg->payload.drive.speed_kmh;
+      s_drive.rpm = msg->payload.drive.rpm;
+      s_drive.source_valid = msg->payload.drive.source_valid;
+      s_drive.received = 1;
+      s_drive.last_update_tick = now;
+      break;
+    case VEHICLE_UPDATE_GEAR_READY:
+      s_gearReady.gear = msg->payload.gear_ready.gear;
+      s_gearReady.ready = msg->payload.gear_ready.ready;
+      s_gearReady.source_valid = msg->payload.gear_ready.source_valid;
+      s_gearReady.received = 1;
+      s_gearReady.last_update_tick = now;
+      break;
+    case VEHICLE_UPDATE_WARNING:
+      s_warning.severity = msg->payload.warning.severity;
+      s_warning.active = msg->payload.warning.active;
+      s_warning.received = 1;
+      s_warning.last_update_tick = now;
+      break;
+    default:
+      break;
+  }
+}
+
+static void VehicleModelTask(void *argument)
+{
+  (void)argument;
+  memset(&s_drive, 0, sizeof(s_drive));
+  memset(&s_gearReady, 0, sizeof(s_gearReady));
+  memset(&s_warning, 0, sizeof(s_warning));
+  s_gearReady.gear = '-';
+
+  for (;;) {
+    VehicleUpdateMsg msg;
+    osStatus_t got = osMessageQueueGet(s_updateQueue, &msg, NULL,
+                                        VehicleModelTicks(VEHICLE_MODEL_PERIOD_MS));
+    uint32_t now = osKernelGetTickCount();
+
+    if (got == osOK) {
+      VehicleModel_ApplyUpdate(&msg, now);
+    }
+
+    /* Recompute every wake, whether or not a message arrived, so a signal
+     * that simply stopped updating still ages into SIGNAL_TIMEOUT. */
+    s_drive.status = ComputeSignalStatus(s_drive.received, s_drive.source_valid,
+                                          s_drive.last_update_tick, now,
+                                          VehicleModelTicks(DRIVE_TIMEOUT_MS));
+    s_gearReady.status = ComputeSignalStatus(s_gearReady.received, s_gearReady.source_valid,
+                                              s_gearReady.last_update_tick, now,
+                                              VehicleModelTicks(GEAR_READY_TIMEOUT_MS));
+    s_warning.status = ComputeSignalStatus(s_warning.received, 1u,
+                                            s_warning.last_update_tick, now,
+                                            VehicleModelTicks(WARNING_TIMEOUT_MS));
+
+    if (osMutexAcquire(s_repoMutex, VehicleModelTicks(REPO_LOCK_WAIT_MS)) == osOK) {
+      g_vehicle_data.drive = s_drive;
+      g_vehicle_data.gear_ready = s_gearReady;
+      g_vehicle_data.warning = s_warning;
+      g_vehicle_data.demo_source = 1u;
+      g_vehicle_data.snapshot_version++;
+      osMutexRelease(s_repoMutex);
+    }
+  }
+}
+
+void VehicleModel_Create(void)
+{
+  memset(&g_vehicle_data, 0, sizeof(g_vehicle_data));
+  g_vehicle_data.gear_ready.gear = '-';
+
+  s_repoMutex = osMutexNew(NULL);
+  s_updateQueue = osMessageQueueNew(UPDATE_QUEUE_DEPTH, sizeof(VehicleUpdateMsg), NULL);
+  if (s_repoMutex == NULL || s_updateQueue == NULL ||
+      osThreadNew(VehicleModelTask, NULL, &vehicleModelTaskAttr) == NULL) {
+    /* Nothing to fall back to for the dummy phase; the NO_DATA/'-' init
+     * state left in g_vehicle_data is the safe failure. */
+  }
+}
+
+uint8_t VehicleModel_PushUpdate(const VehicleUpdateMsg *msg)
+{
+  if (s_updateQueue == NULL) return 0u;
+  return (osMessageQueuePut(s_updateQueue, msg, 0, 0) == osOK) ? 1u : 0u;
+}
+
+uint8_t VehicleModel_GetSnapshot(VehicleDataSnapshot *out, uint32_t wait_ms)
+{
+  if (s_repoMutex == NULL) return 0u;
+  if (osMutexAcquire(s_repoMutex, VehicleModelTicks(wait_ms)) != osOK) return 0u;
+  *out = g_vehicle_data;
+  osMutexRelease(s_repoMutex);
+  return 1u;
+}
+
+/* ---- DummyDataProvider (see Core/Inc/dummy_data_provider.h) ----
+ * Bench-only signal source for the Cluster data path before real CAN
+ * exists. Only calls VehicleModel_PushUpdate(); never touches the GUI.
+ * Example values (speed=24, rpm=1250, gear=D) are the guide's bench
+ * defaults, not a vehicle spec. */
+
+#define DUMMY_PERIOD_MS   200u
+
+volatile DummyMode g_dummy_mode = DUMMY_MODE_NORMAL;
+volatile DummyDataStats g_dummy_stats;
+
+static const osThreadAttr_t dummyDataTaskAttr = {
+  .name = "DummyDataProvider", .stack_size = 768, .priority = (osPriority_t) osPriorityNormal
+};
+
+static void DummyData_Push(const VehicleUpdateMsg *msg)
+{
+  g_dummy_stats.update_count++;
+  if (!VehicleModel_PushUpdate(msg)) {
+    g_dummy_stats.queue_overflow++;
+  }
+}
+
+static void DummyDataTask(void *argument)
+{
+  (void)argument;
+  uint32_t counter = 0;
+
+  for (;;) {
+    DummyMode mode = g_dummy_mode;
+    int32_t wobble = (int32_t)(counter % 7u) - 3; /* -3..+3, just to show motion */
+
+    if (mode != DUMMY_MODE_PAUSE_DRIVE) {
+      VehicleUpdateMsg drive = {0};
+      drive.type = VEHICLE_UPDATE_DRIVE;
+      drive.payload.drive.speed_kmh = 24 + wobble;
+      drive.payload.drive.rpm = 1250 + wobble * 10;
+      drive.payload.drive.source_valid = (mode != DUMMY_MODE_SOURCE_INVALID) ? 1u : 0u;
+      DummyData_Push(&drive);
+    }
+    /* PAUSE_DRIVE intentionally sends nothing here: DUMMY-04 relies on
+     * VehicleModelTask aging this signal into SIGNAL_TIMEOUT on its own. */
+
+    {
+      VehicleUpdateMsg gearReady = {0};
+      gearReady.type = VEHICLE_UPDATE_GEAR_READY;
+      gearReady.payload.gear_ready.gear = 'D';
+      gearReady.payload.gear_ready.ready = 1u;
+      gearReady.payload.gear_ready.source_valid = (mode != DUMMY_MODE_SOURCE_INVALID) ? 1u : 0u;
+      DummyData_Push(&gearReady);
+    }
+
+    {
+      VehicleUpdateMsg warning = {0};
+      warning.type = VEHICLE_UPDATE_WARNING;
+      if (mode == DUMMY_MODE_CRITICAL) {
+        warning.payload.warning.severity = WARNING_CRITICAL;
+        warning.payload.warning.active = 1u;
+      } else {
+        warning.payload.warning.severity = WARNING_NONE;
+        warning.payload.warning.active = 0u;
+      }
+      DummyData_Push(&warning);
+    }
+
+    counter++;
+    osDelay((osKernelGetTickFreq() * DUMMY_PERIOD_MS + 999u) / 1000u);
+  }
+}
+
+void DummyDataProvider_Create(void)
+{
+  (void)osThreadNew(DummyDataTask, NULL, &dummyDataTaskAttr);
 }
 
 /* USER CODE END Application */

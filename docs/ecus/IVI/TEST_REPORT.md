@@ -34,6 +34,7 @@
 | v0.5 | 2026-09-10 | Team | §0.6 SDV_IVI_H735 자체 External Memory(OCTOSPI1 NOR / OCTOSPI2 HyperRAM) bring-up — `.map` + 플래시 verify + 육안으로 **PASS**, §0.6.5 빈 `Error_Handler` 관찰, Final Result / Remaining Issues 갱신 |
 | v0.6 | 2026-09-15 | Team | §0.7 HyperRAM MPU Region2 8MB→16MB 정합화 및 재검증(LCD ≥5분, FDCAN2 loopback 회귀 없음) 반영, Final Result / 완료된 항목 갱신 |
 | v0.7 | 2026-09-15 | Team | §0.4 hang/tearing·FDCAN2 loopback 행을 §0.5/§0.7 결과로 갱신(PARTIAL, 물리 CAN·응답시간은 여전히 NOT RUN), Remaining Issues에서 완료된 `Error_Handler` 수정(`0a06b06`) 및 MPU 커밋(`a226f9a`) 반영 |
+| v0.8 | 2026-09-15 | Team | §0.8 VehicleModel + DummyDataProvider bench(가이드 §2-4, pre-GUI) 결과 반영 — DUMMY-01~07/09 PASS, DUMMY-08 NOT RUN(GUI 없음), DUMMY-10 PARTIAL. Final Result / 완료된 항목 / Remaining Issues 갱신 |
 
 ---
 
@@ -300,6 +301,119 @@ HYPERRAM MPU REGION2 8MB -> 16MB ALIGNMENT: PASS
 
 ---
 
+## 0.8 VehicleModel + DummyDataProvider Bench (가이드 §2-4, pre-GUI, 2026-09-15)
+
+목적: TouchGFX Cluster 화면(가이드 §5)이 아직 없는 상태에서, Dummy 신호 → `VehicleModelTask` → `VehicleDataRepository`(`g_vehicle_data`) 데이터 경로가 신호별 freshness/timeout/invalid 정책대로 동작하는지 디버거로 직접 확인한다.
+
+### 0.8.1 구성 요소
+
+| 항목 | 내용 |
+|---|---|
+| `VehicleModelTask` | `Core/Src/freertos.c`. `osMessageQueueGet` 100ms 유한 대기로 주기적으로 깨어나 메시지 유무와 무관하게 매번 timeout을 재계산 |
+| `VehicleDataRepository` (`g_vehicle_data`) | mutex(`s_repoMutex`)로 보호되는 단일 쓰기자 스냅샷. `g_fdcan_loopback`과 동일하게 디버거 Expressions에서 직접 확인 가능 |
+| `DummyDataProvider` (`DummyDataTask`) | 200ms 주기, `g_dummy_mode`(디버거에서 실시간 변경 가능)에 따라 NORMAL/SOURCE_INVALID/PAUSE_DRIVE/CRITICAL/RECOVERY 5개 시나리오 재현 |
+| Signal status 판정 | `received → source_valid → timeout` 순서로 `SIGNAL_NO_DATA`/`SIGNAL_INVALID`/`SIGNAL_TIMEOUT`/`SIGNAL_VALID` 결정. **주의**: 한 번 `source_valid=0`이 찍힌 신호는 이후 갱신이 아예 끊겨도 `SIGNAL_INVALID`로 남고 `SIGNAL_TIMEOUT`으로 전이하지 않는다(우선순위상 invalid가 timeout보다 앞섬) — 실제 이 순서로 시험하다 관찰됨(§0.8.3 참고) |
+
+빌드 관련 참고: `vehicle_data.c`/`dummy_data_provider.c`를 별도 소스 파일로 처음 추가했으나, 이 프로젝트가 CDT per-file 빌드 등록 방식(`.project`의 개별 `<link>` + `.cproject`의 파일별 툴 설정)이라 `.project`에 링크만 추가해서는 컴파일 대상에 안 잡혔다. 로직을 기존에 이미 빌드 대상인 `Core/Src/freertos.c`(기존 `CanLoopback` 벤치 코드가 있는 파일)로 옮겨서 해결했다. 헤더(`vehicle_data.h`, `dummy_data_provider.h`)는 `-I` 경로로만 참조되므로 별도 파일로 유지.
+
+### 0.8.2 시험 절차 및 원시 결과
+
+**A. 부팅 직후 (모드 변경 전)**
+
+```text
+g_vehicle_data: drive.status=SIGNAL_NO_DATA, gear_ready.status=SIGNAL_NO_DATA, warning.status=SIGNAL_NO_DATA
+g_dummy_mode = DUMMY_MODE_NORMAL
+```
+
+약 1초 후:
+
+```text
+g_vehicle_data: drive={speed_kmh=25, rpm=1260, received=1, source_valid=1, status=SIGNAL_VALID}
+                gear_ready={gear='D', ready=1, status=SIGNAL_VALID}
+                warning={severity=WARNING_NONE, active=0, status=SIGNAL_VALID}
+g_dummy_stats: update_count=15, queue_overflow=0
+```
+
+**B. `g_dummy_mode = DUMMY_MODE_SOURCE_INVALID`(1)**
+
+```text
+drive={source_valid=0, status=SIGNAL_INVALID}, gear_ready={source_valid=0, status=SIGNAL_INVALID}
+warning: 영향 없음 (status=SIGNAL_VALID 유지)
+```
+
+**C. `g_dummy_mode = DUMMY_MODE_PAUSE_DRIVE`(2) — B 상태에서 바로 전환**
+
+```text
+drive: last_update_tick 고정(8800), status=SIGNAL_INVALID 유지 (TIMEOUT으로 전이하지 않음, §0.8.1 참고)
+gear_ready: last_update_tick 계속 증가(8800→16800), status=SIGNAL_VALID 유지
+```
+
+**D. `g_dummy_mode = DUMMY_MODE_NORMAL`(0) 복귀**
+
+```text
+drive.status=SIGNAL_VALID로 즉시 복귀, source_valid=1
+```
+
+**E. `g_dummy_mode = DUMMY_MODE_CRITICAL`(3)**
+
+```text
+warning={severity=WARNING_CRITICAL, active=1, status=SIGNAL_VALID}
+drive/gear_ready는 평소대로 계속 갱신
+```
+
+**F. `g_dummy_mode = DUMMY_MODE_RECOVERY`(4)**
+
+```text
+warning={severity=WARNING_NONE, active=0} 로 해제
+```
+
+**G. `g_dummy_mode = DUMMY_MODE_NORMAL`(0) 상태로 5분 방치**
+
+```text
+snapshot_version: 계속 증가하여 5369까지 도달, 정지 없음
+g_dummy_stats: update_count=3206, queue_overflow=0 (5분 내내 0 유지)
+```
+
+**H. 클린 재시험 — NORMAL에서 바로 `DUMMY_MODE_PAUSE_DRIVE`(2)로 전환 (INVALID를 거치지 않은 경우)**
+
+```text
+drive={source_valid=1 유지, last_update_tick 고정(216200), status=SIGNAL_TIMEOUT}
+gear_ready={last_update_tick 계속 증가(216200→220000), status=SIGNAL_VALID}
+g_dummy_stats: queue_overflow=0
+```
+
+### 0.8.3 결과 매트릭스 (가이드 §6 DUMMY-01~10 기준)
+
+| ID | 시험 | 결과 | 근거 |
+|---|---|---|---|
+| DUMMY-01 | 공급원 시작 전 부팅 | PASS | A: 부팅 직후 전부 `SIGNAL_NO_DATA` |
+| DUMMY-02 | 정상 속도·RPM 공급 | PASS | A: 1초 후 `SIGNAL_VALID`, 값 지속 변화 |
+| DUMMY-03 | valid=false 주입 | PASS | B: `SIGNAL_INVALID`, 직전 값 그대로 유지 |
+| DUMMY-04 | Drive 업데이트만 중단 → timeout | PASS | H(클린 재시험): `SIGNAL_VALID → SIGNAL_TIMEOUT` |
+| DUMMY-05 | 다른 신호 갱신 지속 | PASS | C, H: drive가 멈춰도 gear_ready는 계속 갱신 |
+| DUMMY-06 | 정상 데이터 재개 | PASS | D: 즉시 `SIGNAL_VALID` 복귀 |
+| DUMMY-07 | Critical 주입·해제 | PASS | E, F: 주입/해제 모두 확인 |
+| DUMMY-08 | 터치하면서 값 갱신 | NOT RUN | TouchGFX Cluster 화면(가이드 §5) 미구현으로 터치 자체가 없음 |
+| DUMMY-09 | 5분 이상 연속 실행 | PASS | G: `snapshot_version` 5369까지 정지 없이 증가 |
+| DUMMY-10 | 임시 과부하/큐 포화 | PARTIAL | 전 구간 `queue_overflow=0` 확인. 강제 포화(burst) 주입은 별도 시험 필요 |
+
+### 0.8.4 판정
+
+```text
+VEHICLEMODEL + DUMMYDATAPROVIDER BENCH: PASS (pre-GUI)
+  DUMMY-01~07, 09: PASS
+  DUMMY-08: NOT RUN (GUI 없음)
+  DUMMY-10: PARTIAL (queue_overflow=0 확인, 강제 포화 미시험)
+```
+
+이 판정은 **Repository/DummyDataProvider 데이터 경로**만 검증하며, TouchGFX Cluster 화면 연동(가이드 §5) 및 실제 CAN 연동은 포함하지 않는다.
+
+### 0.8.5 관찰: INVALID가 TIMEOUT보다 우선하는 상태 전이
+
+C 시험에서 확인된 대로, `source_valid=0`이 한 번 기록된 신호는 이후 갱신이 완전히 끊겨도(§C에서 8초 이상 미갱신) `SIGNAL_TIMEOUT`이 아니라 `SIGNAL_INVALID`로 남는다. 코드상 의도된 우선순위(`received → source_valid → timeout` 순서)의 결과이며 버그는 아니지만, "invalid였던 소스가 완전히 끊겼을 때도 계속 INVALID로 표시할지, 아니면 일정 시간 후 COMM LOST(TIMEOUT)로 재분류할지"는 실제 표시 정책 확정 시(가이드 §5) 재검토가 필요하다.
+
+---
+
 # 1. Test Objective
 
 H735 Cockpit이 Dummy Data와 실제 CAN 데이터를 이용해 Cluster/ADAS/Parking/Diagnostics/Settings 화면을 정상 표시하는지 검증한다. 동시에 FreeRTOS 기반 `CanRxTask`, `VehicleModelTask`, `GuiTask`, `CommandTxTask`, `HealthTask`가 의도한 구조로 실행되고, CAN burst나 UI load에서도 queue overflow, stack overflow, starvation 없이 주요 Timing 요구사항을 만족하는지 확인한다.
@@ -512,6 +626,7 @@ Code Review에서 ISR 내부 decode/render/printf가 없는지 확인한다.
 - FDCAN2 loopback 개발 로그: [DEVLOG.md](DEVLOG.md) · 코드 커밋 `835e48d`
 - 외부 메모리 bring-up (§0.6, 2026-09-10): `.map` `SDV_IVI_H735.map` — `BufferSection @ 0x70000000` (0x17e800), `ExtFlashSection @ 0x90000000` (0x236600); 플래시 로그 `Erasing external memory sectors [0 35]` + `Download verified successfully`
 - HyperRAM MPU Region2 8MB→16MB 정합화 재검증 (§0.7, 2026-09-15): 빌드 0 error/0 warning, LCD ≥5분 정상, FDCAN2 loopback 회귀 재시험 `g_fdcan_loopback` = §0.5.2와 완전 동일(`state=2, tx=100, rx=100, pass=100, mismatch=0, timeout=0, irq_count=100, queue_overflow=0, stack_free_bytes=1684`)
+- VehicleModel + DummyDataProvider bench (§0.8, 2026-09-15): `g_vehicle_data`/`g_dummy_mode`/`g_dummy_stats` 디버거 원시 덤프 — 부팅 NO_DATA, SOURCE_INVALID/PAUSE_DRIVE/CRITICAL/RECOVERY 전이, 5분 방치 `snapshot_version` 5369까지 정지 없음, `queue_overflow=0` 유지
 - CAN log (physical bus): TBD
 - Runtime stats (통합 태스크): TBD
 - stack high-water log (통합 태스크): TBD
@@ -539,6 +654,7 @@ SDV_IVI_H735 CLOCK-CHANGE GUI RETEST: PASS
 FDCAN2 INTERNAL LOOPBACK BENCH: PASS (state = 2, 100/100)
 SDV_IVI_H735 EXTERNAL MEMORY BRING-UP: PASS (OCTOSPI1 NOR + OCTOSPI2 HyperRAM)
 HYPERRAM MPU REGION2 8MB -> 16MB ALIGNMENT: PASS (build/LCD >=5min/FDCAN2 regression)
+VEHICLEMODEL + DUMMYDATAPROVIDER BENCH: PASS pre-GUI (DUMMY-01~07,09 PASS; 08 NOT RUN; 10 PARTIAL)
 FULL IVI INTEGRATION: NOT RUN
 ```
 
@@ -550,7 +666,8 @@ FULL IVI INTEGRATION: NOT RUN
 - [x] Touch 입력 UI 반응
 - [x] FDCAN2 internal loopback bench (`state = 2`, tx/rx/pass 100/100, `irq_count` 100, stack free 1684/2048 B) — 커밋 `835e48d`
 - [x] SDV_IVI_H735 자체 board bring-up — OCTOSPI1 NOR GUI asset(`0x90000000`) + OCTOSPI2 HyperRAM framebuffer(`0x70000000`) 실동작 (§0.6, `.map` + 플래시 verify + 육안)
-- [x] HyperRAM MPU Region2 8MB→16MB 정합화 — 빌드 0 error/0 warning, LCD ≥5분 정상, FDCAN2 loopback 회귀 없음 (§0.7, 커밋 미완료)
+- [x] HyperRAM MPU Region2 8MB→16MB 정합화 — 빌드 0 error/0 warning, LCD ≥5분 정상, FDCAN2 loopback 회귀 없음 (§0.7, 커밋 `a226f9a`)
+- [x] VehicleModel + DummyDataProvider (가이드 §2-4, pre-GUI) — DUMMY-01~07/09 PASS, 신호별 freshness/timeout/invalid 정책 디버거로 확인 (§0.8)
 
 ## 전체 IVI PASS 조건
 
@@ -573,6 +690,10 @@ FULL IVI INTEGRATION: NOT RUN
 - ~~`SDV_IVI_H735` 자체 HyperRAM(OCTOSPI2) · external Flash(OCTOSPI1) 실동작 확인~~ → 완료 (§0.6, PASS)
 - ~~HyperRAM MPU Region2 8MB→16MB 정합화~~ → 완료 (§0.7, PASS, 커밋 `a226f9a`)
 - ~~빈 `Error_Handler` 본문 — `while (1)` / fault 로깅 추가 (§0.6.5)~~ → 완료 (커밋 `0a06b06`, halt loop + `g_error_handler_caller` 기록 추가)
+- ~~VehicleModel + DummyDataProvider 데이터 경로 (가이드 §2-4)~~ → 완료 (§0.8, pre-GUI bench PASS)
+- TouchGFX Cluster 화면 구성 및 데이터 연결 (가이드 §5) — DUMMY-08(터치 중 갱신)은 이 화면이 있어야 시험 가능
+- DUMMY-10 실제 큐 포화(burst) 주입 시험 — 현재는 `queue_overflow=0` 관찰만 확인
+- INVALID→TIMEOUT 우선순위 정책 재검토 (§0.8.5) — 한 번 invalid였던 신호가 이후 완전히 끊겨도 계속 INVALID로 표시되는 현재 동작이 최종 표시 정책에 맞는지 확인
 - FDCAN2 physical CAN 시험 (트랜시버 + 2nd node / external loopback)
 - 외부 메모리 런타임 디버거 보강 (선택): `HAL_OSPI_GetState` = mem-mapped, HyperRAM 임의주소 write/read, `0x70000000` 프레임 변화 (§0.6 D4/D5)
 - CAN signal layout freeze (`DEC-NET-004~007`)

@@ -28,6 +28,8 @@
 /* USER CODE BEGIN Includes */
 #include "stm32h735g_discovery_ospi.h"
 #include "stm32h7xx_hal_ospi.h"
+#include "vehicle_data.h"
+#include "dummy_data_provider.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -200,6 +202,8 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   CanLoopback_Create();
+  VehicleModel_Create();
+  DummyDataProvider_Create();
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 

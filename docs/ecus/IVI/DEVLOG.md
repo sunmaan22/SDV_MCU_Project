@@ -7,6 +7,74 @@
 
 ---
 
+## 2026-09-15 · VehicleModel + DummyDataProvider (가이드 §2-4, pre-GUI)
+
+### 1. 이번 작업 범위
+
+`IVI_MPU_Dummy_TouchGFX_Guide.md` 2~4단계를 구현했다: App 데이터 경로(§2), 차량 데이터 모델(§3), DummyDataProvider(§4).
+TouchGFX Cluster 화면(§5)은 아직 없으므로, 이번 단계는 **GUI 없이 디버거로 데이터 경로만** 검증한다.
+
+### 2. 소프트웨어 구조
+
+```text
+DummyDataTask (200ms 주기, Core/Src/freertos.c)
+  └ g_dummy_mode에 따라 Drive/GearReady/Warning 업데이트 생성
+        ↓ VehicleModel_PushUpdate() (non-blocking, 큐 depth 8)
+VehicleModelTask (100ms 유한 대기로 주기적 wake-up)
+  ├ 메시지 있으면 s_drive/s_gearReady/s_warning에 반영
+  ├ 메시지 유무와 무관하게 매 wake마다 상태 재계산
+  │   ComputeSignalStatus(received, source_valid, last_update_tick, now, timeout)
+  │   → SIGNAL_NO_DATA / SIGNAL_INVALID / SIGNAL_TIMEOUT / SIGNAL_VALID
+  └ mutex(s_repoMutex)로 g_vehicle_data(Repository)에 스냅샷 갱신
+
+g_vehicle_data, g_dummy_mode, g_dummy_stats
+  → g_fdcan_loopback과 동일한 방식으로 디버거 Expressions에서 직접 확인
+```
+
+시험용 주기/timeout(`VEHICLE_MODEL_PERIOD_MS=100`, `DRIVE_TIMEOUT_MS=500`, `GEAR_READY_TIMEOUT_MS=800`, `WARNING_TIMEOUT_MS=3000`, `DUMMY_PERIOD_MS=200`)은 전부 벤치용 값이며 최종 스펙이 아니다.
+
+### 3. 빌드 이슈와 해결
+
+`vehicle_data.c`/`dummy_data_provider.c`를 새 소스 파일로 추가했으나 링커에서 `undefined reference` 발생.
+원인: 이 CubeIDE 프로젝트가 폴더 단위가 아니라 **파일 하나하나를 `.project`에 개별 `<link>`로 등록**하는 구조(`MCUAdvancedStructureProjectNature`)였고, 새 파일은 그 목록에 없어 Eclipse가 존재 자체를 몰랐다. `.project`에 `<link>`를 수동으로 추가해도 `.cproject`의 파일별 툴체인 설정이 없어 `sources.mk`에 여전히 안 잡혔다.
+해결: 새 로직을 이미 빌드 대상인 `Core/Src/freertos.c`(기존 `CanLoopback` 벤치 코드가 있는 파일)에 병합하고, 별도 `.c` 파일은 삭제했다. 헤더(`vehicle_data.h`, `dummy_data_provider.h`)는 `-I` 경로로만 참조되므로 별도 파일로 유지해도 무방하다.
+
+### 4. 관찰값 (실기, 디버거 Expressions)
+
+| 단계 | `g_dummy_mode` | 관찰 |
+|---|---|---|
+| 부팅 직후 | NORMAL | 전 신호 `SIGNAL_NO_DATA` |
+| 약 1초 후 | NORMAL | `speed_kmh=25, rpm=1260, status=SIGNAL_VALID`(drive/gear_ready) |
+| SOURCE_INVALID | 1 | drive/gear_ready `source_valid=0, status=SIGNAL_INVALID` |
+| PAUSE_DRIVE (INVALID 상태에서 전환) | 2 | drive는 `SIGNAL_INVALID`로 정지(8초+ 경과해도 TIMEOUT 전이 안 함, §5 참고), gear_ready는 계속 갱신 |
+| NORMAL 복귀 | 0 | drive 즉시 `SIGNAL_VALID` |
+| CRITICAL | 3 | `warning.severity=WARNING_CRITICAL, active=1` |
+| RECOVERY | 4 | `warning.active=0`로 해제 |
+| 5분 방치 | 0 | `snapshot_version` 5369까지 정지 없이 증가, `queue_overflow=0` |
+| 클린 재시험: NORMAL→PAUSE_DRIVE | 0→2 | drive `source_valid=1` 유지한 채 `SIGNAL_VALID → SIGNAL_TIMEOUT` (500ms 경과 후), gear_ready는 계속 `SIGNAL_VALID` |
+
+### 5. 판정
+
+```text
+VEHICLEMODEL + DUMMYDATAPROVIDER BENCH: PASS (pre-GUI)
+```
+
+가이드 §6 DUMMY-01~10 기준 DUMMY-01~07/09 PASS, DUMMY-08은 GUI가 없어 NOT RUN, DUMMY-10은 `queue_overflow=0` 관찰만 하고 강제 포화는 미시험(PARTIAL)이다. 상세 매트릭스는 [TEST_REPORT.md](TEST_REPORT.md) §0.8 참조.
+
+**관찰된 설계 특성**: `source_valid=0`이 한 번 찍힌 신호는 이후 갱신이 완전히 끊겨도 `SIGNAL_TIMEOUT`이 아니라 `SIGNAL_INVALID`로 남는다(`received → source_valid → timeout` 우선순위 때문). 버그는 아니지만 최종 표시 정책 확정 시(가이드 §5) 이 우선순위가 맞는지 재검토가 필요하다.
+
+### 6. 관련 파일
+
+```text
+firmware/IVI/SDV_IVI_H735/
+├ Core/Inc/vehicle_data.h          : SignalStatus, VehicleDataSnapshot, VehicleUpdateMsg, API 선언
+├ Core/Inc/dummy_data_provider.h   : DummyMode, DummyDataStats 선언
+├ Core/Src/freertos.c              : VehicleModelTask, DummyDataTask, g_vehicle_data/g_dummy_mode/g_dummy_stats 구현
+└ Core/Src/main.c                  : RTOS_THREADS에 VehicleModel_Create() → DummyDataProvider_Create() 호출 추가
+```
+
+---
+
 ## 2026-09-15 · HyperRAM MPU Region2 8MB → 16MB 정합화
 
 ### 1. 이번 작업 범위
