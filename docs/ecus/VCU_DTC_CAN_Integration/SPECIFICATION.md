@@ -4,7 +4,7 @@
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
-> **2026-09-15 범위 변경 (1차):** `Driver_Input`(가속/브레이크/조향) publisher가 F에서 C로 이전됐다. F는 accel/brake/steering을 더 이상 GPIO/ADC로 직접 읽지 않고 `Driver_Input`을 CAN RX로 수신한다. `Vision_Request`는 `ADAS_Request`로 명칭을 통일했고, Ultrasonic Parking Critical이 `ADAS_Request`보다 항상 우선함을 §7에서 재확인한다.
+> **2026-09-15 범위 변경 (1차):** `Driver_Input`(가속/브레이크/조향) publisher가 F에서 C로 이전됐다. F는 accel/brake/steering을 더 이상 GPIO/ADC로 직접 읽지 않고 `Driver_Input`을 CAN RX로 수신한다. `Vision_Request`는 `ADAS_Request`로 명칭을 통일했고, Ultrasonic Collision Critical이 `ADAS_Request`보다 항상 우선함을 §7에서 재확인한다.
 >
 > **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 더 이상 Gear/E-Stop GPIO를 직접 읽지 않으며, C가 로컬에서 E-Stop을 즉시 처리(CAN 비의존)한 뒤 `Driver_Input.gear`/`estop_status`로 CAN 보고한다. F의 `SafetyTask`는 이 CAN 필드를 override 조건으로 사용한다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 실시간(Active만) 구독·표시하고 F/Pi 어디에도 지속 저장하지 않는다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1, §1.1, §1.2, §3.1, §3.6, §4.8.1, §6](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
@@ -43,8 +43,8 @@
 
 - `Driver_Input`(가속/브레이크/조향/gear/estop_status) CAN 수신/validation (C가 발행, F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않음)
 - Vehicle State / Mode 관리
-- `ADAS_Request` / `Ultrasonic_Status`(Parking Critical 포함) / Fault 요청 수신
-- Arbitration / Safety Override (Ultrasonic Parking Critical이 ADAS_Request보다 항상 우선; E-Stop이 최우선)
+- `ADAS_Request` / `Ultrasonic_Status`(Collision Critical 포함) / Fault 요청 수신
+- Arbitration / Safety Override (Ultrasonic Collision Critical이 ADAS_Request보다 항상 우선; E-Stop이 최우선)
 - Final Speed / Steering / Drive Enable 생성
 - CAN RX/TX와 Heartbeat
 - Local fault detection
@@ -85,16 +85,16 @@ Front Vision
 → Final Request
 ```
 
-## 2.3 Parking Critical
+## 2.3 Collision Critical
 
 ```text
 Ultrasonic CRITICAL
 → VCU
-→ Parking safety rule (ADAS_Request와 무관하게 항상 적용)
+→ Collision Warning safety rule (ADAS_Request와 무관하게 항상 적용)
 → Speed limit / Stop request 후보
 ```
 
-Ultrasonic Parking Critical은 `ADAS_Request`보다 항상 우선하며, `ADAS_Request`가 이 상태를 해제/override할 수 없다 (§7 재확인).
+Ultrasonic Collision Critical은 `ADAS_Request`보다 항상 우선하며, `ADAS_Request`가 이 상태를 해제/override할 수 없다 (§7 재확인).
 
 ## 2.4 E-Stop
 
@@ -111,14 +111,14 @@ E-Stop의 실제 모터 차단은 C가 CAN과 무관하게 이미 로컬에서 �
 
 ```mermaid
 flowchart TD
-    A[Driver_Input(gear/estop 포함)/ADAS_Request/Ultrasonic_Status(CAN) / Faults] --> B[Validation]
-    B --> C[Vehicle State Manager]
-    C --> D[Safety & Arbitration]
-    D --> E[Final Speed / Steering / Enable]
-    E --> F[CAN TX to Drive ECU]
-    B --> G[Fault / DTC Manager]
+    A["Driver_Input(gear/estop 포함)/ADAS_Request/Ultrasonic_Status(CAN) / Faults"] --> B["Validation"]
+    B --> C["Vehicle State Manager"]
+    C --> D["Safety & Arbitration"]
+    D --> E["Final Speed / Steering / Enable"]
+    E --> F["CAN TX to Drive ECU"]
+    B --> G["Fault / DTC Manager"]
     G --> D
-    G --> H[DTC Event / Status]
+    G --> H["DTC Event / Status"]
 ```
 
 # 4. Inputs
@@ -127,7 +127,7 @@ flowchart TD
 |---|---|---|---|---|---|
 | IN-VCU-001 | `Driver_Input` (accel/brake/steering/gear/estop_status) | Drive ECU (C) | CAN FD | valid flag/freshness | periodic |
 | IN-VCU-002 | `ADAS_Request` | HPC(E) | CAN FD | valid/fresh | periodic/event |
-| IN-VCU-003 | `Ultrasonic_Status` (Warning/Parking Critical) | Ultrasonic ECU(A) | CAN FD | valid/fresh | periodic |
+| IN-VCU-003 | `Ultrasonic_Status` (Warning/Collision Critical) | Ultrasonic ECU(A) | CAN FD | valid/fresh | periodic |
 | IN-VCU-004 | `Drive_Status` (estimated speed/rpm 포함) | Drive ECU(C) | CAN FD | valid/fresh | periodic |
 | IN-VCU-005 | Body Status | Body Gateway | CAN FD | valid/fresh | periodic |
 | IN-VCU-006 | ECU Heartbeat | All | CAN FD | timeout 없음 | periodic |
@@ -156,7 +156,7 @@ F는 Gear/E-Stop 물리 GPIO를 갖지 않는다 (2026-09-15부터 C 소유, `Dr
 | REQ-VCU-002 | VCU는 `ADAS_Request`와 `Ultrasonic_Status`(Warning 포함)를 CAN으로 수신해야 한다. | MUST | Test | T-VCU-002 |
 | REQ-VCU-003 | VCU는 요청의 freshness/timeout을 관리해야 한다. | MUST | Fault Test | T-VCU-003 |
 | REQ-VCU-004 | E-Stop/critical fault는 일반 Driver/ADAS 요청보다 우선해야 한다. | MUST | Test | T-VCU-004 |
-| REQ-VCU-005 | Parking critical은 normal driver request보다 높은 안전 우선순위를 가져야 한다. | MUST | Test | T-VCU-005 |
+| REQ-VCU-005 | Collision Warning critical은 normal driver request보다 높은 안전 우선순위를 가져야 한다. | MUST | Test | T-VCU-005 |
 | REQ-VCU-006 | VCU는 최종 Speed/Steering/Enable 명령만 Drive ECU에 전달해야 한다. | MUST | Inspect/Test | T-VCU-006 |
 | REQ-VCU-007 | VCU는 Drive command timeout이나 peer offline을 감지해야 한다. | MUST | Fault Test | T-VCU-007 |
 | REQ-VCU-008 | VCU는 Vehicle State와 Heartbeat를 제공해야 한다. | MUST | Test | T-VCU-008 |
@@ -173,18 +173,18 @@ F는 Gear/E-Stop 물리 GPIO를 갖지 않는다 (2026-09-15부터 C 소유, `Dr
 
 ```text
 E-Stop / Critical Fault
-> Ultrasonic Parking Critical
+> Ultrasonic Collision Critical
 > ADAS_Request (전방 회피)
 > Normal Driver Request
 ```
 
-**`Ultrasonic_Status`의 Parking Critical은 `ADAS_Request`보다 항상 우선한다.** `ADAS_Request`는 Parking Critical을 해제/override할 수 없으며, VCU 중재 로직은 이 순서를 코드에서도 강제해야 한다. 세부 규칙은 최종 시험과 팀 합의 후 확정한다.
+**`Ultrasonic_Status`의 Collision Critical은 `ADAS_Request`보다 항상 우선한다.** `ADAS_Request`는 Collision Critical을 해제/override할 수 없으며, VCU 중재 로직은 이 순서를 코드에서도 강제해야 한다. 세부 규칙은 최종 시험과 팀 합의 후 확정한다.
 
 | Rule ID | Condition | Result |
 |---|---|---|
 | RULE-VCU-001 | E-Stop active | Drive Enable OFF / safe command |
 | RULE-VCU-002 | Critical peer fault | 해당 기능 제한 또는 safe state |
-| RULE-VCU-003 | Ultrasonic Parking CRITICAL | speed limit/stop policy 적용, `ADAS_Request`와 무관하게 항상 적용 |
+| RULE-VCU-003 | Ultrasonic Collision Warning CRITICAL | speed limit/stop policy 적용, `ADAS_Request`와 무관하게 항상 적용 |
 | RULE-VCU-004 | `ADAS_Request` valid + Ultrasonic CRITICAL 아님 | driver/mode/safety 조건과 함께 arbitration |
 | RULE-VCU-005 | request timeout | 해당 request invalid 처리 |
 | RULE-VCU-006 | undefined Gear/input | safe/degraded state |
@@ -208,7 +208,7 @@ E-Stop / Critical Fault
 |---|---|---|---|---|
 | `Driver_Input` | RX | Drive ECU(C) | 가속/브레이크/조향/gear/estop_status | TBD |
 | `ADAS_Request` | RX | HPC(E) | 전방 객체 회피/감속 요청 (주차 사유 없음) | TBD |
-| `Ultrasonic_Status` | RX | Ultrasonic | distance/warning/Parking Critical | TBD |
+| `Ultrasonic_Status` | RX | Ultrasonic | distance/warning/Collision Critical | TBD |
 | `Drive_Status` | RX | Drive | rpm(estimated)/speed(estimated)/status | TBD |
 | `Body_Status` | RX | Gateway | body/lin status | TBD |
 | `DTC_Event` | RX/TX | All/H735 | code/status/severity (지속 저장 없음) | event |
@@ -258,7 +258,7 @@ ISR에서는 긴 arbitration, printf, DTC table 처리 등을 하지 않는다.
 
 - [ ] Driver Input이 유효값으로 변환된다.
 - [ ] E-Stop이 일반 요청보다 우선한다.
-- [ ] ADAS/Parking/Driver 요청의 우선순위를 재현할 수 있다.
+- [ ] ADAS/Collision Warning/Driver 요청의 우선순위를 재현할 수 있다.
 - [ ] stale CAN request가 최종 명령에 계속 사용되지 않는다.
 - [ ] Final Command가 Drive ECU로 송신된다.
 - [ ] peer heartbeat timeout을 감지한다.
@@ -274,3 +274,7 @@ ISR에서는 긴 arbitration, printf, DTC table 처리 등을 하지 않는다.
 - command/heartbeat timing
 - DTC code table
 - Task priority number / stack / queue depth
+
+## 충돌주의 전환 적용 (2026-09-15)
+
+기능은 4방향 거리 기반 충돌주의이며 Gear R 전용 주차 모드가 아니다. A는 각 zone의 distance/valid/warning을 계속 제공하고, B는 모든 기어에서 패널 접근과 CRITICAL 상시 경고를 제공한다. F의 기존 안전 개입은 유지하며 A/B/E가 최종 Drive 명령을 발행하지 않는다. 방향별 제어 zone과 감속·정지·복구 수치는 [최상위 명세 §1.3](../../system/FINAL_IMPLEMENTATION_SPEC.md#13-충돌주의-기능-범위-2026-09-15-사용자-결정)의 OPEN 항목이다.

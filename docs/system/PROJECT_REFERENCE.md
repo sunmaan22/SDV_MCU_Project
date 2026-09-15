@@ -5,7 +5,7 @@
 > 현재 프로젝트에서 **어떤 보드가 무엇을 맡고, 어떤 센서/데이터를 소유하고, 어떤 RTOS Task 구조를 기본으로 하는지** 한 곳에서 확인하는 문서다.  
 > 핀 번호, CAN ID, 주기, 임계값, FreeRTOS numeric priority는 실제 보드/시험 후 확정하며 미정값은 `TBD`로 둔다.
 
-> **2026-09-15 범위 변경 (1차):** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall 실측 Feedback을 삭제했다. 주차는 Ultrasonic 4방향(FL/FR/RL/RR) 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
+> **2026-09-15 범위 변경 (1차):** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall 실측 Feedback을 삭제했다. 충돌주의는 Ultrasonic 4방향(FL/FR/RL/RR) 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
 >
 > **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 각 ECU로부터 직접 CAN 구독해 실시간(Active만) 표시한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md).
 
@@ -28,7 +28,7 @@ STM32 #4 Body LIN Slave                                RF 수신기/가변저항
 
 | Node | Hardware | 역할 | 실행 환경 |
 |---|---|---|---|
-| A | STM32 #1 + Ultrasonic | Parking distance perception (4방향 FL/FR/RL/RR) | FreeRTOS |
+| A | STM32 #1 + Ultrasonic | Collision distance perception (4방향 FL/FR/RL/RR) | FreeRTOS |
 | B | STM32H735 + TouchGFX | Cluster + IVI + DTC 실시간 표시 | FreeRTOS + TouchGFX |
 | C | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기/가변저항 + Gear/E-Stop | Drive + Steering control, Driver Input(gear/estop_status 포함), E-Stop 로컬 즉시 차단 | FreeRTOS |
 | D-Gateway | STM32 #3 + CAN/LIN Transceiver | CAN FD ↔ LIN Gateway, LIN Master | FreeRTOS |
@@ -83,7 +83,7 @@ Safety / Control
 | Driver | E-Stop | Drive ECU(C) | GPIO/EXTI | `DEC-HW-020`/`027` 확정 전, 로컬 즉시 차단 |
 | Driver | Accelerator/Brake/Steering (RF 리모컨 또는 가변저항) | Drive ECU(C) | PWM capture / ADC | `DEC-HW-024` 확정 전 |
 | Steering | Actual Steering Feedback | Drive ECU | ADC/I2C | 선택 확장 |
-| Parking | Ultrasonic Sensors (FL/FR/RL/RR 4방향 고정) | Ultrasonic ECU | GPIO/Timer | `FROZEN` |
+| Collision Warning | Ultrasonic Sensors (FL/FR/RL/RR 4방향 고정) | Ultrasonic ECU | GPIO/Timer | `FROZEN` |
 | Vision | Front Camera | Raspberry Pi | CSI | 계획 |
 | Thermal | Motor Temperature | Drive ECU | ADC/I2C | 선택 확장 |
 | Battery | Battery Voltage | VCU 또는 지정 Node | ADC measurement circuit | 후보 |
@@ -124,7 +124,7 @@ CanRxTask
 
 ```text
 Input   : FL/FR/RL/RR 4방향 Trigger/Echo
-Process : 거리 계산 → 유효성 → 필터 → Warning Level → 주차 판단(A 단독)
+Process : 거리 계산 → 유효성 → 필터 → Warning Level → 초음파 충돌 위험도 판단(A 단독)
 Output  : zone_id, distance_mm, valid, warning_level
 Target  : VCU / H735 / HPC
 Fault   : timeout, invalid range, sensor unavailable
@@ -152,7 +152,7 @@ Echo ISR
 ## B. H735 Cluster + IVI
 
 ```text
-Input   : CAN Vehicle / ADAS / Parking / DTC data, Touch
+Input   : CAN Vehicle / ADAS / Collision Warning / DTC data, Touch
 Process : Data Model → Warning/Validity → UI State → Rendering
 Output  : Cluster/IVI 화면, User Request
 Target  : Driver / CAN Request
@@ -266,12 +266,12 @@ Raw Camera frame은 Pi 내부에서 처리하고 CAN에는 semantic/control resu
 ```text
 Driver_Input (CAN, C 발행 — accel/brake/steering/gear/estop_status)
 ADAS_Request
-Ultrasonic_Status (Parking Critical 포함)
+Ultrasonic_Status (Collision Critical 포함)
 ECU Heartbeat/Fault
         ↓
 Vehicle State / Gear / Mode
         ↓
-Safety & Arbitration (Parking Critical > ADAS_Request)
+Safety & Arbitration (Collision Critical > ADAS_Request)
         ↓
 Final Speed / Steering Request
 ```
@@ -292,12 +292,12 @@ F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다 (2026-09-15부터 Gea
 우선순위 기본 방향:
 ```text
 Critical Fault / E-Stop
-> Ultrasonic Parking Critical
+> Ultrasonic Collision Critical
 > ADAS_Request
 > Normal Driver / Mode Request
 ```
 
-Ultrasonic Parking Critical은 `ADAS_Request`보다 항상 우선하며, `ADAS_Request`가 이를 해제/override할 수 없다.
+Ultrasonic Collision Critical은 `ADAS_Request`보다 항상 우선하며, `ADAS_Request`가 이를 해제/override할 수 없다.
 
 RTOS Priority와 차량 Arbitration Priority는 다른 개념이다. 둘을 문서에서 혼동하지 않는다.
 
@@ -376,7 +376,7 @@ CAN ID와 bit layout은 확정 전이면 `TBD`로 둔다.
 | `Final_Steering_Request` | VCU | Drive | deg/% TBD | TBD | TBD |
 | `Motor_RPM` (estimated) | Drive | VCU/H735/HPC | rpm | TBD | TBD |
 | `Ultrasonic_Status` (FL/FR/RL/RR) | Ultrasonic | VCU/H735/HPC | mm/flags | TBD | TBD |
-| `ADAS_Request` | HPC(E) | VCU/H735 | enum | TBD | TBD |
+| `ADAS_Request` | HPC(E) | VCU | enum | TBD | TBD |
 | `Body_Command.headlamp_brightness` | VCU | Gateway | 0-100% | TBD | TBD |
 
 LIN 후보:

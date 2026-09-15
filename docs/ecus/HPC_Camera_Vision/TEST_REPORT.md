@@ -74,7 +74,7 @@ Raspberry Pi 1대 (front_vision)
 | T-VIS-008 | REQ-VIS-008 | timestamp inspect | freshness 판단 가능 | NOT RUN | TBD |
 | T-VIS-009 | REQ-VIS-009 | CAN service failure | Vision 전체 불필요 중단 없음 | NOT RUN | TBD |
 | T-VIS-010 | REQ-VIS-010 | performance measurement | FPS/latency/CPU/memory 기록 | NOT RUN | TBD |
-| T-VIS-011 | REQ-VIS-011 | Ultrasonic Critical 동시 발생 injection | ADAS_Request가 Parking Critical override 안 함 | NOT RUN | TBD |
+| T-VIS-011 | REQ-VIS-011 | Ultrasonic Critical 동시 발생 injection | ADAS_Request가 Collision Critical override 안 함 | NOT RUN | TBD |
 
 ---
 
@@ -188,7 +188,7 @@ Thermal throttling 여부도 장시간 시험에서 확인한다.
 - raw image payload를 CAN으로 보내지 않는가
 - invalid/stale result를 정상 request로 보내지 않는가
 - CAN failure가 camera process 전체 crash로 이어지지 않는가
-- `ADAS_Request`가 Ultrasonic Parking Critical을 override하지 않는가
+- `ADAS_Request`가 Ultrasonic Collision Critical을 override하지 않는가
 
 ---
 
@@ -261,7 +261,7 @@ RESULT: NOT RUN
 - [ ] FPS/latency 측정
 - [ ] CPU/memory/temperature 측정
 - [ ] queue backlog/overflow 정책 확인
-- [ ] `ADAS_Request`가 Ultrasonic Parking Critical을 override하지 않음 확인
+- [ ] `ADAS_Request`가 Ultrasonic Collision Critical을 override하지 않음 확인
 - [ ] 반복/soak test 증거 확보
 
 ## Remaining Issues

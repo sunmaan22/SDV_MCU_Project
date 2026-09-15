@@ -66,7 +66,7 @@
 
 | Item | Description |
 |---|---|
-| Actor / Trigger | H735(턴시그널/헤드램프 밝기 요청) 또는 VCU(brake_lamp 자동 생성)의 `Body_Command` |
+| Actor / Trigger | VCU의 `Body_Command` (H735의 `Body_User_Request`를 중재하고 brake_lamp를 자동 생성) |
 | Preconditions | Gateway READY, LIN Slave 응답 가능 |
 | Trigger | CAN command 수신 |
 | Normal Flow | CAN RX → Decode → Mapping → LIN command 준비 → Schedule slot 송신 → Slave Lighting update |
@@ -97,15 +97,15 @@
 # 3. Functional Flow
 
 ```mermaid
-flowchart LR
-    CANRX[CAN Body_Command<br/>headlamp_brightness/turn/brake] --> GW[Gateway Mapping]
-    GW --> LINM[LIN Master Schedule]
-    LINM --> SLAVE[Body LIN Slave]
-    SLAVE --> LAMP[Lamp Output]
+flowchart TD
+    CANRX["CAN Body_Command / headlamp_brightness/turn/brake"] --> GW["Gateway Mapping"]
+    GW --> LINM["LIN Master Schedule"]
+    LINM --> SLAVE["Body LIN Slave"]
+    SLAVE --> LAMP["Lamp Output"]
 
-    SLAVE --> LINS[LIN Lamp_Status]
+    SLAVE --> LINS["LIN Lamp_Status"]
     LINS --> GW
-    GW --> CANTX[CAN Body_Status]
+    GW --> CANTX["CAN Body_Status"]
 ```
 
 ---
@@ -114,7 +114,7 @@ flowchart LR
 
 | Input ID | Input | Source | Interface | Unit / Range | Valid Condition | Trigger |
 |---|---|---|---|---|---|---|
-| IN-BODY-001 | `Body_Command` (headlamp_brightness/turn_left/turn_right/brake_lamp) | VCU/H735 | CAN FD | flags/enum/0-100% | valid payload | Event |
+| IN-BODY-001 | `Body_Command` (headlamp_brightness/turn_left/turn_right/brake_lamp) | VCU | CAN FD | flags/enum/0-100% | valid payload | Event |
 | IN-BODY-002 | LIN Slave response | Body LIN Slave | LIN | frame/signals | checksum/timeout 정상 | Schedule slot |
 | IN-BODY-003 | CAN controller status | Gateway MCU | FDCAN | state | controller valid | Event |
 | IN-BODY-004 | LIN controller status | Gateway/Slave | UART/LIN | state | controller valid | Event |
@@ -165,7 +165,7 @@ flowchart LR
 | RULE-BODY-002 | LIN Slave timeout | 해당 slave/status invalid + fault event |
 | RULE-BODY-003 | Lamp command invalid/unknown | 출력 변경 금지 또는 정의된 safe state, 정책 TBD |
 | RULE-BODY-004 | Gateway와 Slave 부팅 직후 | Lamp startup state는 안전한 기본 상태(밝기 0 등), TBD |
-| RULE-BODY-005 | H735 command | 직접 GPIO가 아닌 Gateway→LIN 경로 사용 |
+| RULE-BODY-005 | H735 조명 요청 | Body_User_Request → VCU → Body_Command → Gateway → LIN 경로 사용 |
 | RULE-BODY-006 | `brake_lamp` | F가 생성한 값만 사용, D/H735가 임의로 값을 만들지 않음 |
 
 ---
@@ -208,7 +208,7 @@ UI 직접 구현은 N/A. H735가 다음 정보를 표시할 수 있다.
 
 | Message | TX/RX | Peer | Cycle/Event | Timeout | Action |
 |---|---|---|---|---|---|
-| `Body_Command` | RX | VCU/H735 | Event/Periodic TBD | TBD | command invalid |
+| `Body_Command` | RX | VCU | Event/Periodic TBD | TBD | command invalid |
 | `Body_Status` | TX | VCU/H735/HPC | Periodic TBD | N/A | status publish |
 | `DTC_Event` | TX | H735/VCU | Event | N/A | fault publish |
 | `ECU_Heartbeat` | TX | VCU/HPC | Periodic TBD | N/A | alive |

@@ -6,7 +6,7 @@
 
 | 담당 | 역할 | 시작 | 기능 명세 | 구조 | 시험 기록 |
 |---|---|---|---|---|---|
-| A | 초음파 4방향(FL/FR/RL/RR) 주차 감지 전담 | [안내](Ultrasonic_Perception/README.md) | [명세](Ultrasonic_Perception/SPECIFICATION.md) | [아키텍처](Ultrasonic_Perception/ARCHITECTURE.md) | [테스트](Ultrasonic_Perception/TEST_REPORT.md) |
+| A | 초음파 4방향(FL/FR/RL/RR) 충돌 위험 감지 전담 | [안내](Ultrasonic_Perception/README.md) | [명세](Ultrasonic_Perception/SPECIFICATION.md) | [아키텍처](Ultrasonic_Perception/ARCHITECTURE.md) | [테스트](Ultrasonic_Perception/TEST_REPORT.md) |
 | B | 화면·사용자 요청(턴시그널/헤드램프 밝기) | [안내](IVI/README.md) | [명세](IVI/SPECIFICATION.md) | [아키텍처](IVI/ARCHITECTURE.md) | [테스트](IVI/TEST_REPORT.md) |
 | C | 모터·조향 출력 + Driver 입력(RF/가변저항) | [안내](Motor_Steering_Control/README.md) | [명세](Motor_Steering_Control/SPECIFICATION.md) | [아키텍처](Motor_Steering_Control/ARCHITECTURE.md) | [테스트](Motor_Steering_Control/TEST_REPORT.md) |
 | D | 조명(턴시그널/헤드램프/브레이크등)·CAN/LIN Gateway | [안내](Lighting_LIN_CAN/README.md) | [명세](Lighting_LIN_CAN/SPECIFICATION.md) | [아키텍처](Lighting_LIN_CAN/ARCHITECTURE.md) | [테스트](Lighting_LIN_CAN/TEST_REPORT.md) |

@@ -1,6 +1,6 @@
 # Cluster + IVI Cockpit Software Architecture
 
-> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Parking/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
+> **2026-09-15 사용자 결정 — 단일 Screen UI:** Cluster를 유지하는 하나의 TouchGFX Screen 안에서 ADAS/Collision Warning/Diagnostics/Settings 패널을 표시·숨긴다. 화면 구성만 변경하며 ECU 간 CAN/LIN 메시지, publisher/consumer, 신호·주기·timeout, 제어 권한과 최상위 명세의 OPEN/FROZEN 상태는 변경하지 않는다. 기능 구현·실기 PASS를 의미하지 않는다.
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -69,10 +69,10 @@
 |---|---|
 | B HMI | TouchGFX, Task 구조, Data Model, 화면 상태 |
 | F VCU/CAN | RX/TX contract, timeout, Active fault 표시 |
-| A Ultrasonic | Parking data display |
+| A Ultrasonic | Collision Warning data display |
 | C Drive | speed/rpm/status contract |
 | D Body | body status/request |
-| E Vision | ADAS semantic result (detected_class/direction, Parking 없음) |
+| E Vision | ADAS semantic result (detected_class/direction, 초음파 위험도 재판정 없음) |
 | Test | timing, queue, stack, warning, timeout |
 
 ---
@@ -108,16 +108,16 @@ TouchGFX/CubeMX가 생성하는 RTOS 설정과 BSP 구조를 우선 존중하고
 # 4. Context & Scope View
 
 ```mermaid
-flowchart LR
-    VCU[VCU] -->|Vehicle State| HMI[STM32H735 Cockpit]
-    DRIVE[Drive ECU] -->|Speed/RPM| HMI
-    US[Ultrasonic ECU] -->|Distance/Warning| HMI
-    HPC[Pi Vision/HPC] -->|Vision_Status / ADAS_Request| HMI
-    BODY[Body Gateway] -->|Body Status| HMI
-    ALLECU[All ECU] -->|DTC_Event 직접 CAN, 실시간| HMI
-    HMI -->|Body_User_Request| VCU
-    VCU -->|Body_Command| BODY
-    DRIVER[Driver/Touch] <--> HMI
+flowchart TD
+    VCU["VCU"] -->|"Vehicle State"| HMI["STM32H735 Cockpit"]
+    DRIVE["Drive ECU"] -->|"Speed/RPM"| HMI
+    US["Ultrasonic ECU"] -->|"Distance/Warning"| HMI
+    HPC["Pi Vision/HPC"] -->|"Vision_Status"| HMI
+    BODY["Body Gateway"] -->|"Body Status"| HMI
+    ALLECU["All ECU"] -->|"DTC_Event 직접 CAN, 실시간"| HMI
+    HMI -->|"Body_User_Request"| VCU
+    VCU -->|"Body_Command"| BODY
+    DRIVER["Driver/Touch"] <--> HMI
 ```
 
 Pi DTC Manager는 삭제됐다 (2026-09-15). B는 각 ECU의 `DTC_Event`/fault flag를 직접 구독한다. 수동 DTC Clear 요청은 현재 범위에서 제외하며, 소스 ECU가 fault 해소를 판정한다.
@@ -161,7 +161,7 @@ Pi DTC Manager는 삭제됐다 (2026-09-15). B는 각 ECU의 `DTC_Event`/fault f
                 GuiTask
                    ↓
           TouchGFX 단일 Screen / MVP + Custom Containers
-     Cluster / ADAS / Parking / DTC / Settings
+     Cluster / ADAS / Collision Warning / DTC / Settings
                    │
              UI Command Event
                    ↓
@@ -213,7 +213,7 @@ ivi/
    ├ model/
    ├ cluster/
    ├ adas/
-   ├ parking/
+   ├ collision_warning/
    ├ diagnostics/
    └ settings/
 ```
@@ -373,7 +373,7 @@ Pin map은 CubeMX/board schematic 확인 후 작성한다.
 | `Vehicle_State` | gear/mode/safety | VCU | state invalid/warning |
 | `Drive_Status` | speed/rpm | Drive | widgets invalid |
 | `Ultrasonic_Status` | distance/warning | Ultrasonic | sensor invalid |
-| `Vision_Status` / `ADAS_Request` | detected_class/direction/warning result | HPC(E) | vision unavailable |
+| `Vision_Status` | detected_class/direction/warning result | HPC(E) | vision unavailable |
 | `Body_Status` | lamp/LIN | Gateway | body warning |
 | `DTC_Event` | fault code/status | All ECU (직접 CAN) | raw code라도 표시, 실시간(Active만) |
 | `ECU_Heartbeat` | alive | all | offline warning |
@@ -395,7 +395,7 @@ H735는 LIN 직접 사용 없음.
 | `vehicle_speed` | Drive | speed | Drive timeout |
 | `motor_rpm` | Drive | rpm | Drive timeout |
 | `gear` | VCU | P/R/N/D | VCU timeout |
-| `parking_distance[]` | Ultrasonic | mm | valid=false |
+| `collision_distance[]` | Ultrasonic | mm | valid=false |
 | `adas_status` | HPC | semantic result | HPC timeout |
 | `lamp_status` | Gateway | body state | Body timeout |
 | `dtc_list` | Diagnostics | DTC entries | malformed/unknown handled |
@@ -406,7 +406,7 @@ UI state는 Screen 전이가 아닌 동일 Screen의 패널 선택 상태다:
 |---|---|
 | NONE | Cluster 기본 영역 |
 | ADAS | Cluster + ADAS 패널 |
-| PARKING | Cluster + Parking 패널 |
+| COLLISION_WARNING | Cluster + Collision Warning 패널 |
 | DIAGNOSTICS | Cluster + Diagnostics 패널 |
 | SETTINGS | Cluster + Settings 패널 |
 
@@ -488,7 +488,7 @@ TouchGFX GUI 자체 hang을 감지할 수 있는 heartbeat 지점을 실제 구�
 | Timing | CAN status RX | model ≤100 ms | timestamp |
 | Concurrency | CAN burst + GUI render | queue overflow 0, UI freeze 0 | load test |
 | RTOS health | soak | stack overflow/deadlock 0 | runtime stats |
-| Usability | critical parking | ≤200 ms 목표 | injection |
+| Usability | critical collision_warning | ≤200 ms 목표 | injection |
 
 ---
 
@@ -510,7 +510,7 @@ TouchGFX GUI 자체 hang을 감지할 수 있는 heartbeat 지점을 실제 구�
 | Requirement | Component | Task/Runtime | Test |
 |---|---|---|---|
 | REQ-HMI-001 | Repository + Cluster View | ModelTask + GuiTask | T-HMI-001 |
-| REQ-HMI-004 | Parking Model/View | ModelTask + GuiTask | T-HMI-004 |
+| REQ-HMI-004 | Collision Warning Model/View | ModelTask + GuiTask | T-HMI-004 |
 | REQ-HMI-007 | ValidityManager | ModelTask | T-HMI-007 |
 | REQ-HMI-008 | CommandPublisher | GuiTask → CommandTxTask | T-HMI-008 |
 | REQ-HMI-013 | RTOS separation | CanRx/Model/Gui tasks | T-HMI-013 |
@@ -552,7 +552,7 @@ TouchGFX GUI 자체 hang을 감지할 수 있는 heartbeat 지점을 실제 구�
 
 ## 19. 단일 Screen 구현 계약 (2026-09-15)
 
-- Screen1 View/Presenter와 기존 Model snapshot 경로를 유지한다. ADAS/Parking/Diagnostics/Settings를 Custom Container로 구성하고 PanelController가 하나의 활성 패널을 관리한다.
+- Screen1 View/Presenter와 기존 Model snapshot 경로를 유지한다. ADAS/Collision Warning/Diagnostics/Settings를 Custom Container로 구성하고 PanelController가 하나의 활성 패널을 관리한다.
 - Box는 패널 배경으로 사용하고 텍스트·버튼 등을 부모 Container에 묶는다. Container 가시성을 바꾸고 해당 영역을 invalidate하여 잔상을 지운다. 숨김 패널의 입력·불필요한 애니메이션도 중지한다.
 - 확인 창은 ModalWindow의 show()/hide()를 사용할 수 있다. 공식 API에 따라 배경 이미지를 지정하고 화면 원점에 배치한다. 모달의 입력 차단 특성을 유지한다.
 - Critical 표시가 modal shade 뒤에 가려지지 않게 한다. 필요하면 일반 모달을 닫거나 숨긴 뒤 최상위 경고를 표시한다. 모달을 닫는 동작은 CAN 명령이나 critical 해제를 발생시키지 않는다.
@@ -562,3 +562,7 @@ TouchGFX GUI 자체 hang을 감지할 수 있는 heartbeat 지점을 실제 구�
 - 이 변경으로 다른 ECU의 메시지 계약이나 Body_User_Request 경로를 추가·수정하지 않는다.
 
 공식 근거: [TouchGFX 4.26 ModalWindow API](https://support.touchgfx.com/docs/api/classes/classtouchgfx_1_1_modal_window), [Container API](https://support.touchgfx.com/docs/api/classes/classtouchgfx_1_1_container).
+
+## 충돌주의 전환 적용 (2026-09-15)
+
+기능은 4방향 거리 기반 충돌주의이며 Gear R 전용 주차 모드가 아니다. A는 각 zone의 distance/valid/warning을 계속 제공하고, B는 모든 기어에서 패널 접근과 CRITICAL 상시 경고를 제공한다. F의 기존 안전 개입은 유지하며 A/B/E가 최종 Drive 명령을 발행하지 않는다. 방향별 제어 zone과 감속·정지·복구 수치는 [최상위 명세 §1.3](../../system/FINAL_IMPLEMENTATION_SPEC.md#13-충돌주의-기능-범위-2026-09-15-사용자-결정)의 OPEN 항목이다.

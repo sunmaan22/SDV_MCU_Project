@@ -76,12 +76,12 @@ TEST_REPORT.md
 
 ```text
 E-Stop / Critical Fault
-> Ultrasonic Parking Critical
+> Ultrasonic Collision Critical
 > ADAS Safety Request
 > Normal Driver Request
 ```
 
-- Ultrasonic Parking `CRITICAL`을 `ADAS_Request`가 해제/override하지 않는다.
+- Ultrasonic Collision `CRITICAL`을 `ADAS_Request`가 해제/override하지 않는다.
 - `valid=false`인 센서값은 정상 판단에 사용하지 않는다.
 - H735는 `Body_Command`를 직접 publish하지 않고 `Body_User_Request`만 보낸다.
 - `Final_Drive_Command`의 Publisher는 VCU 하나다.

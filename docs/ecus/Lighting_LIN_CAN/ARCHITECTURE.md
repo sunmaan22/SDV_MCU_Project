@@ -93,19 +93,20 @@
 
 ```mermaid
 flowchart LR
-    VCU[VCU] -->|Body_Command<br/>brake_lamp 자동생성| GW[Body Gateway STM32]
-    HMI[H735] -->|Body_Command<br/>turn/headlamp_brightness| GW
-    GW -->|Body_Status / Fault| VCU
-    GW -->|Body_Status| HMI
-    GW <-->|LIN| SLAVE[Body LIN Slave STM32]
-    SLAVE --> LAMP[Lamp Outputs]
+    VCU["VCU"] -->|"Body_Command"| GW["Body Gateway STM32"]
+    HMI["H735"] -->|"Body_User_Request"| VCU
+    GW -->|"Body_Status / Fault"| VCU
+    GW -->|"Body_Status"| HMI
+    GW <-->|"LIN"| SLAVE["Body LIN Slave STM32"]
+    SLAVE --> LAMP["Lamp Outputs"]
 ```
 
 ## External Interfaces
 
 | Entity | Direction | Data | Interface | Owner |
 |---|---|---|---|---|
-| VCU/H735 | RX/TX | Body_Command / Body_Status | CAN FD | F/B |
+| VCU | RX | Body_Command | CAN FD | F publisher |
+| VCU/H735/HPC | TX | Body_Status | CAN FD | F/B/E consumers |
 | LIN Slave | RX/TX | Lamp/Diagnostic | LIN | D |
 | Lamps | TX | GPIO/PWM (헤드램프는 밝기 PWM) | local | D |
 
@@ -318,7 +319,7 @@ Pin map은 실제 board schematic/CubeMX 후 작성한다.
 ### RX
 | Message | Meaning | Sender | Timeout | Action |
 |---|---|---|---|---|
-| `Body_Command` | lamp/body request (headlamp_brightness/turn/brake_lamp) | VCU/H735 | TBD | request invalid/hold policy TBD |
+| `Body_Command` | lamp/body command (headlamp_brightness/turn/brake_lamp) | VCU | TBD | request invalid/hold policy TBD |
 
 ### TX
 | Message | Meaning | Receiver | Cycle/Event |
@@ -355,7 +356,7 @@ Pin map은 실제 board schematic/CubeMX 후 작성한다.
 
 | Data | Owner | Meaning | Invalid Condition |
 |---|---|---|---|
-| `body_command` | VCU/H735 | desired lamp states (헤드램프 밝기 포함) | CAN timeout/invalid |
+| `body_command` | VCU | desired lamp states (헤드램프 밝기 포함) | CAN timeout/invalid |
 | `lamp_state` | LIN Slave | actual logical lamp state | output/local fault |
 | `lin_slave_valid` | Gateway | node health | response timeout |
 | `body_status` | Gateway | mapped CAN status | source invalid |

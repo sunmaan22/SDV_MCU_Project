@@ -2,7 +2,7 @@
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
-> **2026-09-15 범위 변경:** Rear Camera / Rear Vision / 주차 Vision 기능을 삭제했다. HPC는 전방 카메라 1대의 COCO 기반 객체인식만 담당하며, 주차 판단은 Ultrasonic(A)이 전담한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §3.4, §4.2, §4.3, §8 E HPC](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경:** Rear Camera / Rear Vision / 주차 Vision 기능을 삭제했다. HPC는 전방 카메라 1대의 COCO 기반 객체인식만 담당하며, 초음파 충돌 위험도 판단은 Ultrasonic(A)이 전담한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §3.4, §4.2, §4.3, §8 E HPC](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
 > 문서 목적: Raspberry Pi 기반 Front Camera Vision과 HPC 기능을 **어떤 Linux Service / Process / Thread 구조로 구현하는지** 설명한다.
 > 기능 요구사항은 `SPECIFICATION.md`, 검증 결과는 `TEST_REPORT.md`를 기준으로 한다.
@@ -47,7 +47,7 @@
 
 제외:
 - Rear Camera capture / Rear Vision (삭제됨)
-- 주차 판단 (A Ultrasonic 전담)
+- 초음파 충돌 위험도 판단 (A Ultrasonic 전담)
 - Gear D/R에 따른 카메라 전환
 - Motor/Servo PWM
 - VCU final arbitration
@@ -62,7 +62,7 @@
 | E / Vision 담당 | Camera pipeline, Process/Thread, COCO model, performance |
 | F / VCU·CAN | Request/Status contract, valid/timeout, Ultrasonic 우선순위 |
 | B / H735 | 표시 가능한 ADAS semantic result |
-| A / Ultrasonic | 주차 판단은 A 단독 — E는 관여하지 않음 |
+| A / Ultrasonic | 초음파 충돌 위험도 판단은 A 단독 — E는 관여하지 않음 |
 | 통합 담당 | CAN adapter, service startup |
 | 테스트 담당 | FPS, latency, process crash, camera disconnect |
 
@@ -88,7 +88,7 @@
 | Front Camera 1대만 사용 | Rear Vision/주차 Vision 삭제(2026-09-15) |
 | Camera Raw Frame은 CAN FD로 전송하지 않음 | bandwidth / 역할 분리 |
 | Final vehicle control은 VCU 소유 | 안전 / 책임 분리 |
-| 주차 판단은 A(Ultrasonic) 단독 소유 | E는 주차 semantic/request를 생성하지 않음 |
+| 초음파 충돌 위험도 판단은 A(Ultrasonic) 단독 소유 | E는 주차 semantic/request를 생성하지 않음 |
 | Front Camera CSI 후보 | 현재 프로젝트 방향 |
 | Pi에 내장 CAN FD 없음 | 외장 CAN FD interface 필요 |
 | FPS/모델/Resolution은 아직 TBD | 실제 측정 필요 |
@@ -99,12 +99,12 @@
 
 ```mermaid
 flowchart LR
-    FCAM[Front Camera] --> HPC[Raspberry Pi HPC / Vision]
-    VCU[VCU] -->|Vehicle State| HPC
-    HPC -->|ADAS_Request| VCU
-    HPC -->|Vision_Status| HMI[H735 Cockpit]
-    HPC -->|Vision_Status| VCU
-    HPC -->|Local health/log| LOG[Local runtime logger]
+    FCAM["Front Camera"] --> HPC["Raspberry Pi HPC / Vision"]
+    VCU["VCU"] -->|"Vehicle State"| HPC
+    HPC -->|"ADAS_Request"| VCU
+    HPC -->|"Vision_Status"| HMI["H735 Cockpit"]
+    HPC -->|"Vision_Status"| VCU
+    HPC -->|"Local health/log"| LOG["Local runtime logger"]
 ```
 
 ## External Interfaces
@@ -130,7 +130,7 @@ flowchart LR
 | raw frame은 Pi 내부에서만 사용 | CAN bandwidth 보호 | Constraint |
 | semantic result에 timestamp/valid 유지 | stale data 판별 | Reliability |
 | logging을 비동기 처리 | Vision critical path block 방지 | Performance |
-| 주차 semantic/request 미생성 | 주차는 A 단독 판단, E/F 중재 단순화 | Constraint |
+| 주차 semantic/request 미생성 | 충돌주의는 A 단독 판단, E/F 중재 단순화 | Constraint |
 
 ---
 
@@ -470,7 +470,7 @@ VCU + H735
 |---|---|---|---|---|
 | ADR-VIS-001 | 영상처리는 Raspberry Pi에서 수행 | STM32 Vision | compute/memory/OpenCV/AI | Pi health/latency 관리 필요 |
 | ADR-VIS-002 | raw frame을 CAN으로 보내지 않음 | image CAN transfer | bandwidth/role separation | H735는 semantic result만 표시 |
-| ADR-VIS-003 | Front Camera 1대 + COCO 객체인식 전용 | Front/Rear 2-camera 구조(2026-09-15 이전) | Rear Vision/주차 Vision 삭제, 주차는 A 전담 | Rear 관련 IPC/state 제거로 구조 단순화 |
+| ADR-VIS-003 | Front Camera 1대 + COCO 객체인식 전용 | Front/Rear 2-camera 구조(2026-09-15 이전) | Rear Vision/주차 Vision 삭제, 충돌주의는 A 전담 | Rear 관련 IPC/state 제거로 구조 단순화 |
 | ADR-VIS-004 | CAN interface는 CanService single owner | 각 service 직접 CAN 접근 | consistency/reliability | IPC 필요 |
 | ADR-VIS-005 | bounded queue와 latest-data 정책 | unbounded queue | freshness/latency | 일부 frame drop 허용 |
 

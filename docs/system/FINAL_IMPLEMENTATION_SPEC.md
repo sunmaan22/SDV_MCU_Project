@@ -45,7 +45,7 @@ TEST_REPORT.md
 
 | 영역 | 고정 규칙 |
 |---|---|
-| A Ultrasonic | 4방향(FL/FR/RL/RR) 거리 / valid / warning / local fault owner — 주차 판단 전담 |
+| A Ultrasonic | 4방향(FL/FR/RL/RR) 거리 / valid / warning / local fault owner — 초음파 충돌 위험도 판단 전담 |
 | B H735 | UI 표시 + 사용자 Request 생성 + `DTC_Event` 실시간 구독·표시(Active only, History 없음) |
 | C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF/가변저항) owner + Gear/E-Stop 물리 입력 owner (E-Stop 로컬 즉시 차단) |
 | D Gateway | CAN↔LIN mapping + LIN Master schedule owner |
@@ -76,12 +76,12 @@ TEST_REPORT.md
 
 ```text
 E-Stop / Critical Fault
-> Ultrasonic Parking Critical
+> Ultrasonic Collision Critical
 > ADAS Safety Request
 > Normal Driver Request
 ```
 
-- Vision(전방 객체 회피 요청)은 Ultrasonic Parking `CRITICAL`을 해제/override하지 않는다.
+- Vision(전방 객체 회피 요청)은 Ultrasonic Collision `CRITICAL`을 해제/override하지 않는다.
 - `valid=false`인 센서값은 정상 판단에 사용하지 않는다.
 - `SafetyTask`는 final command를 직접 쓰지 않는다.
 - `VcuControlTask`만 `final_command`의 writer다.
@@ -92,6 +92,15 @@ E-Stop / Critical Fault
 - E-Stop은 C가 로컬 GPIO/EXTI로 직접 읽고, CAN 경유 없이 즉시 Motor Driver Enable/STBY를 차단한다. C는 E-Stop 상태를 `Driver_Input.estop_status`로 CAN 발행해 F가 `Vehicle_State`/arbitration에 반영하지만, 모터 차단 자체는 CAN 통신 상태와 무관하게 동작해야 한다.
 
 ---
+
+### 1.3 충돌주의 기능 범위 (2026-09-15 사용자 결정)
+
+- Parking/주차 보조 기능을 **충돌주의(Collision Warning)** 로 대체한다. 주차 공간 탐색, 주차 경로 생성, 자동 주차 조향은 포함하지 않는다. 기어 P는 기존 기어 상태이며 기능명 변경과 무관하다.
+- A는 기어 R 진입을 전제로 하지 않고 FL/FR/RL/RR의 거리·valid·warning을 생성한다. B는 모든 기어에서 4방향 충돌주의 패널에 접근할 수 있게 한다. Gear R 전용 화면 자동 전환은 요구하지 않는다.
+- B는 유효하고 최신인 zone별 위험도와 센서 invalid/통신 stale을 구분한다. CRITICAL 경고는 상세 패널을 닫아도 기본 계기판에서 보이며, 패널 닫기가 경고 해제나 VCU 안전 개입 해제가 되어서는 안 된다.
+- 사용자는 **기존 안전 개입 유지**를 선택했다. F의 우선순위는 E-Stop/Critical Fault > Ultrasonic Collision Critical > ADAS Safety Request > Driver Request다. A는 위험도를 산출하고, F만 최종 감속·정지 명령을 결정하며 C가 출력한다.
+- 전후진별 제어 대상 zone, 정차 시 처리, 거리 threshold/hysteresis, 감속·정지·복구 조건은 `DEC-PER-003`, `DEC-CTRL-011/012`의 OPEN 결정이다. 4방향 표시를 모든 방향의 동일 제동 규칙으로 해석하지 않는다. E의 전방 카메라 ADAS 범위는 유지한다.
+- `Ultrasonic_Status` 메시지명, publisher/consumer 및 zone 필드는 유지한다. 새 `Parking_Status`/`Collision_Status` CAN 메시지를 추가하지 않는다. payload/주기/timeout 수치는 계속 OWNER INPUT이다.
 
 # 2. 실행 환경 고정
 
@@ -116,7 +125,7 @@ Raspberry Pi
 
 아래 값은 **Project Owner가 직접 확정**한다. 담당자나 AI가 독자적으로 최종값을 바꾸지 않는다.
 
-Status는 `OPEN / FROZEN` 중 하나를 사용한다.
+Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결정의 이력이며 구현 대상이 아니다.
 
 ## 3.1 Hardware Freeze
 
@@ -130,14 +139,14 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | `DEC-HW-006` | CAN FD Transceiver 모델 | OWNER INPUT | OPEN |
 | `DEC-HW-007` | LIN Transceiver 모델 | OWNER INPUT | OPEN |
 | `DEC-HW-008` | Pi CAN FD Interface | OWNER INPUT | OPEN |
-| `DEC-HW-009` | Ultrasonic Sensor 모델/개수 | OWNER INPUT | OPEN |
+| `DEC-HW-009` | Ultrasonic Sensor 모델 | OWNER INPUT (개수 4개는 DEC-HW-025에서 FROZEN) | OPEN |
 | `DEC-HW-010` | Motor 모델 | OWNER INPUT | OPEN |
 | `DEC-HW-011` | Motor Driver | OWNER INPUT | OPEN |
 | `DEC-HW-012` | Encoder/Hall | 미사용 — Speed/RPM 표시는 명령값(PWM 등) 기반 추정으로 대체 | REMOVED |
 | `DEC-HW-013` | RC Servo | OWNER INPUT | OPEN |
 | `DEC-HW-014` | Ambient Sensor | 미사용 — Ambient 기능 삭제 | REMOVED |
 | `DEC-HW-015` | Front Camera | OWNER INPUT (전방 전용, COCO 기반 객체인식용) | OPEN |
-| `DEC-HW-016` | Rear Camera | 미사용 — 주차는 초음파 4방향 전용, Rear Vision 삭제 | REMOVED |
+| `DEC-HW-016` | Rear Camera | 미사용 — 충돌주의는 초음파 4방향 전용, Rear Vision 삭제 | REMOVED |
 | `DEC-HW-017` | Accelerator Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-018` | Brake Sensor | OWNER INPUT | OPEN |
 | `DEC-HW-019` | Steering Input Sensor | OWNER INPUT | OPEN |
@@ -223,7 +232,7 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 |---|---|---|---|
 | `DEC-HMI-001` | Cluster 필수 표시항목 | OWNER INPUT | OPEN |
 | `DEC-HMI-002` | Warning 표시 우선순위 | OWNER INPUT | OPEN |
-| `DEC-HMI-003` | 전방 객체 감지 팝업 정책 (구 Gear R Parking 화면) | OWNER INPUT | OPEN |
+| `DEC-HMI-003` | 전방 객체 알림 및 4방향 충돌주의 overlay/panel 상세 정책 | OWNER INPUT | OPEN |
 | `DEC-HMI-004` | DTC Clear 구현 여부 | OWNER INPUT | OPEN |
 | `DEC-HMI-005` | TouchGFX update/frame budget | OWNER INPUT | OPEN |
 | `DEC-BODY-001` | 구현 Lamp 범위 | 좌/우 턴시그널 + 헤드램프(밝기 가변) + 브레이크등 | FROZEN |
@@ -277,7 +286,7 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 
 ## 4.3 `ADAS_Request`
 
-> 범위: 전방 객체 감지에 따른 회피/감속 요청만 담당한다. 주차 판단은 절대 포함하지 않는다 — 주차는 `Ultrasonic_Status`가 F에 직접 제공하고 §1.2 우선순위(Ultrasonic Parking Critical > ADAS Safety Request)를 따른다.
+> 범위: 전방 객체 감지에 따른 회피/감속 요청만 담당한다. 초음파 위험도는 A가 `Ultrasonic_Status`로 F에 직접 제공한다. E는 A의 위험도를 재판정하거나 해제하지 않으며 §1.2 우선순위를 따른다.
 
 | Field | Unit / Type | Final |
 |---|---|---|
@@ -309,6 +318,8 @@ Status는 `OPEN / FROZEN` 중 하나를 사용한다.
 | steering_target | TBD | OWNER INPUT |
 | command_valid | bool | OWNER INPUT |
 | fault_flags | bitfield | OWNER INPUT |
+
+명령값 기반 추정 speed/RPM은 실제 정지·감속의 측정값이 아니다. D↔R 허용을 추정 speed=0만으로 확정하지 않는다. 실측 피드백이 없는 구성의 정지 확인/전환 대기/복구 기준은 `DEC-CTRL-004/005`에서 bench 근거와 함께 결정한다. brake_lamp 판정도 실제 감속으로 단정하지 않고 유효한 brake 입력 및 명령 감속 기반 정책을 `DEC-CTRL-020`에서 구체화한다.
 
 ## 4.6 `Body_User_Request`
 
@@ -506,7 +517,7 @@ VCU/Drive 제어 코드 작성 전에:
 | Week 2 계측 후~Week 3 통합 baseline 빌드 전 | Gate D: RTOS/Linux 자원·주기·watchdog | 대표 통신/GUI/제어 부하에서 period/jitter, stack high-water, queue 최대 점유/overflow, starvation, fault 경로 측정 |
 | 관련 기능 통합 전, 늦어도 전체 baseline 직전 | Perception/Vision/HMI/Body 잔여 결정 | 실제 장착·보정·baseline 계측 후 수치와 기능 범위 결정, 시험의 Target/Expected에서 TBD 제거 |
 
-주차는 [WEEKLY_PLAN](../getting_started/WEEKLY_PLAN.md)의 목표이며 달력 경과만으로 gate를 통과하지 않는다.
+주차별 일정은 [WEEKLY_PLAN](../getting_started/WEEKLY_PLAN.md)의 목표이며 달력 경과만으로 gate를 통과하지 않는다.
 Bring-up, RTOS skeleton, mock, 계측용 bench 코드는 OPEN 값으로도 작성할 수 있다.
 이때 값은 `BENCH ONLY / NOT FROZEN` 설정으로 분리하고 최종 통합 상수나 PASS 근거로 승격하지 않는다.
 Gate D 이전의 계측용 통합 빌드는 허용하되 최종 통합 baseline으로 취급하지 않는다.
@@ -565,7 +576,7 @@ Front Camera(1대) → YOLO/COCO 객체인식 → detected_class + direction/zon
 → Vision_Status(팝업용, B로) / ADAS_Request(회피요청, F로) → can_service
 ```
 
-Raw image는 CAN으로 보내지 않는다. Rear Camera/Rear Vision/주차 Vision 기능은 삭제되었다 (`DEC-HW-016`, `DEC-VIS-002/006/007` REMOVED) — 주차 판단은 A(Ultrasonic)가 전담한다.
+Raw image는 CAN으로 보내지 않는다. Rear Camera/Rear Vision/주차 Vision 기능은 삭제되었다 (`DEC-HW-016`, `DEC-VIS-002/006/007` REMOVED) — 초음파 충돌 위험도 판단은 A(Ultrasonic)가 전담한다.
 
 ## F VCU
 

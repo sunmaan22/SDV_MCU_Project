@@ -21,7 +21,7 @@ VCU Final_Drive_Command
 → DC Motor + RC Servo
 ```
 
-이 ECU는 Driver/Gear 입력을 읽어 발행하고, VCU가 승인한 최종 명령을 실제 actuator output으로 바꾼다. E-Stop만 예외로 로컬에서 즉시 처리한다. ADAS/Parking arbitration은 하지 않는다.
+이 ECU는 Driver/Gear 입력을 읽어 발행하고, VCU가 승인한 최종 명령을 실제 actuator output으로 바꾼다. E-Stop만 예외로 로컬에서 즉시 처리한다. ADAS/Collision Warning arbitration은 하지 않는다.
 
 ## 이미 고정된 규칙
 

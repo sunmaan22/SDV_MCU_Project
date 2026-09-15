@@ -4,7 +4,7 @@
 
 > **2026-09-15 범위 변경 (1차):** `Driver_Input`(가속/브레이크/조향) publisher가 F에서 C로 이전됐다. F는 더 이상 GPIO/ADC로 Driver Input을 직접 읽지 않으며, `DriverInputTask`/`DriverInputAdapter`는 제거하고 C가 발행한 `Driver_Input`을 CAN RX로 수신해 arbitration에 사용한다. `Vision_Request`는 `ADAS_Request`로 명칭을 통일했다.
 >
-> **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 물리 GPIO를 전혀 갖지 않으며(`LocalInputTask`/`LocalInputAdapter` 제거), C가 로컬에서 E-Stop을 즉시 차단(CAN 비의존)한 뒤 `Driver_Input.gear`/`estop_status`로 보고한 값을 CAN으로만 받는다. Pi DTC Manager(History DB)는 삭제됐다 — `DTC_Event`는 B(IVI)가 실시간(Active만) 구독·표시하며, F/Pi 어디에도 지속 저장하지 않는다.
+> **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear/E-Stop 입력 GPIO를 갖지 않으며(`LocalInputTask`/`LocalInputAdapter` 제거), C가 로컬에서 E-Stop을 즉시 차단(CAN 비의존)한 뒤 `Driver_Input.gear`/`estop_status`로 보고한 값을 CAN으로만 받는다. Pi DTC Manager(History DB)는 삭제됐다 — `DTC_Event`는 B(IVI)가 실시간(Active만) 구독·표시하며, F/Pi 어디에도 지속 저장하지 않는다.
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -32,7 +32,7 @@ VCU는 프로젝트에서 **최종 차량 판단과 안전 우선순위 적용**
 ```text
 Driver_Input (CAN, C 발행 — accel/brake/steering/gear/estop_status)
 ADAS_Request
-Ultrasonic_Status (Parking Critical 포함)
+Ultrasonic_Status (Collision Critical 포함)
 Peer ECU Status/Fault
         ↓
        VCU
@@ -85,16 +85,16 @@ Final Speed / Steering / Enable
 # 4. Context View
 
 ```mermaid
-flowchart LR
-    DRIVE[Drive ECU] -->|Driver_Input<br/>accel/brake/steering/gear/estop_status| VCU[VCU]
-    HPC[HPC Vision] -->|ADAS_Request| VCU
-    US[Ultrasonic ECU] -->|Ultrasonic_Status| VCU
-    DRIVE -->|Drive_Status| VCU
-    BODY[Body Gateway] -->|Body Status| VCU
-    ALL[All ECUs] -->|Heartbeat / DTC| VCU
-    VCU -->|Final Drive Command| DRIVE
-    VCU -->|Vehicle State| HMI[H735]
-    VCU -->|DTC_Event 실시간| HMI
+flowchart TD
+    DRIVE["Drive ECU"] -->|"Driver_Input / accel/brake/steering/gear/estop_status"| VCU["VCU"]
+    HPC["HPC Vision"] -->|"ADAS_Request"| VCU
+    US["Ultrasonic ECU"] -->|"Ultrasonic_Status"| VCU
+    DRIVE -->|"Drive_Status"| VCU
+    BODY["Body Gateway"] -->|"Body Status"| VCU
+    ALL["All ECUs"] -->|"Heartbeat / DTC"| VCU
+    VCU -->|"Final Drive Command"| DRIVE
+    VCU -->|"Vehicle State"| HMI["H735"]
+    VCU -->|"DTC_Event 실시간"| HMI
 ```
 
 # 5. Solution Strategy
@@ -146,7 +146,7 @@ Peer DTC_Event(CAN RX)
 | `SignalFreshnessManager` | timeout/timestamp 관리 |
 | `VehicleStateManager` | P/R/N/D, ready/mode/state 관리 |
 | `SafetyManager` | E-Stop(CAN 필드)/critical fault, override |
-| `ArbitrationManager` | Driver/ADAS/Ultrasonic Parking 우선순위 적용 (Parking Critical이 ADAS_Request보다 항상 우선) |
+| `ArbitrationManager` | Driver/ADAS/Ultrasonic Collision Warning 우선순위 적용 (Collision Critical이 ADAS_Request보다 항상 우선) |
 | `FinalCommandRepository` | final speed/steering/enable single writer data |
 | `DtcManager` | local/peer fault code/status/severity 실시간 통합 (지속 저장 없음) |
 | `CanTxService` | final command/state/heartbeat/dtc TX |
@@ -226,7 +226,7 @@ sequenceDiagram
     participant TX as CanTxTask
     HPC->>RX: ADAS_Request
     RX->>VC: valid/fresh request
-    VC->>VC: driver + Ultrasonic Parking Critical + safety + mode arbitration
+    VC->>VC: driver + Ultrasonic Collision Critical + safety + mode arbitration
     VC->>TX: final command
 ```
 
@@ -279,7 +279,7 @@ F는 Gear/E-Stop을 포함해 어떤 driver 입력용 물리 GPIO도 갖지 않�
 |---|---|---|
 | `Driver_Input` | C | 가속/브레이크/조향/gear/estop_status (publisher가 C로 이전) |
 | `ADAS_Request` | E(HPC) | 전방 객체 회피 요청 (주차 사유 없음) |
-| `Ultrasonic_Status` | A | distance/warning/Parking Critical |
+| `Ultrasonic_Status` | A | distance/warning/Collision Critical |
 | `Drive_Status` | C | RPM(estimated)/speed(estimated)/health |
 | `Body_Status` | D | body/LIN status |
 | `ECU_Heartbeat` | All | peer health |
@@ -303,7 +303,7 @@ F는 Gear/E-Stop을 포함해 어떤 driver 입력용 물리 GPIO도 갖지 않�
 | `driver_input` | CanRxTask repository | C가 발행한 `Driver_Input`(gear/estop_status 포함)의 최신 유효값 |
 | `vehicle_state` | VcuControlTask | mode/gear/readiness |
 | `adas_request` | CanRxTask repository | latest valid `ADAS_Request` |
-| `parking_status` | CanRxTask repository | latest `Ultrasonic_Status` (Critical 포함) |
+| `collision_status` | CanRxTask repository | latest `Ultrasonic_Status` (Critical 포함) |
 | `safety_override` | SafetyTask | critical override (E-Stop CAN 필드 포함) |
 | `final_command` | VcuControlTask | final speed/steer/enable |
 | `dtc_state` | DiagnosticTask | active/inactive (history 없음) |
@@ -390,7 +390,7 @@ all required healthy?
 
 # 16. Review Checklist
 
-- [ ] Driver/ADAS/Parking/Fault priority가 설명 가능하다.
+- [ ] Driver/ADAS/Collision Warning/Fault priority가 설명 가능하다.
 - [ ] Final command owner가 하나다.
 - [ ] F가 물리 GPIO를 갖지 않고 CAN으로만 입력을 받음이 명확하다.
 - [ ] E-Stop의 실제 차단(C)과 F의 상태 반영이 구분되어 있다.

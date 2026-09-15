@@ -66,7 +66,7 @@
 - Closed-loop Speed Control/PID (실측 feedback이 없으므로 범위 밖; `DEC-CTRL-018`은 OPEN으로 남지만 실측 기반 PID는 전제하지 않는다)
 - Gear P/R/N/D 최종 상태/모드 결정 (C는 읽어서 보고만 함, 최종 결정은 F)
 - ADAS Camera Processing
-- ADAS/Parking 요청의 최종 우선순위 판단
+- ADAS/Collision Warning 요청의 최종 우선순위 판단
 - Ultrasonic 거리 계산
 - H735 UI Rendering
 - LIN Body Network
@@ -96,7 +96,7 @@
 | Preconditions | ECU 초기화 완료 |
 | Trigger | E-Stop 활성화 (눌림) |
 | Normal Flow | EXTI ISR 감지 → Motor Driver Enable/STBY 즉시 로컬 차단 (CAN/RTOS Task 경유 없이 최소 지연) → `DriverInputTask`가 `estop_status`를 `Driver_Input`에 포함해 CAN 발행 |
-| Postconditions | CAN 통신 상태와 무관하게 모터가 즉시 정지 상태가 되고, F는 후속 CAN 프레임으로 상태를 인지함 |
+| Postconditions | CAN 통신 상태와 무관하게 모터 구동 출력을 즉시 차단하고, F는 후속 CAN 프레임으로 상태를 인지함. 관성에 의한 실제 정지 시간은 별도 실측 대상이며 추정 speed=0은 정지 증거가 아님 |
 
 E-Stop 차단은 이 ECU에서 가장 높은 우선순위로 처리하며, VCU의 `Final_Drive_Command` 수신 여부와 무관하게 동작한다.
 
@@ -138,25 +138,25 @@ E-Stop 차단은 이 ECU에서 가장 높은 우선순위로 처리하며, VCU�
 
 ```mermaid
 flowchart TD
-    ESTOP[E-Stop GPIO/EXTI] -->|즉시, CAN 비의존| ESACT[Motor Enable/STBY 로컬 차단]
+    ESTOP["E-Stop GPIO/EXTI"] -->|"즉시, CAN 비의존"| ESACT["Motor Enable/STBY 로컬 차단"]
     ESTOP --> DI
 
-    RF[RF 수신기 / 가변저항 / Gear] --> DI[DriverInputTask]
-    DI --> DIPUB[Driver_Input CAN TX<br/>accel/brake/steering/gear/estop_status]
+    RF["RF 수신기 / 가변저항 / Gear"] --> DI["DriverInputTask"]
+    DI --> DIPUB["Driver_Input CAN TX / accel/brake/steering/gear/estop_status"]
 
-    A[VCU CAN Command] --> B[CanRxTask]
-    B --> C[Command Validation]
+    A["VCU CAN Command"] --> B["CanRxTask"]
+    B --> C["Command Validation"]
     C --> D{Valid & Fresh?}
-    D -->|No| E[Safe / Degraded State]
-    D -->|Yes| F[ControlTask]
+    D -->|"No"| E["Safe / Degraded State"]
+    D -->|"Yes"| F["ControlTask"]
 
-    F --> M[Motor PWM / DIR]
-    F --> S[Servo PWM]
-    M --> EST[Speed/RPM 추정 함수]
-    EST --> ST[Drive Status]
+    F --> M["Motor PWM / DIR"]
+    F --> S["Servo PWM"]
+    M --> EST["Speed/RPM 추정 함수"]
+    EST --> ST["Drive Status"]
     F --> ST
     E --> ST
-    ST --> CAN[CAN FD TX]
+    ST --> CAN["CAN FD TX"]
 ```
 
 ---

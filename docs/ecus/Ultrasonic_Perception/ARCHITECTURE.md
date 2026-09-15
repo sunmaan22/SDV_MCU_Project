@@ -2,7 +2,7 @@
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
-> **2026-09-15 범위 변경:** Sensor/Zone id를 FL/FR/RL/RR 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 주차 판단은 A 단독이며 E(Vision)와의 fusion 구조는 없다.
+> **2026-09-15 범위 변경:** Sensor/Zone id를 FL/FR/RL/RR 4방향으로 고정했다 (`DEC-HW-025`, `DEC-PER-001` FROZEN). 초음파 충돌 위험도 판단은 A 단독이며 E(Vision)와의 fusion 구조는 없다.
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -53,7 +53,7 @@
 
 제외:
 - Motor/Servo 직접 제어
-- Parking 최종 stop 판단
+- Collision Warning 최종 stop 판단
 - Camera vision
 - H735 UI
 - DTC history DB
@@ -64,8 +64,8 @@
 |---|---|
 | A / Ultrasonic 담당 | 센서 측정, 필터, RTOS task, pin/timer 구조 |
 | F / VCU·CAN 통합 | distance/warning/validity, CAN cycle, timeout |
-| B / H735 | Parking 화면에서 사용할 distance/warning 의미 |
-| E / HPC | 참고용 ultrasonic status 소비 (fusion 판단 없음, 주차는 A 단독) |
+| B / H735 | Collision Warning 화면에서 사용할 distance/warning 의미 |
+| E / HPC | 참고용 ultrasonic status 소비 (fusion 판단 없음, 충돌주의는 A 단독) |
 | 테스트 담당 | 거리 정확도, timeout, crosstalk, RTOS timing |
 
 ---
@@ -100,11 +100,11 @@
 
 ```mermaid
 flowchart LR
-    SENSORS[Ultrasonic Sensors] -->|Trigger / Echo| US[STM32 Ultrasonic ECU]
-    US -->|Ultrasonic_Status| VCU[VCU]
-    US -->|Distance / Warning| HMI[H735 Cockpit]
-    US -->|Distance / Warning| HPC[Raspberry Pi HPC]
-    US -->|Fault / Heartbeat| DIAG[Diagnostics / VCU]
+    SENSORS["Ultrasonic Sensors"] -->|"Trigger / Echo"| US["STM32 Ultrasonic ECU"]
+    US -->|"Ultrasonic_Status"| VCU["VCU"]
+    US -->|"Distance / Warning"| HMI["H735 Cockpit"]
+    US -->|"Distance / Warning"| HPC["Raspberry Pi HPC"]
+    US -->|"Fault / Heartbeat"| DIAG["Diagnostics / VCU"]
 ```
 
 ## External Interfaces
@@ -113,7 +113,7 @@ flowchart LR
 |---|---|---|---|---|
 | Ultrasonic Sensor Array | RX/TX | Trigger / Echo | GPIO + Timer Input Capture | A |
 | VCU | TX | distance, warning, valid, fault | CAN FD | F consumer |
-| H735 | TX | parking display data | CAN FD | B consumer |
+| H735 | TX | collision_warning display data | CAN FD | B consumer |
 | Raspberry Pi HPC | TX | perception status | CAN FD | E consumer |
 | Diagnostics | TX | local fault candidate / health | CAN FD | F/Pi consumer |
 
@@ -551,7 +551,7 @@ Queue/Sensor health ──┤
 | RISK-US-001 | Sensor model 미확정 | timing/range/power 설계 미확정 | 부품 확정 + datasheet review | A/Team |
 | RISK-US-002 | Echo voltage가 MCU 허용범위 초과 가능 | GPIO 손상/오동작 | logic level 확인 + level shifting | A |
 | RISK-US-003 | 여러 Sensor crosstalk | false distance | sequential scan + gap + physical layout test | A |
-| RISK-US-004 | 4방향 순차 scan으로 zone당 update 간격 증가 | stale parking data | scan period profiling | A/F |
+| RISK-US-004 | 4방향 순차 scan으로 zone당 update 간격 증가 | stale collision_warning data | scan period profiling | A/F |
 | RISK-US-005 | task priority/stack 미조정 | deadline miss/reset | RTOS profiling | A |
 | RISK-US-006 | CAN Matrix 미확정 | integration 재작업 | signal meaning/unit 먼저 freeze | A/F |
 
@@ -605,3 +605,7 @@ Queue/Sensor health ──┤
 - [ ] stack/queue/timing profiling 항목이 있다.
 - [ ] health/watchdog-ready 구조가 있다.
 - [ ] Requirement → Component/Task → Test 연결이 있다.
+
+## 충돌주의 전환 적용 (2026-09-15)
+
+기능은 4방향 거리 기반 충돌주의이며 Gear R 전용 주차 모드가 아니다. A는 각 zone의 distance/valid/warning을 계속 제공하고, B는 모든 기어에서 패널 접근과 CRITICAL 상시 경고를 제공한다. F의 기존 안전 개입은 유지하며 A/B/E가 최종 Drive 명령을 발행하지 않는다. 방향별 제어 zone과 감속·정지·복구 수치는 [최상위 명세 §1.3](../../system/FINAL_IMPLEMENTATION_SPEC.md#13-충돌주의-기능-범위-2026-09-15-사용자-결정)의 OPEN 항목이다.

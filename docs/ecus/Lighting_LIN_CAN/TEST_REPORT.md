@@ -221,7 +221,7 @@ Gateway의 CAN↔LIN 변환, LIN Master↔Slave 통신, Lighting output(헤드�
 
 | Flow | Expected | Actual | Result |
 |---|---|---|---|
-| H735/VCU → CAN → Gateway → LIN → Lamp | requested lamp action(밝기/턴/브레이크) | NOT RUN | TBD |
+| H735 Body_User_Request → VCU Body_Command → Gateway → LIN → Lamp | requested lamp action(밝기/턴/브레이크) | NOT RUN | TBD |
 | VCU 감속 감지 → Body_Command.brake_lamp → Gateway → LIN → Lamp | brake_lamp 자동 점등 | NOT RUN | TBD |
 | Slave Fault → LIN → Gateway → CAN DTC | fault reaches diagnostics | NOT RUN | TBD |
 
@@ -298,3 +298,11 @@ RESULT: NOT RUN
 - Lamp driver/load 정격 확정 (헤드램프 밝기 PWM 포함)
 - CAN Matrix 확정
 - RTOS priority/stack/queue depth 실측 후 확정
+
+## 2026-09-15 변경 회귀 시험 계획
+
+추가 계획이며 기존 실기 PASS의 범위를 확대하지 않는다. 수치 기준은 최상위 명세 동결 후 적용한다.
+
+| ID | 입력/조건 | 기대 결과 | 결과 |
+|---|---|---|---|
+| ROUTE-BODY-01 | H735 헤드램프/턴 요청 후 CAN 관찰 | Body_User_Request는 B→F, Body_Command는 F→D만 발생 | NOT RUN |
