@@ -1,12 +1,14 @@
 # Motor + Steering Control Software Architecture
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
+> **2026-09-17 E-Stop 전체 삭제:** 데모용 프로젝트라는 이유로 E-Stop 기능을 소프트웨어·하드웨어 전부 삭제했다 (`FINAL_IMPLEMENTATION_SPEC.md` `DEC-HW-020/027`, `DEC-CTRL-006` REMOVED 참고). `EstopLocalCutoff` 컴포넌트, E-Stop EXTI ISR 경로, Context View/Runtime View의 E-Stop 노드, Pin Map의 E-Stop 행 등을 전부 제거했다. Gear GPIO의 F→C 이전(2026-09-15)은 별개 결정이라 유지한다.
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
 > **2026-09-15 범위 변경 (1차):** Encoder/Hall 기반 Feedback 구조를 삭제했다 (`DEC-HW-012`, `DEC-CTRL-017` REMOVED). `FeedbackTask`/`FeedbackEstimator`/`CaptureAdapter`는 제거하고, RF/가변저항 Driver 입력을 읽는 `DriverInputTask`를 신설했다 (`Driver_Input` publisher가 F에서 C로 이전). `Motor_RPM`/`Vehicle_Speed`는 모터 명령값(PWM) 기반 추정 함수로 대체한다 (`DEC-CTRL-021`, 실측 아님).
 >
-> **2026-09-15 범위 변경 (2차):** E-Stop/Gear GPIO를 F에서 C로 이전했다 (`DEC-HW-020`/`DEC-HW-026` FROZEN owner node). E-Stop은 EXTI ISR에서 Motor Driver Enable/STBY를 즉시 로컬 차단한다 (CAN 비의존, 이 ECU에서 유일하게 ISR이 안전 액션을 직접 수행하는 예외). `DriverInputTask`가 gear/estop_status를 `Driver_Input`에 포함해 CAN 발행한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1, §1.2, §3.1, §4.8.1, §6, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경 (2차):** Gear GPIO를 F에서 C로 이전했다 (`DEC-HW-026` FROZEN owner node). `DriverInputTask`가 gear를 `Driver_Input`에 포함해 CAN 발행한다(당시 함께 이전했던 E-Stop 관련 내용은 2026-09-17에 기능 자체가 삭제됐다). 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1, §1.2, §3.1, §4.8.1, §6, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -30,10 +32,11 @@
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| v0.5 | 2026-09-17 | C 사용자 | E-Stop 기능 전체 삭제 (소프트웨어·하드웨어, 데모용 프로젝트 근거) — `EstopLocalCutoff` 컴포넌트/ISR 경로 제거 |
 | v0.4 | 2026-09-17 | C 사용자 요청 | RF 기어·조향·속도 요청, Driver_Input 시작 순서, RF 오류/두절 시험 계획; 실기 NOT RUN |
 | v0.1 | 2026-09-09 | Team | Initial filled RTOS architecture example |
 | v0.2 | 2026-09-15 | Team | Encoder/Hall Feedback 구조 삭제, `DriverInputTask` 신설(RF/가변저항 읽기 + `Driver_Input` publish), Motor_RPM/Vehicle_Speed를 명령값 기반 추정 함수로 대체 |
-| v0.3 | 2026-09-15 | Team | E-Stop/Gear GPIO를 F에서 C로 이전. E-Stop EXTI ISR 로컬 즉시 차단 경로 추가 |
+| v0.3 | 2026-09-15 | Team | Gear GPIO를 F에서 C로 이전 (당시 함께 이전한 E-Stop은 v0.5에서 삭제) |
 
 ---
 
@@ -110,8 +113,6 @@
 flowchart TD
     RFIN["RF 수신기(기어·조향·속도 요청)"] --> DRIVE["Drive + Steering ECU"]
     %% Gear는 RFIN의 RF 요청에 포함된다.
-    ESTOP["E-Stop GPIO/EXTI"] --> DRIVE
-    ESTOP -->|"로컬 출력 차단"| MD
     VCU["VCU"] -->|"Final Speed / Steering / Enable / Gear"| DRIVE
     DRIVE -->|"Driver_Input"| VCU
     DRIVE -->|"PWM / DIR"| MD["Motor Driver"]
@@ -142,7 +143,7 @@ flowchart TD
 
 첫 bench 단계는 [DRIVER_INPUT_START.md](DRIVER_INPUT_START.md)를 따른다. `main.c` USER CODE에서 수신값 확인 후 필요할 때 `driver_input.c/.h`로 분리한다. 아래 전체 RTOS/컴포넌트 구조는 후속 통합 목표이며 초기 파일 생성 목록이 아니다.
 
-`RF 수신 → 프레임/채널 해석 → 범위·freshness·failsafe 검증 → 기어/조향/속도 요청 snapshot` 순서로 처리한다. nRF24L01 수신 패킷의 길이/version/sequence/필드 범위/input_valid를 검증하고, radio CRC 설정과 FIFO 상태도 확인한다. 혼합되거나 일부만 새로 갱신된 요청을 무조건 valid로 만들지 않는다. snapshot에는 로컬 E-Stop 상태를 별도로 합친다.
+`RF 수신 → 프레임/채널 해석 → 범위·freshness·failsafe 검증 → 기어/조향/속도 요청 snapshot` 순서로 처리한다. nRF24L01 수신 패킷의 길이/version/sequence/필드 범위/input_valid를 검증하고, radio CRC 설정과 FIFO 상태도 확인한다. 혼합되거나 일부만 새로 갱신된 요청을 무조건 valid로 만들지 않는다.
 
 RF 속도 요청의 CAN `accel/brake` 매핑은 OPEN이다. nRF24L01은 SPI로 패킷을 읽는다. SPI 인스턴스와 CE/CSN/IRQ 핀은 다른 기능과의 충돌 검토 후 배정한다. 통합 시 `DriverInputTask`가 snapshot을 만들고 `CanTxTask`로 전달하며 F만 최종 명령을 결정한다.
 
@@ -210,8 +211,7 @@ Control / Estimated Speed / Fault
 | `SpeedEstimator` | PWM 등 명령값 → estimated RPM/speed | motor output | rpm/speed(estimated) | 추정 함수(`DEC-CTRL-021`) |
 | `DriverInputAdapter` | RF(기어·조향·속도 요청) raw sample 획득 | RF 수신 event | raw sample | 선택한 RF peripheral |
 | `DriverInputEstimator` | raw sample → accel/brake/steer/gear 값 | raw sample | driver input struct | 선형 매핑(`DEC-CTRL-019`) |
-| `DriverInputRepository` | 최신 Driver 입력(gear/estop_status 포함) 보관 | estimator output | snapshot | DriverInputTask |
-| `EstopLocalCutoff` | E-Stop EXTI에서 Motor Driver Enable/STBY 즉시 차단 | GPIO EXTI | GPIO write (즉시) | ISR, CAN 비의존 |
+| `DriverInputRepository` | 최신 Driver 입력(gear 포함) 보관 | estimator output | snapshot | DriverInputTask |
 | `FaultManager` | timeout/invalid/RTOS health | health inputs | fault state | timers/RTOS |
 | `StatusBuilder` | network status 구성 | command/output/estimate/fault | Drive_Status | repositories |
 | `CanTxService` | periodic/event CAN TX (`Driver_Input` 포함) | status/driver input | frame TX | FDCAN |
@@ -275,12 +275,11 @@ ControlTask
 | Interrupt | Peripheral / Source | ISR Responsibility | Wake-up Target | Mechanism |
 |---|---|---|---|---|
 | FDCAN RX | CAN frame arrival | 최소 frame metadata/copy | `CanRxTask` | Queue/Notification |
-| **E-Stop EXTI** | **GPIO EXTI** | **Motor Driver Enable/STBY GPIO를 ISR 내부에서 즉시 비활성 레벨로 설정 (예외적으로 안전 액션을 ISR이 직접 수행), 이후 notify** | `DriverInputTask` (상태를 `Driver_Input`에 반영) | GPIO write (즉시) + Notification |
 | Driver Input RF 수신 IRQ, 필요 시 | RF peripheral | raw sample/timestamp only | `DriverInputTask` | Notification / capture buffer |
 | RF Gear 채널/필드 갱신 | 선택한 RF 수신 peripheral | raw sample/timestamp only | `DriverInputTask` | RF 수신 이벤트와 함께 처리 |
 | Timer Update, 필요 시 | periodic timing | timestamp/event only | relevant task | Notification |
 
-ISR에서 하지 않는 것 (E-Stop의 로컬 GPIO 차단은 예외):
+ISR에서 하지 않는 것:
 - 제어 연산 전체
 - 입력값 선형 매핑/추정 계산 전체
 - `printf`
@@ -353,11 +352,9 @@ sequenceDiagram
     participant TX as CanTxTask
     participant VCU
 
-    participant ES as 로컬 E-Stop GPIO/EXTI
     IN->>RFAD: RF 기어/조향/속도 요청 raw signal
-    ES->>DI: 로컬 차단 상태 (estop_status)
     RFAD->>DI: sample notify
-    DI->>DI: accel/brake/steer + gear/estop_status + validity
+    DI->>DI: accel/brake/steer + gear + validity
     DI->>TX: Driver_Input snapshot
     TX->>VCU: Driver_Input
 ```
@@ -420,7 +417,6 @@ sequenceDiagram
 | Driver Input (속도 요청) | RF 수신기 | TBD | SPI + CE/CSN GPIO (핀 TBD) | IN | 채택 장치에 따라 확정 |
 | Driver Input (steering) | RF 수신기 | TBD | SPI + CE/CSN GPIO (핀 TBD) | IN | 채택 장치에 따라 확정 |
 | Servo PWM | RC Servo | TBD | TIM PWM | OUT | servo spec 기준 |
-| E-Stop | E-Stop 스위치 | TBD | GPIO/EXTI | IN | Motor Enable/STBY 로컬 차단 경로와 연계, pull-up/down 확정 필요 |
 | Gear | RF 수신기 | TBD | 선택한 RF peripheral | IN | 채널/필드와 P/R/N/D 매핑 OPEN |
 | CAN TX/RX | Transceiver | TBD | FDCAN | I/O | schematic 확인 |
 
@@ -507,12 +503,10 @@ stateDiagram-v2
 - Timeout은 command freshness로 관리한다.
 - Driver Input 신호 invalid는 `Driver_Input.request_valid=false`로 분리한다.
 - output safe state는 local control path에서 빠르게 적용 가능해야 한다.
-- E-Stop만 예외적으로 ISR에서 즉시 안전 액션(Motor Driver disable)을 수행한다 — CAN이나 RTOS Task 스케줄링을 기다리지 않는다.
 
 ## 12.2 Diagnostics / DTC
 
 Local fault 후보:
-- E-Stop active (참고: 이 fault는 이미 로컬에서 즉시 처리됐고, DTC는 F/B에 상태를 알리는 용도)
 - VCU command timeout
 - Driver Input 신호 timeout/implausibility
 - CAN communication fault
