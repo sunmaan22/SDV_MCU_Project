@@ -2,6 +2,8 @@
 
 > **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
 
+> **2026-09-17 하드웨어 추가 확정:** Front Camera(`DEC-HW-015`, Full HD 1080p USB-A, AU1425), Ultrasonic Sensor(`DEC-HW-009`, HC-SR04), CAN 트랜시버(`DEC-HW-006`, MCP2515+TJA1050 모듈 — CAN FD 미지원 주의, TJA1050만 사용 권장), LIN 트랜시버(`DEC-HW-007`, LIN 2.1/SAE J2602 모듈)를 사용자가 구매 확정했다. 모델 선택 동결이며, 실물 회로도/정확한 칩 품번/전압 레벨 확인과 Pin/Timer/ADC/SPI 배정 등 Gate A 나머지 항목은 별도다.
+
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
 > **Status:** PARTIAL FREEZE — 2026-09-11 / Implementation Baseline v1.0 미도달
@@ -138,16 +140,16 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | `DEC-HW-003` | D Gateway STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
 | `DEC-HW-004` | D LIN Slave STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
 | `DEC-HW-005` | F VCU STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
-| `DEC-HW-006` | CAN FD Transceiver 모델 | OWNER INPUT | OPEN |
-| `DEC-HW-007` | LIN Transceiver 모델 | OWNER INPUT | OPEN |
+| `DEC-HW-006` | CAN FD Transceiver 모델 | MCP2515+TJA1050 CAN 버스 모듈, SPI (2026-09-17 사용자 확정). **주의:** MCP2515는 Classic CAN 컨트롤러이며 CAN FD(BRS) 미지원, TJA1050도 CAN FD 데이터 phase 고속 구간 사용을 권장하지 않는다. 현재 STM32 쪽 FDCAN 초기화는 `FDCAN_FRAME_CLASSIC`(Classic CAN 프레임)로 되어 있어 당장은 호환되나, 이 프로젝트가 실제 CAN FD(BRS)로 갈 경우 이 모듈로는 안 된다. STM32(A/C/D Gateway/D Slave/F)는 이미 native FDCAN 페리페럴이 있으므로 MCP2515 칩 자체(SPI 컨트롤러 기능)는 사용하지 않고 TJA1050 트랜시버 부분(CANH/CANL/TXD/RXD/VCC/GND)만 STM32 FDCAN TX/RX 핀에 직결하는 방식을 권장한다 — 실제 배선 전에 이 방식으로 갈지 재확인 필요 | FROZEN |
+| `DEC-HW-007` | LIN Transceiver 모델 | LIN 2.1/SAE J2602 트랜시버, LIN 버스 모듈(마스터-슬레이브 프로토콜 컨트롤러) (2026-09-17 사용자 확정). 정확한 트랜시버 칩 품번은 실물 수령 후 회로도/실크스크린으로 재확인 필요 (모델 선택 동결이며 §3.1 하단 "동결 범위" 원칙과 동일하게 실물 확인은 별도) | FROZEN |
 | `DEC-HW-008` | Pi CAN FD Interface | OWNER INPUT | OPEN |
-| `DEC-HW-009` | Ultrasonic Sensor 모델 | OWNER INPUT (개수 4개는 DEC-HW-025에서 FROZEN) | OPEN |
+| `DEC-HW-009` | Ultrasonic Sensor 모델 | HC-SR04 (2026-09-17 사용자 확정; 개수 4개는 DEC-HW-025에서 FROZEN). ECHO 출력이 5V라 STM32 3.3V GPIO에 직결하지 않고 레벨 다운(전압 분배 등)을 거친다 | FROZEN |
 | `DEC-HW-010` | Motor 모델 | OWNER INPUT | OPEN |
 | `DEC-HW-011` | Motor Driver | OWNER INPUT | OPEN |
 | `DEC-HW-012` | Encoder/Hall | 미사용 — Speed/RPM 표시는 명령값(PWM 등) 기반 추정으로 대체 | REMOVED |
 | `DEC-HW-013` | RC Servo | OWNER INPUT | OPEN |
 | `DEC-HW-014` | Ambient Sensor | 미사용 — Ambient 기능 삭제 | REMOVED |
-| `DEC-HW-015` | Front Camera | OWNER INPUT (전방 전용, COCO 기반 객체인식용) | OPEN |
+| `DEC-HW-015` | Front Camera | Full HD 1080p USB-A 웹캠, AU1425 (2026-09-17 사용자 확정, 전방 전용, COCO 기반 객체인식용) | FROZEN |
 | `DEC-HW-016` | Rear Camera | 미사용 — 충돌주의는 초음파 4방향 전용, Rear Vision 삭제 | REMOVED |
 | `DEC-HW-017` | RF 속도/스로틀 요청 소스 | OWNER INPUT (별도 ADC 센서 연결을 전제하지 않음) | OPEN |
 | `DEC-HW-018` | RF 브레이크 요청 표현 | OWNER INPUT (별도 채널/통합 스틱/미제공 여부 확인) | OPEN |
@@ -484,8 +486,8 @@ Pi DTC Manager 서비스는 삭제됐다 (`DEC-DTC-000` REMOVED). Diagnostics hi
 코드의 Hardware Layer를 확정하기 전에:
 - [x] 모든 STM32 모델 확정 (2026-09-11: A/C/D Gateway/D Slave/F G431KB, B H735G-DK)
 - [ ] FDCAN 지원 확인
-- [ ] CAN/LIN Transceiver 확정
-- [ ] Sensor/Actuator 모델 확정
+- [x] CAN/LIN Transceiver 확정 (2026-09-17: `DEC-HW-006` MCP2515+TJA1050, `DEC-HW-007` LIN 2.1/SAE J2602 모듈 — 모델 선택만, 실물 회로도/배선 검증은 별도)
+- [ ] Sensor/Actuator 모델 확정 (2026-09-17: Front Camera `DEC-HW-015`, Ultrasonic `DEC-HW-009` 확정; Motor/Motor Driver/Servo는 여전히 OPEN)
 - [ ] Pin/Timer/ADC/UART/SPI/FDCAN peripheral 확정
 
 ## Gate B: Interface Freeze
