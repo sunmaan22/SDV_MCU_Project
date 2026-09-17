@@ -21,8 +21,8 @@
 | Owner | C |
 | Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo + RF 수신기 |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
-| Firmware / SW Commit | `6180cd2` (Driver_Input, SPI1/FDCAN1/NRF_CE/NRF_CSN 핀 구성) |
-| Test Date | 2026-09-17 (T-RF-000만; 나머지 미실행) |
+| Firmware / SW Commit | `main` HEAD (Driver_Input, SPI1 NSS Pulse Disable + `USE_NUCLEO_32` 보드 매크로 수정 + FDCAN1 Internal Loopback 시험 코드 포함) |
+| Test Date | 2026-09-17 (T-RF-000, FDCAN1 internal loopback, SPI1 bus 기본 동작만; RF 실통신은 미실행) |
 | Specification Revision | v0.4 |
 | Architecture Revision | v0.4 |
 
@@ -30,6 +30,7 @@
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| v0.6 | 2026-09-17 | C 사용자 | FDCAN1 Internal Loopback PASS, SPI1 bus 기본 동작 확인(모듈 미연결, 타임아웃 없음). `USE_NUCLEO_64`→`USE_NUCLEO_32` 보드 매크로 오류 발견/수정(§13) |
 | v0.5 | 2026-09-17 | C 사용자 | T-RF-000 보드 bring-up 시험 실행 (PASS). Firmware/Test Date 갱신. RF raw 입력(T-RF-001~005)은 여전히 NOT RUN |
 | v0.4 | 2026-09-17 | C 사용자 요청 | RF 기어·조향·속도 요청, Driver_Input 시작 순서, RF 오류/두절 시험 계획; 실기 NOT RUN |
 | v0.1 | 2026-09-09 | Team | Initial planned RTOS control test example |
@@ -63,6 +64,10 @@ T-RF-000(보드 bring-up)만 실행해 PASS했고, RF raw 입력 관련 T-RF-001
 
 **T-RF-000 결과 (2026-09-17):** SPI1(PA5/PA6/PA7, 8bit, /128 prescaler)·FDCAN1(PA11/PA12)·NRF_CE/NRF_CSN(PA1/PA4) 핀 구성을 반영한 `Driver_Input`을 STM32CubeIDE에서 Build → ST-LINK로 NUCLEO-G431KB에 Download, STM32CubeProgrammer verify 성공. 리셋 후 COM1(115200 8N1)에서 `Welcome to STM32 world !` 정상 출력 확인(§12 로그 참고). SPI/FDCAN 신호 자체는 아직 nRF24L01/CAN 버스에 연결하지 않아 시험하지 않았고, main 도달과 디버그 UART 경로만 확인한 것이다.
 
+**추가 bench 확인 (2026-09-17, 배선 없이):**
+- **FDCAN1 Internal Loopback: PASS.** Global filter를 accept-all로 설정하고 ID `0x123`/8바이트 더미 데이터를 TX FIFO에 넣은 뒤 RX FIFO0에서 동일 ID/데이터로 수신 확인. 외부 트랜시버/버스 연결 없이 FDCAN1 주변장치 자체 동작만 검증한 것이며, 실제 CAN 버스 통신 검증은 아니다.
+- **SPI1 bus 기본 동작: 조건부 확인.** nRF24L01 미연결 상태에서 STATUS/CONFIG 레지스터 read/write 명령을 보내면 항상 `0xFF`가 반환된다(MISO floating 상태의 예상 동작). 처음에는 모든 SPI 호출이 `HAL_TIMEOUT`으로 실패했는데, 원인은 `.cproject`의 보드 매크로가 `USE_NUCLEO_64`로 잘못 설정되어 BSP LED 드라이버가 PA5(SPI1_SCK)를 LED 핀으로 오인, `BSP_LED_Init/On`이 PA5를 GPIO로 재설정해 SPI 클럭을 깨뜨린 것이었다. `USE_NUCLEO_32`로 수정 후 타임아웃 없이 SPI 트랜잭션이 완료됨(값은 여전히 `0xFF`, 슬레이브 미연결이므로 예상대로). 상세는 §13 참고.
+
 로그에는 RF 모델, 펌웨어 식별자, raw 값, 해석한 요청, validity 사유, 마지막 유효 수신 시각과 timeout 검출 시각을 남긴다. RF 속도와 기존 CAN accel/brake 매핑 확정 전 아래 accel/brake 시험은 미실행 계획이며 채널이 존재한다는 증거가 아니다.
 
 Drive + Steering ECU가 RF Driver 입력을 읽어 `Driver_Input`으로 발행하고, VCU의 최종 Command를 받아 Motor/Servo 출력으로 변환하며, 모터 명령값 기반 추정 함수로 Speed/RPM 표시값을 산출하는지 확인한다. 또한 Command Timeout, Invalid Input, CAN burst 등의 조건에서도 ControlTask가 정의된 주기 안에서 동작하고 안전한 상태 전환 및 Health 정보를 제공하는지 검증한다.
@@ -83,7 +88,7 @@ Drive + Steering ECU가 RF Driver 입력을 읽어 `Driver_Input`으로 발행�
 | Driver Input 장치 | RF 수신기, `DEC-HW-024`/`DEC-HW-029` 확정 전 |
 | Steering Servo | TBD |
 | Power | 실제 시험 시 기록 |
-| CAN Interface | FDCAN1, PA11(RX)/PA12(TX) 핀 구성 완료 / 버스 시험 NOT RUN |
+| CAN Interface | FDCAN1, PA11(RX)/PA12(TX) 핀 구성 완료 / Internal Loopback PASS / 실버스(트랜시버) 시험 NOT RUN |
 | CAN Bitrate | TBD |
 | Debug | STM32CubeIDE / ST-Link(FW V3J16M9) / UART COM1 115200 8N1 — bring-up 확인 완료 |
 | Measurement | Logic Analyzer / Oscilloscope / CAN logger 후보 |
@@ -388,7 +393,7 @@ N/A.
 
 | Problem | Root Cause | Fix | Retest Result | Prevention |
 |---|---|---|---|---|
-| TBD | TBD | TBD | TBD | TBD |
+| nRF24 SPI 레지스터 read/write가 항상 `HAL_TIMEOUT`으로 실패 (2026-09-17) | `.cproject` preprocessor define이 `USE_NUCLEO_64`로 잘못 설정됨(보드는 Nucleo-**32**). `stm32g4xx_nucleo.h`의 `#if defined(USE_NUCLEO_64)` 분기가 선택되어 `LED2_PIN=PA5`(GPIOA)로 정의됨 — SPI1_SCK와 동일 핀. `BSP_LED_Init()`/`BSP_LED_On()`(SPI1 Init 이후 호출)이 PA5를 GPIO_Output으로 재설정해 SPI 클럭을 깨뜨림 | `.cproject`의 `USE_NUCLEO_64` 정의 6곳을 `USE_NUCLEO_32`로 수정(Debug/Release 빌드 설정 전체). Nucleo-32 정의를 쓰면 `LED2_PIN=PB8`(GPIOB)로 정상 매핑되어 `.ioc`의 기존 `PB8-BOOT0` GPIO_Output 설정과도 일치 | 수정 후 SPI1 read/write 타임아웃 사라짐(값은 `0xFF`, nRF24L01 미연결 상태의 예상값). Clean 후 재빌드 필요(증분 빌드로는 매크로 변경이 반영 안 될 수 있음) | 향후 CubeMX로 이 프로젝트를 재생성/마이그레이션할 때마다 `.cproject`의 보드 매크로가 `USE_NUCLEO_32`인지 재확인. LED/버튼 등 BSP 함수를 쓰는 프로젝트에서 그 핀과 겹치는 주변장치를 추가할 때는 BSP 핀 매핑을 먼저 확인 |
 
 ---
 

@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +31,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define NRF24_CMD_R_REGISTER   0x00u
+#define NRF24_CMD_W_REGISTER   0x20u
+#define NRF24_CMD_NOP          0xFFu
 
+#define NRF24_REG_CONFIG       0x00u
+#define NRF24_REG_STATUS       0x07u
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -57,12 +62,61 @@ static void MX_GPIO_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void NRF24_CSN_Low(void);
+static void NRF24_CSN_High(void);
+static uint8_t NRF24_ReadRegister(uint8_t reg);
+static void NRF24_WriteRegister(uint8_t reg, uint8_t value);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void NRF24_CSN_Low(void)
+{
+  HAL_GPIO_WritePin(NRF_CSN_GPIO_Port, NRF_CSN_Pin, GPIO_PIN_RESET);
+}
 
+static void NRF24_CSN_High(void)
+{
+  HAL_GPIO_WritePin(NRF_CSN_GPIO_Port, NRF_CSN_Pin, GPIO_PIN_SET);
+}
+
+/* R_REGISTER: 두 번째로 보낸 바이트에 대한 응답이 레지스터 값, 첫 번째 응답 바이트는 STATUS.
+ * Timeout을 짧게 둬서 SPI가 응답 안 해도 코드가 멈추지 않게 한다(HAL_MAX_DELAY 금지). */
+static uint8_t NRF24_ReadRegister(uint8_t reg)
+{
+  uint8_t tx[2] = { (uint8_t)(NRF24_CMD_R_REGISTER | (reg & 0x1Fu)), NRF24_CMD_NOP };
+  uint8_t rx[2] = { 0 };
+  HAL_StatusTypeDef status;
+
+  NRF24_CSN_Low();
+  status = HAL_SPI_TransmitReceive(&hspi1, tx, rx, 2, 100);
+  NRF24_CSN_High();
+
+  if (status != HAL_OK)
+  {
+    printf("NRF24 SPI read reg=0x%02X FAILED, HAL status=%d, ErrorCode=0x%08lX\r\n",
+           reg, (int)status, (unsigned long)HAL_SPI_GetError(&hspi1));
+  }
+
+  return rx[1];
+}
+
+static void NRF24_WriteRegister(uint8_t reg, uint8_t value)
+{
+  uint8_t tx[2] = { (uint8_t)(NRF24_CMD_W_REGISTER | (reg & 0x1Fu)), value };
+  uint8_t rx[2] = { 0 };
+  HAL_StatusTypeDef status;
+
+  NRF24_CSN_Low();
+  status = HAL_SPI_TransmitReceive(&hspi1, tx, rx, 2, 100);
+  NRF24_CSN_High();
+
+  if (status != HAL_OK)
+  {
+    printf("NRF24 SPI write reg=0x%02X FAILED, HAL status=%d, ErrorCode=0x%08lX\r\n",
+           reg, (int)status, (unsigned long)HAL_SPI_GetError(&hspi1));
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -97,7 +151,23 @@ int main(void)
   MX_FDCAN1_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  /* nRF24L01 idle state: CE low(수신/송신 대기), CSN high(SPI 비선택) */
+  HAL_GPIO_WritePin(NRF_CE_GPIO_Port, NRF_CE_Pin, GPIO_PIN_RESET);
+  NRF24_CSN_High();
+  HAL_Delay(100); /* nRF24L01 power-on 안정화 대기 */
 
+  /* FDCAN1 internal loopback 시험: 외부 배선/트랜시버 없이 자체 확인.
+   * StdFiltersNbr=0이라 non-matching 프레임을 기본값대로 두면 buffer에서 걸러지므로
+   * global filter로 전부 RXFIFO0에 들어오게 한다. */
+  if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_ACCEPT_IN_RX_FIFO0,
+                                    FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -121,6 +191,64 @@ int main(void)
 
   /* -- Sample board code to switch on leds ---- */
   BSP_LED_On(LED_GREEN);
+
+  /* nRF24L01 SPI 레지스터 읽기/쓰기 시험 (T-RF-000 다음 bench 단계) */
+  {
+    uint8_t status_before = NRF24_ReadRegister(NRF24_REG_STATUS);
+    uint8_t config_before = NRF24_ReadRegister(NRF24_REG_CONFIG);
+
+    NRF24_WriteRegister(NRF24_REG_CONFIG, 0x0A);
+    uint8_t config_after = NRF24_ReadRegister(NRF24_REG_CONFIG);
+
+    printf("NRF24 STATUS=0x%02X CONFIG(before)=0x%02X CONFIG(after write 0x0A)=0x%02X\r\n",
+           status_before, config_before, config_after);
+  }
+
+  /* FDCAN1 internal loopback 시험: 배선 없이 TX->RX 자체 확인 */
+  {
+    FDCAN_TxHeaderTypeDef TxHeader;
+    FDCAN_RxHeaderTypeDef RxHeader = {0};
+    uint8_t TxData[8] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+    uint8_t RxData[8] = {0};
+    uint32_t start_tick;
+    uint8_t loopback_ok = 0;
+
+    TxHeader.Identifier = 0x123;
+    TxHeader.IdType = FDCAN_STANDARD_ID;
+    TxHeader.TxFrameType = FDCAN_DATA_FRAME;
+    TxHeader.DataLength = FDCAN_DLC_BYTES_8;
+    TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+    TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
+    TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
+    TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+    TxHeader.MessageMarker = 0;
+
+    if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    start_tick = HAL_GetTick();
+    while (HAL_FDCAN_GetRxFifoFillLevel(&hfdcan1, FDCAN_RX_FIFO0) == 0)
+    {
+      if ((HAL_GetTick() - start_tick) > 100)
+      {
+        break; /* timeout: loopback_ok는 0으로 유지 */
+      }
+    }
+
+    if (HAL_FDCAN_GetRxFifoFillLevel(&hfdcan1, FDCAN_RX_FIFO0) > 0)
+    {
+      if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
+      {
+        loopback_ok = (RxHeader.Identifier == TxHeader.Identifier) &&
+                      (memcmp(TxData, RxData, 8) == 0);
+      }
+    }
+
+    printf("FDCAN internal loopback: %s (rx id=0x%03lX)\r\n",
+           loopback_ok ? "PASS" : "FAIL", (unsigned long)RxHeader.Identifier);
+  }
 
   /* USER CODE END BSP */
 
@@ -203,7 +331,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.Mode = FDCAN_MODE_INTERNAL_LOOPBACK;
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
@@ -257,7 +385,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     Error_Handler();
