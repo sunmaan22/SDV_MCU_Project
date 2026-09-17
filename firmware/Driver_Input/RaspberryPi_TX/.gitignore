@@ -1,2 +1,4 @@
 nrf24_bringup
+tx_loop
+packet_selftest
 *.o
