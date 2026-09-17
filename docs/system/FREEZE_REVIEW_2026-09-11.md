@@ -3,6 +3,8 @@
 [최상위 명세](FINAL_IMPLEMENTATION_SPEC.md) · [문서 정책](DOCUMENTATION_POLICY.md)
 
 > **2026-09-15 참고:** 이 문서는 2026-09-11 시점 하드웨어 모델 freeze 기록이다. 이후(2026-09-15) front-only scope 전환으로 Encoder/Hall, Ambient Sensor, Rear Camera/Rear Vision은 삭제되었다 — 아래 "OPEN" 서술 중 encoder/ambient 관련 항목은 더 이상 검증 대상이 아니라 REMOVED다. 최신 기준은 [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md)를 따른다.
+>
+> **2026-09-17 참고:** E-Stop 기능은 데모 프로젝트 특성상 소프트웨어/하드웨어 전부 제거됐다 (`DEC-HW-020`/`DEC-HW-027`/`DEC-CTRL-006` REMOVED). 아래 E-Stop 입력/핀 관련 서술은 더 이상 검증 대상이 아니다.
 
 ## 판정
 
