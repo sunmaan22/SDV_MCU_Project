@@ -20,23 +20,23 @@ RF 송신기에서 보낸 **기어·조향·속도 요청**을 RF 수신기를 �
 
 ## 확인한 로컬 프로젝트 상태
 
-2026-09-17 파일 확인 기준이며 빌드·다운로드·실기 동작은 아직 시험하지 않았다.
+2026-09-17 기준. Build/Download/COM1 로그 확인(T-RF-000)까지 PASS했다. RF/CAN 실제 통신은 아직 시험 전이다.
 
 | 항목 | 확인 내용 |
 |---|---|
-| 경로 | `C:\Users\User\STM32CubeIDE\workspace_1.19.0\Driver_Input` |
+| 경로 | `C:\Users\User\STM32CubeIDE\workspace_1.19.0\Driver_Input` (동일 내용 `firmware/Driver_Input`에도 반영) |
 | 설정 파일 | `Driver_Input.ioc` |
 | 설정된 보드 / MCU | `NUCLEO-G431KB` / `STM32G431KBT6` (실물 보드 일치는 별도 확인) |
-| 현재 코드 | Cube 생성 기본 HAL/BSP 초기화, LED, COM1 샘플 |
-| 디버그 출력 | COM1 115200, 8 data bits, no parity, 1 stop bit 설정; 시작 메시지 있음 |
-| 현재 예약 | PA2/PA3 USART2 TX/RX, PA13/PA14 SWD, PB3 SWO, PB8 GPIO |
-| 미구현 | RF 수신/해석/timeout, FDCAN, FreeRTOS 입력 처리 |
+| 현재 코드 | Cube 생성 기본 HAL/BSP 초기화, LED, COM1 샘플 + SPI1/FDCAN1 Init, NRF_CE/NRF_CSN GPIO_Output (모두 generated 영역, USER CODE 로직은 아직 없음) |
+| 디버그 출력 | COM1 115200, 8 data bits, no parity, 1 stop bit; `Welcome to STM32 world !` 출력 확인 (PASS, 2026-09-17) |
+| 현재 예약 | PA2/PA3 USART2 TX/RX, PA13/PA14 SWD, PB3 SWO, PB8 GPIO, PA5/PA6/PA7 SPI1(SCK/MISO/MOSI), PA1 NRF_CE, PA4 NRF_CSN, PA11/PA12 FDCAN1(RX/TX) |
+| 미구현 | RF 패킷 수신/해석/timeout 로직, FDCAN 실제 송수신, FreeRTOS 입력 처리 (핀/주변장치 초기화 코드만 있고 애플리케이션 로직은 없음) |
 
-USART2는 디버그용으로 유지하고 RF는 SPI로 연결한다. 최종 CAN/모터/서보 핀까지 확인한 뒤 SPI와 CE/CSN/IRQ 핀을 배정한다. 현재 로컬 펌웨어와 `.ioc`는 이번 문서 수정으로 변경하지 않았다.
+USART2는 디버그용으로 유지하고 RF는 SPI1(PA5/PA6/PA7)으로 연결하며 CE=PA1/CSN=PA4로 확정했다(§ nRF24L01 연결과 남은 결정 참고). IRQ는 아직 미배정, 처음에는 polling으로 시작한다.
 
 ## 처음 할 일
 
-1. **현재 프로젝트를 먼저 Build하고 보드에 Download한다.** ST-LINK 디버그에서 `main()` 도달을 확인한다. COM1 출력 경로가 연결되어 있으면 시리얼 터미널을 115200 / 8N1로 열고 Reset 후 `Welcome to STM32 world !`가 보이는지 확인한다. 보이지 않으면 COM 포트와 BSP printf 경로를 먼저 점검한다.
+1. ~~현재 프로젝트를 먼저 Build하고 보드에 Download한다.~~ **완료 (2026-09-17, PASS).** ST-LINK로 NUCLEO-G431KB에 다운로드, COM1(115200 8N1)에서 `Welcome to STM32 world !` 출력 확인. (참고: 초기 `printf` 개행이 `\n\r` 순서라 터미널에서 계단식으로 밀려 보였고, `\r\n`으로 고쳐서 정상 출력됨)
 2. **nRF24L01 모듈의 전원과 SPI 배선을 확인한다.** 모델은 사용자 확인 완료다. 모듈 보드의 전원 사양을 확인하고 SCK/MOSI/MISO, CE/CSN, 필요 시 IRQ를 배정한다. 송신측 MCU와 nRF24L01도 준비한다.
 3. **기어·조향·속도 요청이 어느 채널/필드인지 정한다.** 기어 스위치 위치 수, 조향 좌/중립/우, 속도 최소/최대/중립과 브레이크 표현을 기록한다. 3위치 스위치를 P/R/N/D 네 상태로 임의 대응시키지 않는다.
 4. **SPI 레지스터와 시험 패킷부터 읽는다.** SPI 설정 후 레지스터 쓰기/읽기가 일치하는지 확인하고, 송신측 고정 패킷 하나를 수신한다. 모터/서보 출력은 비활성 상태로 둔다.
@@ -60,9 +60,9 @@ Nordic의 nRF24L01 규격에는 SPI 제어, CE/CSN 신호, 최대 32바이트 pa
 
 | 연결 신호 | STM32 측 역할 | 현재 배정 |
 |---|---|---|
-| SCK / MOSI / MISO | SPI master | 핀/인스턴스 TBD |
-| CSN | GPIO output, SPI chip select | 핀 TBD |
-| CE | GPIO output, radio mode 제어 | 핀 TBD |
+| SCK / MOSI / MISO | SPI1 master | PA5 / PA7 / PA6 (코드 반영, 실배선 NOT RUN) |
+| CSN | GPIO output, SPI chip select | PA4 (`NRF_CSN`, 코드 반영, 실배선 NOT RUN) |
+| CE | GPIO output, radio mode 제어 | PA1 (`NRF_CE`, 코드 반영, 실배선 NOT RUN) |
 | IRQ | 상태 알림 입력, 사용 시 EXTI | 처음에는 status polling 가능; 핀 TBD |
 | VCC / GND | 모듈 사양에 맞는 안정된 전원 / 공통 접지 | 모듈 실물 확인 |
 
@@ -82,7 +82,7 @@ Nordic의 nRF24L01 규격에는 SPI 제어, CE/CSN 신호, 최대 32바이트 pa
 | raw 범위 / 중립 / 방향 / deadband | TBD, 실제 측정 |
 | 주기 / RF timeout / 복구 조건 | TBD, bench 값은 BENCH ONLY / NOT FROZEN |
 | RF loss / failsafe 식별 방법 | TBD, 송신기 OFF에서 반드시 확인 |
-| SPI 인스턴스 / SCK·MOSI·MISO / CE·CSN·IRQ 핀 | TBD, 다른 기능과 충돌 검사 |
+| SPI 인스턴스 / SCK·MOSI·MISO / CE·CSN·IRQ 핀 | SPI1, PA5/PA7/PA6, CE=PA1/CSN=PA4 코드 반영(2026-09-17); IRQ 미배정. 실배선/실측 NOT RUN, 다른 기능과 충돌 여부는 CAN/모터/서보 핀 확정 후 재검사 |
 
 SPI 클럭과 radio data rate는 서로 다르다. 핀·SPI 클럭·RF 설정은 모듈 사양과 송신측 설정을 확인한 후 bench 값으로 기록한다.
 
@@ -92,7 +92,7 @@ SPI 클럭과 radio data rate는 서로 다르다. 핀·SPI 클럭·RF 설정은
 
 | 단계 | 완료 기준 | 상태 |
 |---|---|---|
-| 보드 확인 | Build/Download/main 도달, 로그 또는 LED 확인 | NOT RUN |
+| 보드 확인 | Build/Download/main 도달, 로그 또는 LED 확인 | PASS (2026-09-17) |
 | RF raw 수신 | 실제 입력 변화와 raw 값 변화 일치 | NOT RUN |
 | 세 요청 해석 | 기어/조향/속도 요청 매핑·범위·중립 기록 | NOT RUN |
 | 오류/두절 | 부팅 미수신, invalid, 송신기 OFF, 재연결 시 유효성 전이 확인 | NOT RUN |

@@ -21,8 +21,8 @@
 | Owner | C |
 | Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo + RF 수신기 |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
-| Firmware / SW Commit | TBD |
-| Test Date | TBD |
+| Firmware / SW Commit | `6180cd2` (Driver_Input, SPI1/FDCAN1/NRF_CE/NRF_CSN 핀 구성) |
+| Test Date | 2026-09-17 (T-RF-000만; 나머지 미실행) |
 | Specification Revision | v0.4 |
 | Architecture Revision | v0.4 |
 
@@ -30,6 +30,7 @@
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| v0.5 | 2026-09-17 | C 사용자 | T-RF-000 보드 bring-up 시험 실행 (PASS). Firmware/Test Date 갱신. RF raw 입력(T-RF-001~005)은 여전히 NOT RUN |
 | v0.4 | 2026-09-17 | C 사용자 요청 | RF 기어·조향·속도 요청, Driver_Input 시작 순서, RF 오류/두절 시험 계획; 실기 NOT RUN |
 | v0.1 | 2026-09-09 | Team | Initial planned RTOS control test example |
 | v0.2 | 2026-09-15 | Team | Encoder/Hall 시험 항목 삭제, Driver_Input 읽기 및 speed/rpm 추정 시험 항목으로 대체 |
@@ -49,16 +50,18 @@
 
 ## Driver_Input RF 우선 시험 (2026-09-17 추가)
 
-문서/로컬 파일 확인만 수행했으며 아래 시험은 모두 미실행이다. RF 모델·프로토콜·채널·단위·timeout을 먼저 기록하고 시험한다. 초기에는 모터/서보 출력 비활성 상태로 raw 값과 validity만 확인한다.
+T-RF-000(보드 bring-up)만 실행해 PASS했고, RF raw 입력 관련 T-RF-001~005는 nRF24L01 모듈 배선 전이라 아직 미실행이다. RF 모델·프로토콜·채널·단위·timeout을 먼저 기록하고 시험한다. 초기에는 모터/서보 출력 비활성 상태로 raw 값과 validity만 확인한다.
 
 | Test ID | Requirement | 조건 | 기대 결과 | 실행 상태 |
 |---|---|---|---|---|
-| T-RF-000 | 보드 bring-up | 현재 Driver_Input Build/Download/Reset | main 도달, COM1 시작 로그 또는 LED 확인 | NOT RUN |
+| T-RF-000 | 보드 bring-up | 현재 Driver_Input Build/Download/Reset | main 도달, COM1 시작 로그 또는 LED 확인 | PASS (2026-09-17) |
 | T-RF-001 | REQ-DRV-RF-001 | 기어 각 위치, 조향 좌/중립/우, 속도 최소/최대 | 세 raw 값/수신 시각/valid 확인, 측정한 매핑과 일치 | NOT RUN |
 | T-RF-002 | REQ-DRV-RF-002 | 부팅 미수신, 누락 채널, invalid gear, 범위 초과, 패킷 오류 | 전체 요청 invalid, freshness를 정상 수신처럼 갱신하지 않음 | NOT RUN |
 | T-RF-003 | REQ-DRV-RF-003 | 송신기 OFF, 수신기 분리, 중복/오래된 패킷 | 합의한 timeout/failsafe 규칙으로 invalid; 저장된 payload 재사용으로 freshness 갱신 금지 | NOT RUN |
 | T-RF-004 | REQ-DRV-RF-004 | 재연결, 조작 유지, E-Stop 활성/해제 | 자동 구동 재개 없음, E-Stop 차단 유지, 합의된 복구 조건 확인 | NOT RUN |
 | T-RF-005 | REQ-DRV-001 | CAN 계약 확정 후 C↔F 통합 | 요청/추정 속도 구분, RF Gear 요청을 F가 중재, 동일 encode/decode | NOT RUN |
+
+**T-RF-000 결과 (2026-09-17):** SPI1(PA5/PA6/PA7, 8bit, /128 prescaler)·FDCAN1(PA11/PA12)·NRF_CE/NRF_CSN(PA1/PA4) 핀 구성을 반영한 `Driver_Input`을 STM32CubeIDE에서 Build → ST-LINK로 NUCLEO-G431KB에 Download, STM32CubeProgrammer verify 성공. 리셋 후 COM1(115200 8N1)에서 `Welcome to STM32 world !` 정상 출력 확인(§12 로그 참고). SPI/FDCAN 신호 자체는 아직 nRF24L01/CAN 버스에 연결하지 않아 시험하지 않았고, main 도달과 디버그 UART 경로만 확인한 것이다.
 
 로그에는 RF 모델, 펌웨어 식별자, raw 값, 해석한 요청, validity 사유, 마지막 유효 수신 시각과 timeout 검출 시각을 남긴다. RF 속도와 기존 CAN accel/brake 매핑 확정 전 아래 accel/brake 시험은 미실행 계획이며 채널이 존재한다는 증거가 아니다.
 
@@ -72,7 +75,7 @@ Drive + Steering ECU가 RF Driver 입력을 읽어 `Driver_Input`으로 발행�
 
 | Item | Value |
 |---|---|
-| Board / MCU | STM32G431KB (STM32 #2), 구매 모델 확정 / 실기 NOT RUN |
+| Board / MCU | STM32G431KB (STM32 #2, NUCLEO-G431KB), 구매 모델 확정 / bring-up(빌드·다운로드·COM1 로그) PASS, RF/CAN 기능 시험은 NOT RUN |
 | RTOS | FreeRTOS version TBD |
 | CMSIS-RTOS API | CMSIS-RTOS2 |
 | Motor | TBD |
@@ -80,9 +83,9 @@ Drive + Steering ECU가 RF Driver 입력을 읽어 `Driver_Input`으로 발행�
 | Driver Input 장치 | RF 수신기, `DEC-HW-024`/`DEC-HW-029` 확정 전 |
 | Steering Servo | TBD |
 | Power | 실제 시험 시 기록 |
-| CAN Interface | FDCAN 또는 실제 보드 지원 구조 TBD |
+| CAN Interface | FDCAN1, PA11(RX)/PA12(TX) 핀 구성 완료 / 버스 시험 NOT RUN |
 | CAN Bitrate | TBD |
-| Debug | STM32CubeIDE / ST-Link / UART 후보 |
+| Debug | STM32CubeIDE / ST-Link(FW V3J16M9) / UART COM1 115200 8N1 — bring-up 확인 완료 |
 | Measurement | Logic Analyzer / Oscilloscope / CAN logger 후보 |
 
 ## Wiring / Setup
@@ -92,9 +95,9 @@ Drive + Steering ECU가 RF Driver 입력을 읽어 `Driver_Input`으로 발행�
 | Motor Driver PWM | TBD | STM32 TIM PWM | actual pin TBD |
 | Motor Driver DIR | TBD | STM32 GPIO | actual pin TBD |
 | Motor Driver STBY/Enable | TBD | STM32 GPIO | safe init 확인 |
-| Driver Input (기어/조향/속도 요청) | TBD | SPI + CE/CSN GPIO (핀 TBD) | 채택 장치에 따라 확정 |
+| Driver Input (기어/조향/속도 요청) | SPI1: SCK=PA5/MISO=PA6/MOSI=PA7, CE=PA1, CSN=PA4 | SPI + CE/CSN GPIO | 핀 구성 완료(코드), nRF24L01 실배선/통신은 NOT RUN. 실제 보드 커넥터 위치는 배선 전 재확인 필요 |
 | Servo PWM | TBD | STM32 TIM PWM | actual servo spec 기준 |
-| CAN FD Transceiver | TBD | STM32 FDCAN | actual board support 확인 |
+| CAN FD Transceiver | PA11(RX)/PA12(TX) | STM32 FDCAN1 | 핀 구성 완료(코드), 트랜시버 연결/버스 시험 NOT RUN |
 
 사진/회로/핀맵 링크: TBD
 
@@ -352,7 +355,11 @@ N/A.
 
 # 12. Logs / Evidence
 
-- UART / Console Log: TBD
+- UART / Console Log: T-RF-000 (2026-09-17, COM1 115200 8N1, 리셋 직후):
+  ```text
+  Welcome to STM32 world !
+  ```
+  (최초 확인 시 `printf` 개행이 `\n\r` 순서라 터미널에서 계단식으로 출력됐음 → `\r\n`으로 수정 후 정상 출력 확인)
 - Wiring Photo: TBD
 - Motor/Servo Test Video: TBD
 - CAN Log: TBD
