@@ -1,6 +1,8 @@
 # Project Reference
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+>
+> **2026-09-17: E-Stop 기능 전체 제거.** 데모 보드 특성상 E-Stop(소프트웨어/하드웨어 전부, 물리 킬스위치 포함)을 프로젝트 전역에서 제거했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-020/DEC-HW-027/DEC-CTRL-006(REMOVED).
 
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
@@ -9,7 +11,7 @@
 
 > **2026-09-15 범위 변경 (1차):** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall 실측 Feedback을 삭제했다. 충돌주의는 Ultrasonic 4방향(FL/FR/RL/RR) 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
 >
-> **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 각 ECU로부터 직접 CAN 구독해 실시간(Active만) 표시한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경 (2차):** Gear 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear 입력용 GPIO를 갖지 않는다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 각 ECU로부터 직접 CAN 구독해 실시간(Active만) 표시한다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md).
 
 # 1. 현재 전체 구조
 
@@ -22,7 +24,7 @@ STM32H735 Cockpit ←───────────────────�
                                                         │       ↓
 STM32 #3 Body Gateway ←──────────────────────────────────┘  STM32 #2 Drive/Steer
         ↕ LIN                                                    ↑
-STM32 #4 Body LIN Slave                                RF 수신기(기어·조향·속도 요청) + 로컬 E-Stop
+STM32 #4 Body LIN Slave                                RF 수신기(기어·조향·속도 요청)
         └ Lighting (헤드램프 밝기/턴/브레이크)
 ```
 
@@ -32,7 +34,7 @@ STM32 #4 Body LIN Slave                                RF 수신기(기어·조�
 |---|---|---|---|
 | A | STM32 #1 + Ultrasonic | Collision distance perception (4방향 FL/FR/RL/RR) | FreeRTOS |
 | B | STM32H735 + TouchGFX | Cluster + IVI + DTC 실시간 표시 | FreeRTOS + TouchGFX |
-| C | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기(기어·조향·속도 요청) + 로컬 E-Stop | Drive + Steering control, Driver Input(gear/estop_status 포함), E-Stop 로컬 즉시 차단 | FreeRTOS |
+| C | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기(기어·조향·속도 요청) | Drive + Steering control, Driver Input(gear 포함) | FreeRTOS |
 | D-Gateway | STM32 #3 + CAN/LIN Transceiver | CAN FD ↔ LIN Gateway, LIN Master | FreeRTOS |
 | D-Slave | STM32 #4 + LIN Transceiver | Lighting LIN Slave | FreeRTOS 기본 |
 | E | Raspberry Pi | Front Camera Vision(COCO), HPC services | Linux |
@@ -82,7 +84,6 @@ Safety / Control
 | 영역 | 입력 / 센서 | Owner | Interface 후보 | 상태 |
 |---|---|---|---|---|
 | Driver | RF Gear 요청 (P/R/N/D 매핑 OPEN) | Drive ECU(C) | RF 채널/필드 | `DEC-HW-026`/`028` 기준 |
-| Driver | E-Stop | Drive ECU(C) | GPIO/EXTI | `DEC-HW-020`/`027` 확정 전, 로컬 즉시 차단 |
 | Driver | 기어·조향·속도 요청 (RF) | Drive ECU(C) | SPI (nRF24L01) | `DEC-HW-024` 확정 전 |
 | Steering | Actual Steering Feedback | Drive ECU | ADC/I2C | 선택 확장 |
 | Collision Warning | Ultrasonic Sensors (FL/FR/RL/RR 4방향 고정) | Ultrasonic ECU | GPIO/Timer | `FROZEN` |
@@ -98,7 +99,7 @@ Safety / Control
 
 | 데이터 | Owner | 주요 Consumer |
 |---|---|---|
-| Gear / E-Stop / Accelerator / Brake / Steering Input (`Driver_Input`) | Drive ECU(C) | VCU, HPC, H735 |
+| Gear / Accelerator / Brake / Steering Input (`Driver_Input`) | Drive ECU(C) | VCU, HPC, H735 |
 | Final Speed / Steering Request | VCU | Drive + Steering ECU |
 | Motor RPM / Vehicle Speed (estimated, 명령값 기반) | Drive ECU | VCU, H735, HPC |
 | Ultrasonic Distance / Warning (FL/FR/RL/RR) | Ultrasonic ECU | VCU, H735, HPC |
@@ -191,15 +192,14 @@ Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) �
 
 | Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
 |---|---|---|---|
-| **E-Stop EXTI** | GPIO event | **ISR (최고 우선)** | Motor Driver Enable/STBY 로컬 즉시 차단 (CAN 비의존) |
 | Driver Input RF 수신 ISR, 사용 시 | 선택한 RF peripheral event | ISR | raw sample + notify |
 | `CanRxTask` | event | High | latest VCU command update |
 | `ControlTask` | 5~10 ms 후보 | Highest application | speed/steering control, PWM update, speed/rpm 추정 |
-| `DriverInputTask` | 5~10 ms 후보/event | High | RF(기어·조향·속도 요청) read → `Driver_Input`(gear/estop_status 포함) 산출 |
+| `DriverInputTask` | 5~10 ms 후보/event | High | RF(기어·조향·속도 요청) read → `Driver_Input`(gear 포함) 산출 |
 | `CanTxTask` | 20~50 ms 후보 + event | Normal | `Driver_Input`/`Drive_Status` 송신 |
 | `HealthTask` | 50~100 ms 후보 | Low/Normal | command timeout / task health |
 
-ControlTask는 UART printf, blocking CAN TX, 느린 진단 처리에 의존하지 않는다. E-Stop만 예외적으로 ISR이 안전 액션을 직접 수행한다 (2026-09-15부터 Gear/E-Stop이 F에서 C로 이전).
+ControlTask는 UART printf, blocking CAN TX, 느린 진단 처리에 의존하지 않는다 (2026-09-15부터 Gear가 F에서 C로 이전).
 
 ---
 
@@ -266,7 +266,7 @@ Raw Camera frame은 Pi 내부에서 처리하고 CAN에는 semantic/control resu
 ## F. VCU + DTC + CAN Integration
 
 ```text
-Driver_Input (CAN, C 발행 — accel/brake/steering/gear/estop_status)
+Driver_Input (CAN, C 발행 — accel/brake/steering/gear)
 ADAS_Request
 Ultrasonic_Status (Collision Critical 포함)
 ECU Heartbeat/Fault
@@ -278,14 +278,14 @@ Safety & Arbitration (Collision Critical > ADAS_Request)
 Final Speed / Steering Request
 ```
 
-F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다 (2026-09-15부터 Gear/E-Stop도 C 소유, `Driver_Input`으로만 CAN 수신).
+F는 Driver/Gear 입력용 GPIO를 갖지 않는다 (2026-09-15부터 Gear도 C 소유, `Driver_Input`으로만 CAN 수신).
 
 ### RTOS 구조 후보
 
 | Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
 |---|---|---|---|
-| `CanRxTask` | event | High | Driver_Input(gear/estop_status 포함)/ADAS/US/Drive/Body status 수신 |
-| `SafetyTask` | 5~10 ms/event 후보 | Highest application | estop_status(CAN)/critical fault override |
+| `CanRxTask` | event | High | Driver_Input(gear 포함)/ADAS/US/Drive/Body status 수신 |
+| `SafetyTask` | 5~10 ms/event 후보 | Highest application | critical fault override |
 | `VcuControlTask` | 10 ms 후보 | High | mode/state/arbitration |
 | `CanTxTask` | 20 ms/event 후보 | Normal/High | final command/state TX |
 | `DiagnosticTask` | 100 ms/event | Low | DTC 실시간 발행 (history 없음) |
@@ -293,7 +293,7 @@ F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다 (2026-09-15부터 Gea
 
 우선순위 기본 방향:
 ```text
-Critical Fault / E-Stop
+Critical Fault
 > Ultrasonic Collision Critical
 > ADAS_Request
 > Normal Driver / Mode Request
@@ -333,7 +333,6 @@ CanRxTask
 ```text
 BIT_CAN_READY
 BIT_SENSOR_VALID
-BIT_ESTOP
 BIT_FAULT
 ```
 

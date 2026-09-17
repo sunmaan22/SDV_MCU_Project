@@ -1,6 +1,8 @@
 # SDV MCU Project
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+>
+> **2026-09-17: E-Stop 기능 전체 제거.** 데모 보드 특성상 E-Stop(소프트웨어/하드웨어 전부, 물리 킬스위치 포함)을 프로젝트 전역에서 제거했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](docs/system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-020/DEC-HW-027/DEC-CTRL-006(REMOVED).
 
 저속 RC 모형 기반의 6인 Mini SDV E/E 아키텍처 프로젝트다. 운전자 입력(RF)을 중심으로 전방 카메라 객체인식(ADAS) + 초음파 4방향 충돌주의 기능을 구성하며, ECU 간 역할·통신·진단을 함께 설계한다.
 
@@ -31,12 +33,12 @@
 |---|---|---|---|---|---|
 | A | 초음파 4방향(FL/FR/RL/RR) 충돌 위험 감지 전담 | [안내](docs/ecus/Ultrasonic_Perception/README.md) | [명세](docs/ecus/Ultrasonic_Perception/SPECIFICATION.md) | [아키텍처](docs/ecus/Ultrasonic_Perception/ARCHITECTURE.md) | [테스트](docs/ecus/Ultrasonic_Perception/TEST_REPORT.md) |
 | B | 화면·사용자 요청(턴시그널/헤드램프 밝기) | [안내](docs/ecus/IVI/README.md) | [명세](docs/ecus/IVI/SPECIFICATION.md) | [아키텍처](docs/ecus/IVI/ARCHITECTURE.md) | [테스트](docs/ecus/IVI/TEST_REPORT.md) |
-| C | 모터·조향 출력 + RF Driver/Gear 입력 + 로컬 E-Stop | [안내](docs/ecus/Motor_Steering_Control/README.md) | [명세](docs/ecus/Motor_Steering_Control/SPECIFICATION.md) | [아키텍처](docs/ecus/Motor_Steering_Control/ARCHITECTURE.md) | [테스트](docs/ecus/Motor_Steering_Control/TEST_REPORT.md) |
+| C | 모터·조향 출력 + RF Driver/Gear 입력 | [안내](docs/ecus/Motor_Steering_Control/README.md) | [명세](docs/ecus/Motor_Steering_Control/SPECIFICATION.md) | [아키텍처](docs/ecus/Motor_Steering_Control/ARCHITECTURE.md) | [테스트](docs/ecus/Motor_Steering_Control/TEST_REPORT.md) |
 | D | 조명(턴시그널/헤드램프/브레이크등)·CAN/LIN Gateway | [안내](docs/ecus/Lighting_LIN_CAN/README.md) | [명세](docs/ecus/Lighting_LIN_CAN/SPECIFICATION.md) | [아키텍처](docs/ecus/Lighting_LIN_CAN/ARCHITECTURE.md) | [테스트](docs/ecus/Lighting_LIN_CAN/TEST_REPORT.md) |
 | E | 전방 카메라 COCO 객체인식·ADAS 요청 (Rear/주차 Vision 없음) | [안내](docs/ecus/HPC_Camera_Vision/README.md) | [명세](docs/ecus/HPC_Camera_Vision/SPECIFICATION.md) | [아키텍처](docs/ecus/HPC_Camera_Vision/ARCHITECTURE.md) | [테스트](docs/ecus/HPC_Camera_Vision/TEST_REPORT.md) |
 | F | VCU·최종 명령 중재·DTC | [안내](docs/ecus/VCU_DTC_CAN_Integration/README.md) | [명세](docs/ecus/VCU_DTC_CAN_Integration/SPECIFICATION.md) | [아키텍처](docs/ecus/VCU_DTC_CAN_Integration/ARCHITECTURE.md) | [테스트](docs/ecus/VCU_DTC_CAN_Integration/TEST_REPORT.md) |
 
-RF 기어·조향·속도 요청과 로컬 E-Stop 입력 및 실제 구동·조향 출력은 **C**, CAN으로 받은 요청의 최종 중재는 **F**, 카메라 기반 전방 객체 회피 요청은 **E**, 초음파 4방향 충돌 위험 감지는 **A** 문서에서 확인한다. 초음파 충돌 위험도 판단은 **A만** 담당하며 E는 관여하지 않는다. ECU 간 공통 계약은 최종 구현 명세를 우선한다.
+RF 기어·조향·속도 요청 및 실제 구동·조향 출력은 **C**, CAN으로 받은 요청의 최종 중재는 **F**, 카메라 기반 전방 객체 회피 요청은 **E**, 초음파 4방향 충돌 위험 감지는 **A** 문서에서 확인한다. 초음파 충돌 위험도 판단은 **A만** 담당하며 E는 관여하지 않는다. ECU 간 공통 계약은 최종 구현 명세를 우선한다.
 
 ## 문서 폴더
 

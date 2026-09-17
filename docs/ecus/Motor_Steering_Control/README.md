@@ -1,10 +1,12 @@
 # Motor + Steering Control Documentation
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+>
+> **2026-09-17: E-Stop 기능 전체 제거.** 데모 보드 특성상 E-Stop(소프트웨어/하드웨어 전부, 물리 킬스위치 포함)을 프로젝트 전역에서 제거했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-020/DEC-HW-027/DEC-CTRL-006(REMOVED).
 
 > **2026-09-15 범위 변경 (1차):** Encoder/Hall 실측 Feedback을 삭제했다 (`DEC-HW-012`, `DEC-CTRL-017` REMOVED). C는 RF/가변저항 Driver 입력을 읽어 `Driver_Input`을 CAN으로 발행하는 owner가 되었고(publisher가 F에서 C로 이전), Motor_RPM/Vehicle_Speed는 명령값 기반 추정 함수 결과로 대체한다 (`DEC-CTRL-021`, 실측 아님).
 >
-> **2026-09-15 범위 변경 (2차):** E-Stop/Gear 물리 입력도 F에서 C로 이전했다. E-Stop은 CAN 없이 로컬에서 즉시 Motor Driver를 차단하고, `Driver_Input`에 gear/estop_status를 포함해 CAN 발행한다. Pi DTC Manager(History DB)는 삭제됐다 — `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
+> **2026-09-15 범위 변경 (2차):** Gear 물리 입력도 F에서 C로 이전했다. `Driver_Input`에 gear를 포함해 CAN 발행한다. Pi DTC Manager(History DB)는 삭제됐다 — `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -29,14 +31,14 @@ VCU Final_Drive_Command
 → DC Motor + RC Servo
 ```
 
-이 ECU는 Driver/Gear 입력을 읽어 발행하고, VCU가 승인한 최종 명령을 실제 actuator output으로 바꾼다. E-Stop만 예외로 로컬에서 즉시 처리한다. ADAS/Collision Warning arbitration은 하지 않는다.
+이 ECU는 Driver/Gear 입력을 읽어 발행하고, VCU가 승인한 최종 명령을 실제 actuator output으로 바꾼다. ADAS/Collision Warning arbitration은 하지 않는다.
 
 ## 이미 고정된 규칙
 
 - VCU→Drive 논리 인터페이스는 `Final_Drive_Command`를 사용한다.
 - `Final_Drive_Command` Publisher는 VCU다.
-- `Driver_Input` Publisher는 C다 (기존 F에서 이전; accel/brake/steering/gear/estop_status 포함).
-- E-Stop은 C가 로컬 GPIO/EXTI로 직접 읽고 CAN과 무관하게 즉시 Motor Driver를 disable한다. Gear는 C가 읽어 CAN으로 보고만 하고 최종 방향 결정은 F가 한다.
+- `Driver_Input` Publisher는 C다 (기존 F에서 이전; accel/brake/steering/gear 포함).
+- Gear는 C가 읽어 CAN으로 보고만 하고 최종 방향 결정은 F가 한다.
 - command timeout 검출 책임은 Drive ECU에 있다.
 - timeout 시 오래된 Motor PWM을 유지하지 않는다.
 - TB6612FNG는 Motor 전압/정격/Stall Current 검증 전까지 후보일 뿐이다.
@@ -48,8 +50,6 @@ VCU Final_Drive_Command
 ## FreeRTOS 구조
 
 ```text
-E-Stop EXTI → 로컬 즉시 Motor Enable/STBY 차단 (CAN 비의존)
-
 FDCAN ISR
 → CanRxTask
 → ControlTask
@@ -57,7 +57,7 @@ FDCAN ISR
 
 RF 기어·조향·속도 요청 수신
 → DriverInputTask
-→ Driver_Input (gear/estop_status 포함)
+→ Driver_Input (gear 포함)
 
 CanTxTask
 HealthTask
@@ -68,7 +68,6 @@ HealthTask
 - 안전한 bench 상태에서 low-output PWM/DIR
 - Servo Left/Center/Right 및 기구 한계 측정
 - RF(기어·조향·속도 요청) 입력 읽기 및 `Driver_Input` 발행
-- E-Stop 로컬 즉시 차단 (CAN 비의존)
 - 명령값 기반 Speed/RPM 추정 함수
 - Dummy Final_Drive_Command → actuator output
 - command freshness/timeout injection

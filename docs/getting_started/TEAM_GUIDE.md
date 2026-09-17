@@ -1,12 +1,14 @@
 # Team Guide
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+>
+> **2026-09-17: E-Stop 기능 전체 제거.** 데모 보드 특성상 E-Stop(소프트웨어/하드웨어 전부, 물리 킬스위치 포함)을 프로젝트 전역에서 제거했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-020/DEC-HW-027/DEC-CTRL-006(REMOVED).
 
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
 > 처음 보는 팀원이 이 문서 하나로 **내 역할, 필요한 전자기초, RTOS가 왜 필요한지, 개발 순서**를 이해하는 것을 목표로 한다.
 
-> **2026-09-15 범위 변경:** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. Driver Input(RF/가변저항)뿐 아니라 Gear/E-Stop 물리 입력도 C가 읽어 `Driver_Input`으로 CAN 발행한다 — E-Stop은 C가 로컬에서 즉시 차단(CAN 비의존)한다. F(VCU)는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다. Pi DTC Manager(History DB)는 삭제했고, `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
+> **2026-09-15 범위 변경:** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. Driver Input(RF/가변저항)뿐 아니라 Gear 물리 입력도 C가 읽어 `Driver_Input`으로 CAN 발행한다. F(VCU)는 Driver/Gear 입력용 GPIO를 갖지 않는다. Pi DTC Manager(History DB)는 삭제했고, `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
 
 # 1. 프로젝트를 아주 쉽게 보면
 
@@ -288,10 +290,10 @@ logger
 
 ## F — VCU + DTC + CAN Integration / 최종 판단
 
-**한마디:** 여러 요청 중 차량이 실제로 무엇을 할지 최종 결정하고 통신 규칙을 맞춘다. **물리 GPIO는 하나도 없다** — Driver Input/Gear/E-Stop까지 전부 C가 CAN으로 보내준다.
+**한마디:** 여러 요청 중 차량이 실제로 무엇을 할지 최종 결정하고 통신 규칙을 맞춘다. **물리 GPIO는 하나도 없다** — Driver Input/Gear까지 전부 C가 CAN으로 보내준다.
 
 ```text
-Driver_Input (CAN, C 발행 — accel/brake/steering/gear/estop_status) ───┐
+Driver_Input (CAN, C 발행 — accel/brake/steering/gear) ───┐
 ADAS Request ───────────────────────────────────────────────────────┤
 Ultrasonic Status ────────────────────────────────────────────────────┤
 ECU Fault ──────────────────────────────────────────────────────────┤
@@ -305,19 +307,17 @@ ECU Fault ───────────────────────�
               Drive + Steering
 ```
 
-E-Stop의 실제 모터 정지는 C가 CAN과 무관하게 이미 로컬로 처리한다. F가 받는 `estop_status`는 Vehicle State 갱신과 다른 요청(ADAS 등) 무효화용이다.
-
 ### RTOS에서 나누는 예
 
 ```text
-CanRxTask (Driver_Input의 estop_status 포함)
+CanRxTask (Driver_Input 수신)
        ↓
   VcuControlTask
        ↓
    CanTxTask
 
 SafetyTask
-→ estop_status(CAN) / heartbeat / critical fault
+→ heartbeat / critical fault
 
 DiagnosticTask
 → DTC_Event 실시간 발행 (history 없음)
@@ -347,7 +347,6 @@ SafetyTask와 VcuControlTask는 logging/UI 같은 부가 기능 때문에 늦어
 
 사용 예:
 - RF 모듈 CE/CSN 제어 (nRF24L01)
-- E-Stop
 - Direction
 - LED
 - Ultrasonic Trigger/Echo

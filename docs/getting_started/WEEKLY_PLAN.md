@@ -1,6 +1,8 @@
 # 4주 개발 계획 — RTOS 반영 6역할 기준
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+>
+> **2026-09-17: E-Stop 기능 전체 제거.** 데모 보드 특성상 E-Stop(소프트웨어/하드웨어 전부, 물리 킬스위치 포함)을 프로젝트 전역에서 제거했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-020/DEC-HW-027/DEC-CTRL-006(REMOVED).
 
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
@@ -14,7 +16,7 @@
 
 > **2026-09-15 범위 변경 (1차):** Rear Camera/Rear Vision/주차 Vision, Ambient Sensor, Encoder/Hall을 삭제했다. 충돌주의는 Ultrasonic 4방향 전용, Driver 입력(RF/가변저항)은 C가 읽어 `Driver_Input`으로 발행한다.
 >
-> **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear/E-Stop 입력용 GPIO가 없다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
+> **2026-09-15 범위 변경 (2차):** Gear 물리 입력도 F에서 C로 이전했다. F는 Driver/Gear 입력용 GPIO가 없다. Pi DTC Manager(History DB)는 삭제했다 — `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
 
 # 역할
 
@@ -22,7 +24,7 @@
 |---|---|---|
 | A | Ultrasonic / 인지 (4방향) | STM32 + FreeRTOS |
 | B | H735 Cluster + IVI / UI | STM32H735 + FreeRTOS + TouchGFX |
-| C | Motor + Steering / 제어 + Driver Input(Gear/E-Stop 포함) | STM32 + FreeRTOS |
+| C | Motor + Steering / 제어 + Driver Input(Gear 포함) | STM32 + FreeRTOS |
 | D | Lighting / LIN-CAN | STM32 Gateway + STM32 LIN Slave + FreeRTOS |
 | E | HPC + Front Camera Vision (COCO) | Raspberry Pi Linux |
 | F | VCU + DTC + CAN Integration (물리 GPIO 없음) | STM32 + FreeRTOS |
@@ -57,7 +59,7 @@ Watchdog / Health 구조
 |---|---|
 | A | Ultrasonic 1개 측정 → Timer ISR + UltrasonicTask 구조 |
 | B | TouchGFX Dummy UI → GuiTask + VehicleModelTask + CanRxTask skeleton |
-| C | Driver_Input Build/Download → RF raw 수신 → 기어·조향·속도 요청/두절 검증 → DriverInputTask → 이후 PWM/DIR/Servo·ControlTask 통합 (로컬 E-Stop 유지) |
+| C | Driver_Input Build/Download → RF raw 수신 → 기어·조향·속도 요청/두절 검증 → DriverInputTask → 이후 PWM/DIR/Servo·ControlTask 통합 |
 | D | Lighting 단독 + Gateway/Slave FreeRTOS skeleton + LIN 기본 통신 |
 | E | Pi Front camera capture, Linux service 구조 초안 |
 | F | VCU state dummy → SafetyTask/VcuControlTask/CanRxTask skeleton |
@@ -138,7 +140,7 @@ Front Camera
 → Pi Vision (COCO)
 → ADAS_Request
 → VCU CanRxTask
-→ Safety/VcuControlTask (Ultrasonic Collision Critical이 ADAS보다 우선, E-Stop/Critical Fault 다음)
+→ Safety/VcuControlTask (Ultrasonic Collision Critical이 ADAS보다 우선, Critical Fault 다음)
 → Drive ControlTask
 ```
 

@@ -24,7 +24,7 @@ E는 고수준 인지와 회피 요청 생성까지 담당한다. 최종 차량 
 
 - `Vision_Status`와 `ADAS_Request`를 분리한다.
 - `Vision_Status`는 상태/semantic data(`detected_class`, `direction`/`zone`), `ADAS_Request`는 VCU용 고수준 회피 요청이다.
-- `ADAS_Request`는 Ultrasonic `Collision Critical`을 해제/override하지 않는다 (ADAS보다 우선하며 E-Stop/Critical Fault는 그보다 우선).
+- `ADAS_Request`는 Ultrasonic `Collision Critical`을 해제/override하지 않는다 (ADAS보다 우선하며 Critical Fault는 그보다 우선).
 - Raw Camera frame은 CAN으로 보내지 않는다.
 - semantic result는 valid/freshness 정보를 가진다.
 - frame queue는 bounded 구조이며 최신성을 우선한다.

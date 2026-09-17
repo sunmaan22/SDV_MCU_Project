@@ -1,6 +1,8 @@
 # Documentation Guide
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+>
+> **2026-09-17: E-Stop 기능 전체 제거.** 데모 보드 특성상 E-Stop(소프트웨어/하드웨어 전부, 물리 킬스위치 포함)을 프로젝트 전역에서 제거했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md`](FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-020/DEC-HW-027/DEC-CTRL-006(REMOVED).
 
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
@@ -70,14 +72,14 @@ TEST_REPORT.md
 | `Final_Drive_Command` | F |
 | `Body_Command` | F |
 | `Vehicle_State` | F |
-| `Driver_Input` (accel/brake/steering/gear/estop_status) | C |
+| `Driver_Input` (accel/brake/steering/gear) | C |
 
 같은 최종 데이터를 여러 Node가 동시에 publish하지 않는다.
 
 # 4. 고정 Safety / Integration 규칙
 
 ```text
-E-Stop / Critical Fault
+Critical Fault
 > Ultrasonic Collision Critical
 > ADAS Safety Request
 > Normal Driver Request
@@ -91,7 +93,7 @@ E-Stop / Critical Fault
 - Drive ECU가 `Final_Drive_Command` timeout을 감지한다.
 - VCU는 peer status/heartbeat timeout을 감지한다.
 - DTC local detection은 각 Node, safety/severity integration은 VCU, 실시간 표시는 H735가 담당한다. History DB/지속 저장은 없다 (2026-09-15 삭제, `DEC-DTC-000` REMOVED).
-- RF Gear 입력/로컬 E-Stop은 C가 소유한다. E-Stop은 C가 로컬에서 즉시 차단하며(CAN 비의존), F는 `Driver_Input.estop_status`로 상태만 받는다.
+- RF Gear 입력은 C가 소유한다.
 
 # 5. 실행 환경
 
