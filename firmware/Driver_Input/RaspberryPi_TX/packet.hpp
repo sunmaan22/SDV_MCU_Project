@@ -18,8 +18,11 @@
 //   [1]    sequence (0..255 wraparound)
 //   [2]    gear (raw 스위치 코드, 위치 수/매핑 TBD - 임의로 P/R/N/D 4상태로
 //          해석하지 않는다)
-//   [3..4] steering_request, int16 little-endian, 중립 0 기준 (raw 범위 TBD)
-//   [5..6] speed_request, int16 little-endian, 중립 0 기준 (raw 범위 TBD)
+//   [3..4] steering_request, int16 little-endian, 중립 0 기준, 부호 있음(좌/우), (raw 범위 TBD)
+//   [5..6] speed_request, int16 little-endian, **0~100 크기(magnitude)만 사용, 음수 없음**.
+//          전/후진 방향은 gear(P/R/N/D)가 이미 갖고 있어서 speed_request로 방향을
+//          또 표현하지 않는다(2026-09-17 사용자 결정). wire 상 타입은 int16 그대로
+//          두되(호환성), 실제로 채우는 값은 항상 0 이상이어야 한다.
 //   [7]    input_valid (0/1)
 constexpr size_t kDriverInputPacketSize = 8;
 
@@ -28,7 +31,7 @@ struct DriverInputPacket {
   uint8_t sequence = 0;
   uint8_t gear = 0;
   int16_t steering_request = 0;
-  int16_t speed_request = 0;
+  int16_t speed_request = 0;  // 0~100 magnitude만 (음수 사용 금지, 방향은 gear)
   bool input_valid = false;
 };
 

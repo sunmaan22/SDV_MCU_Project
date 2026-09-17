@@ -8,6 +8,8 @@
 
 > **2026-09-17 Pi CAN 미사용 결정:** 모든 라즈베리파이(RF 송신측, E HPC Vision)는 CAN 인터페이스를 직접 쓰지 않는다(`DEC-HW-008` REMOVED). E(HPC Camera Vision)의 Pi는 `Vision_Status`/`ADAS_Request`를 UART로 B(IVI, STM32H735G-DK)에 보내고, **B가 그 값을 그대로 CAN에 relay 발행**한다(`DEC-HW-030`, 인터페이스는 UART로 FROZEN, 핀/보드레이트는 OPEN). 데이터의 논리적 owner/생성자는 여전히 E다 — B는 값을 해석·수정하지 않고 CAN 프레임으로 옮기기만 하는 대행자다. 사용자도 이 방식이 비효율적임을 인지한 상태에서, B에 여유 핀/CAN 포트가 있다는 이유로 선택했다.
 
+> **2026-09-17 speed 필드 부호 제거:** RF `speed_request`(및 이와 동일 원칙을 쓰는 `Final_Drive_Command.speed_request`, `ADAS_Request.requested_speed`, `Drive_Status.vehicle_speed`)를 부호 있는 값(-100~100, 방향 포함)에서 **0~100 크기(magnitude)만**으로 바꿨다. 전/후진 방향은 이미 같은 메시지의 `gear`(P/R/N/D) 필드가 담당하는데 speed로 또 표현하면 중복이라는 지적에 따른 수정이다(`DEC-CTRL-013/019`). `accel`은 이제 speed_request를 그대로 쓰고, `brake`는 더 이상 speed_request의 음수부에서 파생하지 않으며 별도 입력 채널 여부는 `DEC-HW-018`(OPEN)에서 결정한다. 라즈베리파이 TX 쪽 `packet.hpp`/`input_terminal.cpp`에 먼저 반영하고 실행 확인(clamp 0~100)했다.
+
 > **2026-09-17 일괄 설계 동결:** Project Owner가 직접 "실측/하드웨어 없이 결정 가능한 항목은 전부 동결하라"고 지시했다. 이에 따라 Network(§3.2, CAN ID/DLC/cycle/timeout/LIN 전부), Vehicle/Control 로직 설계(§3.3), Perception/Vision 알고리즘·표현 방식(§3.4), HMI 우선순위·정책(§3.5), DTC/Health 코드 체계(§3.6), CAN 메시지 byte layout(§4), LIN 매핑(§5.2)을 FROZEN했다. **실측이 있어야 의미 있는 수치**(calibration 계수, threshold/hysteresis, Stack/Queue 실측값, TouchGFX frame budget 등)는 여전히 OPEN이며, "방식/형식은 FROZEN, 수치는 OPEN"으로 표기된 항목은 부분 동결이다. Cycle/Timeout류는 BENCH 초기값으로 FROZEN했으며 Gate D 실측 후 재검증 대상이다(`FROZEN`은 설계 계약이며 `TEST PASS`와 별개, §7.1). Gate A~D 체크리스트도 이에 맞춰 갱신했다.
 
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
@@ -214,15 +216,15 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | `DEC-CTRL-010` | Steering input range/calibration | OWNER INPUT (RF raw range 실측 필요) | OPEN |
 | `DEC-CTRL-011` | Ultrasonic SAFE/WARNING/CRITICAL action | 정책은 결정: SAFE=조치 없음, WARNING=HMI 표시만(속도 제한 없음), CRITICAL=F가 감속/정지 명령 생성 후 C가 출력. threshold/hysteresis 수치는 `DEC-PER-003`에서 별도 결정 — Status는 OPEN 유지 | OPEN |
 | `DEC-CTRL-012` | ADAS arbitration rule | §1.2와 동일: E-Stop > Ultrasonic Critical > ADAS > Driver Request. ADAS는 Ultrasonic Critical을 override하지 않는다 | FROZEN |
-| `DEC-CTRL-013` | Final speed unit/range | 부호 있는 정수 %, -100(최대 후진)~100(최대 전진), 0=정지 | FROZEN |
+| `DEC-CTRL-013` | Final speed unit/range | uint8 %, 0(정지)~100(최대 속도) **크기(magnitude)만** — 전/후진 방향은 `Final_Drive_Command.gear`(P/R/N/D)가 이미 갖고 있어서 speed로 또 표현하지 않는다(2026-09-17 사용자 결정, gear 필드와의 중복 제거) | FROZEN |
 | `DEC-CTRL-014` | Final steering unit/range | 부호 있는 정수 %, -100(최대 좌)~100(최대 우), 0=중립 | FROZEN |
 | `DEC-CTRL-015` | Drive command timeout | 100ms (`Final_Drive_Command` cycle 20ms의 5배, `DEC-NET-007` 참고) | FROZEN |
 | `DEC-CTRL-016` | Steering timeout action | timeout 시 마지막 값 유지하지 않고 중립(0)으로 복귀 | FROZEN |
 | `DEC-CTRL-017` | Encoder invalid fallback | 미사용 — Encoder 삭제 | REMOVED |
 | `DEC-CTRL-018` | PID 적용 여부 / tuning policy | 1차 구현은 PID 미적용(open-loop 명령을 그대로 PWM/servo 출력) — 실측 피드백이 없어 폐루프 근거 부족. 필요 시 추정치 기반 제한적 PID는 2단계에서 별도 결정 | FROZEN (1차 정책) |
-| `DEC-CTRL-019` | RF 속도 요청→accel/brake 또는 speed_request 계약 및 조향 매핑 | 방식은 결정: 단일 `speed_request`(부호 있는 값)로 통일하고, `accel`=max(speed_request,0), `brake`=max(-speed_request,0)로 `Driver_Input`에 파생 채움. `steering`은 raw 대비 선형 매핑. raw→request 변환 계수는 미정(실측 필요) — Status는 OPEN 유지 | OPEN |
-| `DEC-CTRL-020` | Brake 입력 감속 감지 → `brake_lamp` 자동 점등 threshold | 방식은 결정: `speed_request`가 이전 대비 일정 비율/양 이상 감소하면 점등. 정확한 threshold는 미정 — Status는 OPEN 유지 | OPEN |
-| `DEC-CTRL-021` | Motor 명령값→speed/rpm 표시값 추정 함수 (실측 아님을 UI에 명시) | 형태는 결정: 명령값(speed_request 또는 PWM duty)에 선형 비례하는 1차 함수로 시작, 실측 대비 오차가 크면 보정 테이블로 전환 검토. 계수는 미정 — Status는 OPEN 유지 | OPEN |
+| `DEC-CTRL-019` | RF 속도 요청→accel/brake 또는 speed_request 계약 및 조향 매핑 | 방식은 결정(2026-09-17 수정): RF `speed_request`는 **0~100 크기(magnitude)만** 사용 — 전/후진 방향은 RF `gear`(P/R/N/D)가 이미 담당하므로 speed로 또 인코딩하지 않는다(부호 없음, `DEC-CTRL-013`과 동일 원칙). `accel`=`speed_request`(그대로 사용, 파생 없음). `brake`는 speed_request에서 파생하지 않으며 별도 입력 채널 여부가 `DEC-HW-018`(OPEN)에서 결정된다. `steering`은 raw 대비 선형 매핑(부호 있음, 좌/우는 speed와 무관). raw→request 변환 계수는 미정(실측 필요) — Status는 OPEN 유지 | OPEN |
+| `DEC-CTRL-020` | Brake 입력 감속 감지 → `brake_lamp` 자동 점등 threshold | 방식은 결정: `accel`(구 speed_request)이 이전 대비 일정 비율/양 이상 감소하면 점등, 또는 `DEC-HW-018`에서 별도 brake 채널이 확정되면 그 값을 직접 사용. 정확한 threshold는 미정 — Status는 OPEN 유지 | OPEN |
+| `DEC-CTRL-021` | Motor 명령값→speed/rpm 표시값 추정 함수 (실측 아님을 UI에 명시) | 형태는 결정: 명령값(accel/speed_request 또는 PWM duty, 항상 0~100 크기)에 선형 비례하는 1차 함수로 시작, 실측 대비 오차가 크면 보정 테이블로 전환 검토. 계수는 미정 — Status는 OPEN 유지 | OPEN |
 
 ## 3.4 Perception / Vision Freeze
 
@@ -314,7 +316,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | Field | Unit / Type | Final | Byte |
 |---|---|---|---|
 | request_valid | bool | FROZEN | 0 |
-| requested_speed | int8, % (-100~100, `DEC-CTRL-013`과 동일 스케일) | FROZEN | 1 |
+| requested_speed | uint8, % (0~100 크기만, `DEC-CTRL-013`과 동일 원칙 — 전방 회피 요청은 항상 감속 방향이라 부호 불필요) | FROZEN | 1 |
 | requested_steering | int8, % (-100~100, `DEC-CTRL-014`와 동일 스케일) | FROZEN | 2 |
 | request_reason/type | enum(uint8) NONE=0/OBJECT_AVOID=1 (전방 객체 회피 사유만; 주차 사유 없음) | FROZEN | 3 |
 | sequence | uint8 (0~255 wraparound, E가 채번) | FROZEN | 4 |
@@ -327,7 +329,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | Field | Unit / Type | Final | Byte |
 |---|---|---|---|
 | drive_enable | bool | FROZEN | 0 |
-| speed_request | int8, % (-100~100, `DEC-CTRL-013`) | FROZEN | 1 |
+| speed_request | uint8, % (0~100 크기만, `DEC-CTRL-013` — 방향은 같은 표의 `gear` 필드) | FROZEN | 1 |
 | steering_request | int8, % (-100~100, `DEC-CTRL-014`) | FROZEN | 2 |
 | gear/direction | enum(uint8) P=0/R=1/N=2/D=3 | FROZEN | 3 |
 | command_valid | bool | FROZEN | 4 |
@@ -343,7 +345,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | Field | Unit / Type | Final | Byte |
 |---|---|---|---|
 | motor_rpm (estimated) | int16 LE, rpm | FROZEN (type) / OPEN (추정 계수, `DEC-CTRL-021`) | 0-1 |
-| vehicle_speed (estimated) | int8, % (-100~100, `speed_request`와 동일 스케일) | FROZEN (type) / OPEN (추정 계수) | 2 |
+| vehicle_speed (estimated) | uint8, % (0~100 크기만 — 방향은 `Vehicle_State.gear`로 별도 확인) | FROZEN (type) / OPEN (추정 계수) | 2 |
 | steering_target | int8, % (-100~100) | FROZEN | 3 |
 | command_valid | bool | FROZEN | 4 |
 | fault_flags | bitfield(uint8) | OPEN | 5 |
@@ -412,8 +414,8 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 
 | Field | Unit / Type | Final | Byte |
 |---|---|---|---|
-| accel | uint8, 0~100 (`speed_request`의 양수부에서 파생, `DEC-CTRL-019`) | FROZEN (type) / OPEN (매핑 계수) | 0 |
-| brake | uint8, 0~100 (`speed_request`의 음수부에서 파생, `DEC-CTRL-019`) | FROZEN (type) / OPEN (매핑 계수) | 1 |
+| accel | uint8, 0~100 (RF `speed_request`를 그대로 사용, `DEC-CTRL-019`) | FROZEN (type) / OPEN (매핑 계수) | 0 |
+| brake | uint8, 0~100 (speed_request에서 파생하지 않음 — 별도 입력 채널 여부는 `DEC-HW-018` OPEN) | FROZEN (type) / OPEN (입력 소스) | 1 |
 | steering | int8, % (-100~100, `DEC-CTRL-019` 선형 매핑) | FROZEN (type) / OPEN (매핑 계수) | 2 |
 | gear | enum(uint8) P=0/R=1/N=2/D=3 (`Final_Drive_Command`와 동일 enum) | FROZEN | 3 |
 | estop_status | bool (C가 로컬로 이미 차단한 상태를 보고) | FROZEN | 4 |
