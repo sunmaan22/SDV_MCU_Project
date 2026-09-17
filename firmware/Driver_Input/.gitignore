@@ -1,0 +1,7 @@
+# CubeMX
+backup_*.ioc
+
+# CubeIDE
+.settings/
+Debug/
+Release/
