@@ -1,6 +1,8 @@
 # Final Implementation Specification
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 E-Stop 전체 삭제:** 사용자가 데모용 프로젝트임을 근거로 E-Stop을 소프트웨어·하드웨어(물리 키스위치 포함) 전부 삭제하기로 결정했다. `DEC-HW-020`/`DEC-HW-027`은 REMOVED로 바뀌었고, `Driver_Input.estop_status` 필드·`Vehicle_State.vehicle_mode`의 `ESTOP` 상태·§1.2 안전 우선순위의 E-Stop 항목·`DEC-CTRL-001`의 ESTOP 전이·`DEC-CTRL-006`(E-Stop recovery)을 문서 전체에서 제거했다. 이 문서의 이전 버전에 있던 "E-Stop은 로컬 GPIO/EXTI로 처리" 관련 서술은 전부 이 결정으로 대체된 이력이다. 정지는 이제 Driver_Input의 speed_request(가속 요청)를 낮추는 일반 경로로만 이뤄진다 — CAN/RTOS 상태와 무관한 하드웨어 차단 경로는 없다.
+
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
 
 > **2026-09-17 하드웨어 추가 확정:** Front Camera(`DEC-HW-015`, Full HD 1080p USB-A, AU1425), Ultrasonic Sensor(`DEC-HW-009`, HC-SR04), CAN 트랜시버(`DEC-HW-006`, TJA1051(T) 모듈 — CAN FD passive, ~2Mbps), LIN 트랜시버(`DEC-HW-007`, LIN 2.1/SAE J2602 모듈)를 사용자가 구매 확정했다. 모델 선택 동결이며, 실물 회로도/정확한 칩 품번/전압 레벨 확인과 Pin/Timer/ADC/SPI 배정 등 Gate A 나머지 항목은 별도다.
 >
@@ -24,7 +26,7 @@
 `DEC-HW-001~005`, `DEC-HW-021~023`만 이번에 동결했다. 구매 결정과 기존 H735 시험 기록을 근거로 하며,
 새 실기 시험을 수행한 것은 아니다. 상세 근거와 다음 동결 조건은 [Freeze Review](FREEZE_REVIEW_2026-09-11.md)를 따른다.
 
-> **2026-09-15 범위 변경:** E-Stop과 Gear 물리 입력을 F에서 C로 이전했다. C가 E-Stop을 로컬에서 즉시 차단(모터 Enable/STBY 직접 차단, CAN 비의존)하고, Gear/E-Stop 상태를 `Driver_Input`에 포함해 CAN으로 F에 보고한다. Pi DTC History DB(중앙 저장/이력) 기능은 삭제했다 — 이 프로젝트에 OBD2/외부 진단 커넥터가 없어 이력 조회의 실효성이 낮으므로, 각 Node가 발행하는 `DTC_Event`를 B(IVI)가 직접 구독해 실시간(Active만) 표시한다. History/Severity 지속 저장은 없다.
+> **2026-09-15 범위 변경:** Gear 물리 입력을 F에서 C로 이전했다. C가 Gear 상태를 `Driver_Input`에 포함해 CAN으로 F에 보고한다(당시 함께 이전했던 E-Stop 관련 내용은 2026-09-17에 기능 자체가 삭제됐다). Pi DTC History DB(중앙 저장/이력) 기능은 삭제했다 — 이 프로젝트에 OBD2/외부 진단 커넥터가 없어 이력 조회의 실효성이 낮으므로, 각 Node가 발행하는 `DTC_Event`를 B(IVI)가 직접 구독해 실시간(Active만) 표시한다. History/Severity 지속 저장은 없다.
 
 ```text
 FINAL_IMPLEMENTATION_SPEC.md
@@ -59,7 +61,7 @@ TEST_REPORT.md
 |---|---|
 | A Ultrasonic | 4방향(FL/FR/RL/RR) 거리 / valid / warning / local fault owner — 초음파 충돌 위험도 판단 전담 |
 | B H735 | UI 표시 + 사용자 Request 생성 + `DTC_Event` 실시간 구독·표시(Active only, History 없음) + E의 `Vision_Status`/`ADAS_Request` UART 수신 → CAN relay 발행 대행(2026-09-17, `DEC-HW-030`; 값 생성/해석 없이 그대로 전달만 함) |
-| C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF) owner + RF Gear 입력/로컬 E-Stop owner (E-Stop 로컬 즉시 차단) |
+| C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF) owner + RF Gear 입력 owner |
 | D Gateway | CAN↔LIN mapping + LIN Master schedule owner |
 | D Slave | Lamp actual state owner |
 | E Vision | 전방 카메라 객체인식(COCO) 결과 + 전방 회피 ADAS 요청 owner (주차 관여 안 함). CAN 인터페이스 없음 — UART로 B에 전달, B가 CAN relay 발행 대행(2026-09-17) |
@@ -82,14 +84,14 @@ TEST_REPORT.md
 | `DTC_Event` | 각 Local Node | F, B |
 | `ECU_Heartbeat` | 각 Node | F, Pi |
 
-같은 최종 Message를 두 Node가 동시에 publish하지 않는다. `Driver_Input`은 accel/brake/steering뿐 아니라 gear와 estop_status도 포함한다 (2026-09-15부터 C가 Gear/E-Stop 물리 입력 owner, §4.8.1 참고).
+같은 최종 Message를 두 Node가 동시에 publish하지 않는다. `Driver_Input`은 accel/brake/steering뿐 아니라 gear도 포함한다 (2026-09-15부터 C가 Gear 물리 입력 owner, §4.8.1 참고).
 
 `Vision_Status`/`ADAS_Request`는 예외적으로 **논리적 owner(E)와 물리적 CAN 송신자(B)가 다르다** (2026-09-17, `DEC-HW-030`). E가 값을 생성하고 UART로 B에 보내면 B는 그 값을 그대로 CAN 프레임에 옮겨 발행할 뿐, 값을 해석·가공·재판단하지 않는다. F/다른 Node 입장에서는 여전히 "E가 발행한 메시지"로 취급하며 B를 신뢰 경계나 데이터 owner로 착각하지 않는다.
 
 ## 1.2 고정 Safety Rule
 
 ```text
-E-Stop / Critical Fault
+Critical Fault
 > Ultrasonic Collision Critical
 > ADAS Safety Request
 > Normal Driver Request
@@ -103,7 +105,6 @@ E-Stop / Critical Fault
 - VCU는 `Drive_Status`, Heartbeat, Peer Message timeout을 감지한다.
 - Brake와 Accelerator가 동시에 유효하게 입력되면 Brake 우선을 기본 정책으로 한다.
 - D↔R은 차량이 움직이는 상태에서 즉시 반전하지 않는다.
-- E-Stop은 C가 로컬 GPIO/EXTI로 직접 읽고, CAN 경유 없이 즉시 Motor Driver Enable/STBY를 차단한다. C는 E-Stop 상태를 `Driver_Input.estop_status`로 CAN 발행해 F가 `Vehicle_State`/arbitration에 반영하지만, 모터 차단 자체는 CAN 통신 상태와 무관하게 동작해야 한다.
 
 ---
 
@@ -112,7 +113,7 @@ E-Stop / Critical Fault
 - Parking/주차 보조 기능을 **충돌주의(Collision Warning)** 로 대체한다. 주차 공간 탐색, 주차 경로 생성, 자동 주차 조향은 포함하지 않는다. 기어 P는 기존 기어 상태이며 기능명 변경과 무관하다.
 - A는 기어 R 진입을 전제로 하지 않고 FL/FR/RL/RR의 거리·valid·warning을 생성한다. B는 모든 기어에서 4방향 충돌주의 패널에 접근할 수 있게 한다. Gear R 전용 화면 자동 전환은 요구하지 않는다.
 - B는 유효하고 최신인 zone별 위험도와 센서 invalid/통신 stale을 구분한다. CRITICAL 경고는 상세 패널을 닫아도 기본 계기판에서 보이며, 패널 닫기가 경고 해제나 VCU 안전 개입 해제가 되어서는 안 된다.
-- 사용자는 **기존 안전 개입 유지**를 선택했다. F의 우선순위는 E-Stop/Critical Fault > Ultrasonic Collision Critical > ADAS Safety Request > Driver Request다. A는 위험도를 산출하고, F만 최종 감속·정지 명령을 결정하며 C가 출력한다.
+- 사용자는 **기존 안전 개입 유지**를 선택했다. F의 우선순위는 Critical Fault > Ultrasonic Collision Critical > ADAS Safety Request > Driver Request다. A는 위험도를 산출하고, F만 최종 감속·정지 명령을 결정하며 C가 출력한다.
 - 전후진별 제어 대상 zone, 정차 시 처리, 거리 threshold/hysteresis, 감속·정지·복구 조건은 `DEC-PER-003`, `DEC-CTRL-011/012`의 OPEN 결정이다. 4방향 표시를 모든 방향의 동일 제동 규칙으로 해석하지 않는다. E의 전방 카메라 ADAS 범위는 유지한다.
 - `Ultrasonic_Status` 메시지명, publisher/consumer 및 zone 필드는 유지한다. 새 `Parking_Status`/`Collision_Status` CAN 메시지를 추가하지 않는다. payload/주기/timeout 수치는 계속 OWNER INPUT이다.
 
@@ -164,12 +165,12 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | `DEC-HW-017` | RF 속도/스로틀 요청 소스 | OWNER INPUT (별도 ADC 센서 연결을 전제하지 않음) | OPEN |
 | `DEC-HW-018` | RF 브레이크 요청 표현 | OWNER INPUT (별도 채널/통합 스틱/미제공 여부 확인) | OPEN |
 | `DEC-HW-019` | RF 조향 요청 소스 | OWNER INPUT (채널/필드/중립/방향) | OPEN |
-| `DEC-HW-020` | E-Stop owner node / 동작 방식 | C 물리 GPIO/EXTI, 로컬 즉시 차단(CAN 비의존) + `Driver_Input.estop_status`로 상태 보고 | FROZEN |
+| `DEC-HW-020` | E-Stop owner node / 동작 방식 | 미사용 — E-Stop 기능 전체 삭제 (2026-09-17 사용자 결정, 데모용 프로젝트라 불필요 판단; 물리 키스위치도 없음) | REMOVED |
 | `DEC-HW-024` | RF 송수신기 모델 / MCU 인터페이스 | nRF24L01 / SPI (2026-09-17 사용자 확정); 모듈 보드/전원/핀/무선 설정/패킷은 DEC-HW-029 | FROZEN |
 | `DEC-HW-029` | nRF24L01 실장 모듈 / 배선 / RF 패킷 설정 | OWNER INPUT (모듈 제조사/전원, SPI·CE·CSN·IRQ 핀, RF 주소/채널/data rate/CRC/ACK/payload) | OPEN |
 | `DEC-HW-025` | Ultrasonic 4방향 센서 배치 | 전좌(FL) / 전우(FR) / 후좌(RL) / 후우(RR) 4개 고정 | FROZEN |
 | `DEC-HW-026` | Gear owner node / 동작 방식 | C가 RF Gear 요청을 수신, `Driver_Input.gear`로 CAN 발행 (2026-09-17 사용자 변경 지시; 채널/값은 DEC-HW-028) | FROZEN |
-| `DEC-HW-027` | E-Stop 회로/부품 (스위치 모델, pull-up/down, debounce) | OWNER INPUT | OPEN |
+| `DEC-HW-027` | E-Stop 회로/부품 (스위치 모델, pull-up/down, debounce) | 미사용 — E-Stop 기능 전체 삭제 (`DEC-HW-020`과 동일 사유) | REMOVED |
 | `DEC-HW-028` | RF Gear 채널/필드와 P/R/N/D 매핑 | OWNER INPUT (스위치 위치 수, invalid/failsafe 포함) | OPEN |
 | `DEC-HW-030` | E(Vision Pi) ↔ B(IVI) 연결 방식 | UART (2026-09-17 사용자 확정, 인터페이스 종류만). B가 `Vision_Status`/`ADAS_Request`를 CAN으로 relay 발행하는 대행 경로(§1.1 예외 참고). 구체 UART 포트/핀/보드레이트/프레이밍(패킷 포맷)은 별도 OPEN 항목(`DEC-HW-031`) | FROZEN |
 | `DEC-HW-031` | E↔B UART 포트/핀/보드레이트/프레이밍 | OWNER INPUT | OPEN |
@@ -204,18 +205,18 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 
 | ID | Decision | Final Value | Status |
 |---|---|---|---|
-| `DEC-CTRL-001` | Vehicle State Machine | `INIT → READY → ACTIVE`(Drive Enable), 어느 상태에서든 `ESTOP`/`FAULT`로 override 가능. `INIT→READY`: 부팅 완료+필수 heartbeat 정상. `READY↔ACTIVE`: `DEC-CTRL-003` 조건. `Any→ESTOP`: estop_status=true(최우선). `ESTOP→READY`: `DEC-CTRL-006` 조건 충족. `Any→FAULT`: Critical DTC. `FAULT→READY`: fault 해소 확인(자동복귀 없음) | FROZEN |
-| `DEC-CTRL-002` | READY 조건 | 부팅 완료 + 필수 Node(A/C/D/F) heartbeat 정상 + `estop_status=false` + Critical DTC 없음 | FROZEN |
+| `DEC-CTRL-001` | Vehicle State Machine | `INIT → READY → ACTIVE`(Drive Enable), 어느 상태에서든 `FAULT`로 override 가능. `INIT→READY`: 부팅 완료+필수 heartbeat 정상. `READY↔ACTIVE`: `DEC-CTRL-003` 조건. `Any→FAULT`: Critical DTC. `FAULT→READY`: fault 해소 확인(자동복귀 없음) | FROZEN |
+| `DEC-CTRL-002` | READY 조건 | 부팅 완료 + 필수 Node(A/C/D/F) heartbeat 정상 + Critical DTC 없음 | FROZEN |
 | `DEC-CTRL-003` | Drive Enable 조건 | READY 상태 + `Driver_Input.request_valid=true` + gear ≠ P | FROZEN |
 | `DEC-CTRL-004` | D↔R 전환 허용 조건 | 방식은 결정: 추정 speed가 threshold 이하로 일정 시간 유지된 정지 상태에서만 전환 허용(움직이는 상태에서 즉시 반전 금지, §1.2). 정확한 threshold/유지시간은 `DEC-CTRL-005`와 함께 미정(bench 필요, 추정치라 여유 마진 필요) — 수치 미확정으로 Status는 OPEN 유지 | OPEN |
 | `DEC-CTRL-005` | Stop speed threshold | OWNER INPUT (bench 필요 — 추정 speed 기반이라 실측 정지와 일치하지 않을 수 있어 여유 마진 확보 후 결정) | OPEN |
-| `DEC-CTRL-006` | E-Stop recovery 정책 | 방식은 결정: (1) `estop_status=false` 전환 확인 (2) 자동 재구동 금지 (3) 별도 재시작 트리거(운전자 재요청 등) 발생 전까지 `ACTIVE` 진입 금지. 재시작 트리거의 구체적 정의는 미정 — Status는 OPEN 유지 | OPEN |
+| `DEC-CTRL-006` | E-Stop recovery 정책 | 미사용 — E-Stop 기능 전체 삭제 (`DEC-HW-020`과 동일 사유) | REMOVED |
 | `DEC-CTRL-007` | Accelerator calibration/deadband | OWNER INPUT (RF raw range 실측 필요) | OPEN |
 | `DEC-CTRL-008` | Brake calibration/deadband | OWNER INPUT (RF raw range 실측 필요) | OPEN |
 | `DEC-CTRL-009` | Brake-over-Accelerator threshold | 정책은 결정(§1.2와 일치: brake가 deadband 초과 시 accel 무시). deadband 수치는 `DEC-CTRL-008`과 함께 미정 — Status는 OPEN 유지 | OPEN |
 | `DEC-CTRL-010` | Steering input range/calibration | OWNER INPUT (RF raw range 실측 필요) | OPEN |
 | `DEC-CTRL-011` | Ultrasonic SAFE/WARNING/CRITICAL action | 정책은 결정: SAFE=조치 없음, WARNING=HMI 표시만(속도 제한 없음), CRITICAL=F가 감속/정지 명령 생성 후 C가 출력. threshold/hysteresis 수치는 `DEC-PER-003`에서 별도 결정 — Status는 OPEN 유지 | OPEN |
-| `DEC-CTRL-012` | ADAS arbitration rule | §1.2와 동일: E-Stop > Ultrasonic Critical > ADAS > Driver Request. ADAS는 Ultrasonic Critical을 override하지 않는다 | FROZEN |
+| `DEC-CTRL-012` | ADAS arbitration rule | §1.2와 동일: Critical Fault > Ultrasonic Critical > ADAS > Driver Request. ADAS는 Ultrasonic Critical을 override하지 않는다 | FROZEN |
 | `DEC-CTRL-013` | Final speed unit/range | uint8 %, 0(정지)~100(최대 속도) **크기(magnitude)만** — 전/후진 방향은 `Final_Drive_Command.gear`(P/R/N/D)가 이미 갖고 있어서 speed로 또 표현하지 않는다(2026-09-17 사용자 결정, gear 필드와의 중복 제거) | FROZEN |
 | `DEC-CTRL-014` | Final steering unit/range | 부호 있는 정수 %, -100(최대 좌)~100(최대 우), 0=중립 | FROZEN |
 | `DEC-CTRL-015` | Drive command timeout | 100ms (`Final_Drive_Command` cycle 20ms의 5배, `DEC-NET-007` 참고) | FROZEN |
@@ -248,7 +249,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | ID | Decision | Final Value | Status |
 |---|---|---|---|
 | `DEC-HMI-001` | Cluster 필수 표시항목 | 추정 속도, 기어, 전원/배터리 상태, 4방향 충돌주의 요약, Active DTC 목록, 턴시그널/헤드램프 상태. 레이아웃/배치는 OPEN | OPEN |
-| `DEC-HMI-002` | Warning 표시 우선순위 | E-Stop > Critical DTC > Ultrasonic Critical > ADAS 경고 > 일반 상태 표시 (§1.2와 일치) | FROZEN |
+| `DEC-HMI-002` | Warning 표시 우선순위 | Critical DTC > Ultrasonic Critical > ADAS 경고 > 일반 상태 표시 (§1.2와 일치) | FROZEN |
 | `DEC-HMI-003` | 전방 객체 알림 및 4방향 충돌주의 overlay/panel 상세 정책 | 기본 화면에 4방향 요약 아이콘 상시 표시, 상세 패널은 터치로 열람. CRITICAL은 패널을 닫아도 기본 화면에 표시 유지(§1.3 기존 규칙과 일치). 세부 UI 디자인은 OPEN | OPEN |
 | `DEC-HMI-004` | DTC Clear 구현 여부 | 미구현 — 현재 범위에 포함하지 않는다 (§4.10 실시간 fault 표시 계약과 일치, IVI 수동 Clear 없음) | FROZEN |
 | `DEC-HMI-005` | TouchGFX update/frame budget | OWNER INPUT (bench 계측 필요) | OPEN |
@@ -399,16 +400,16 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 
 사용자가 RF 모델을 `nRF24L01`로 확인했다. `DEC-HW-024`는 nRF24L01/SPI 선택만 FROZEN이며, 모듈 보드·배선·무선 설정·패킷은 `DEC-HW-029`에 OPEN으로 분리한다. 송신측 MCU/펌웨어와 RF 주소·채널·data rate·CRC·payload 규격을 맞춘다. [C 시작 가이드](../ecus/Motor_Steering_Control/DRIVER_INPUT_START.md)의 SPI 절차를 따른다.
 
-- 사용자 요청으로 C의 기어·조향·속도 요청 소스를 RF로 통일한다. 별도 로컬 Gear GPIO/가변저항은 현재 기본 구성에서 제외한다. E-Stop의 로컬 GPIO/EXTI 차단과 C/F 역할 경계는 유지한다.
+- 사용자 요청으로 C의 기어·조향·속도 요청 소스를 RF로 통일한다. 별도 로컬 Gear GPIO/가변저항은 현재 기본 구성에서 제외한다.
 - **속도는 우선 목표 속도/스로틀 요청이라는 작업 가정**이며 실제 속도 센서값으로 확정한 것이 아니다. `Drive_Status.vehicle_speed` 및 `motor_rpm`의 명령값 기반 추정 의미는 그대로다.
 - 아래 기존 CAN 필드 목록은 유지하되, RF 속도 요청을 `accel/brake`로 변환할지 `speed_request` 필드를 추가할지는 `DEC-CTRL-019`에서 C/F가 결정한다. 단일 속도 요청만으로 독립된 브레이크 입력을 받았다고 가정하지 않는다. 결정 전 새 CAN 필드/단위/payload를 통합 상수로 사용하지 않는다.
 - `gear`는 운전자 요청이다. 실제 기어/방향은 F의 중재를 거친 `Final_Drive_Command`와 `Vehicle_State`를 따른다. RF 요청을 모터 PWM/DIR/서보에 바로 연결하지 않는다.
 - 기어·조향·속도 요청 중 하나라도 누락/범위 오류/오래된 값이거나 수신기가 RF failsafe를 표시하면 전체 요청을 invalid로 취급한다. 부팅 미수신도 invalid다. 새 유효 수신/샘플로만 freshness를 갱신하고, 같은 값으로 계속 조작 중인 상태를 단순 값 불변만으로 timeout 처리하지 않는다.
 - RF timeout과 VCU command timeout은 별도 감시한다. invalid를 F에 전달하고 안전 정책에 따라 처리하며, 마지막 유효 입력을 정상으로 계속 재발행하지 않는다. nRF24L01 수신이 멈춰도 이전 payload가 RAM에 남을 수 있으므로 새 유효 패킷 기준 timeout을 송신기 OFF 시험으로 검증한다. timeout 수치와 출력 안전 동작/복구 조건은 OPEN이다.
 - 변경 근거: 2026-09-17 사용자 C 담당 계획 및 로컬 `Driver_Input.ioc`/`Core/Src/main.c` 확인. `DEC-HW-026`의 소스를 RF로 변경하고 owner C는 유지한다. 사용자 추가 확인에 따라 nRF24L01/SPI 선택을 동결했다. 모듈 보드/무선 설정/패킷/핀/단위는 동결하지 않았다. 새 실기 시험은 NOT RUN이다.
-- 영향/재시험: C 수신·매핑·두절·E-Stop, F 입력 validity·기어·속도 중재, B 요청/추정 속도 구분 및 C↔F CAN encode/decode. 시작 절차는 [C Driver_Input 가이드](../ecus/Motor_Steering_Control/DRIVER_INPUT_START.md)를 따른다.
+- 영향/재시험: C 수신·매핑·두절, F 입력 validity·기어·속도 중재, B 요청/추정 속도 구분 및 C↔F CAN encode/decode. 시작 절차는 [C Driver_Input 가이드](../ecus/Motor_Steering_Control/DRIVER_INPUT_START.md)를 따른다.
 
-> Publisher는 C다 (2026-09-15부터 accel/brake/steering + gear + E-Stop 상태까지 포함, §7.1에서 지적된 누락 계약을 채움). C는 RF로 기어·조향·속도 요청을 수신하고 E-Stop은 로컬 GPIO/EXTI로 읽어 하나의 `Driver_Input` 메시지로 CAN 발행한다. E-Stop의 실제 차단은 C가 CAN과 무관하게 로컬에서 수행하며, 이 필드는 F의 `Vehicle_State`/arbitration 반영용이다.
+> Publisher는 C다 (2026-09-15부터 accel/brake/steering + gear까지 포함, §7.1에서 지적된 누락 계약을 채움). C는 RF로 기어·조향·속도 요청을 수신해 하나의 `Driver_Input` 메시지로 CAN 발행한다.
 
 **CAN ID:** `0x110` · **DLC:** 8 · **Cycle:** 20ms · **Timeout:** 100ms (`DEC-NET-007`, `Final_Drive_Command`와 동일 등급)
 
@@ -418,12 +419,11 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | brake | uint8, 0~100 (speed_request에서 파생하지 않음 — 별도 입력 채널 여부는 `DEC-HW-018` OPEN) | FROZEN (type) / OPEN (입력 소스) | 1 |
 | steering | int8, % (-100~100, `DEC-CTRL-019` 선형 매핑) | FROZEN (type) / OPEN (매핑 계수) | 2 |
 | gear | enum(uint8) P=0/R=1/N=2/D=3 (`Final_Drive_Command`와 동일 enum) | FROZEN | 3 |
-| estop_status | bool (C가 로컬로 이미 차단한 상태를 보고) | FROZEN | 4 |
-| request_valid | bool | FROZEN | 5 |
-| sequence | uint8 (0~255 wraparound) | FROZEN | 6 |
-| (reserved) | — 0 고정 | FROZEN | 7 |
+| request_valid | bool | FROZEN | 4 |
+| sequence | uint8 (0~255 wraparound) | FROZEN | 5 |
+| (reserved) | — 0 고정 | FROZEN | 6-7 |
 
-`Driver_Input`의 invalid/stale/timeout을 F가 E-Stop 해제나 유효한 Gear로 간주해서는 안 된다. 안전 상태는 `DEC-CTRL-004~006`과 freshness 계약에 따라 처리한다. C의 로컬 E-Stop 차단은 CAN 송수신과 독립적이며, 이후 ControlTask/수신 command가 차단을 덮어쓰지 않도록 interlock을 유지한다. 부팅 시 이미 눌린 E-Stop도 확인해야 한다. 해제만으로 자동 재구동하지 않으며, 구체적인 복구 조건은 `DEC-CTRL-006`에서 확정한다. Enable/STBY 비활성 극성과 실제 핀은 선택된 드라이버/회로 기준으로 확정한다.
+`Driver_Input`의 invalid/stale/timeout을 F가 유효한 Gear로 간주해서는 안 된다. 안전 상태는 `DEC-CTRL-004/005`와 freshness 계약에 따라 처리한다(E-Stop 관련 조항은 2026-09-17 삭제됨). Enable/STBY 비활성 극성과 실제 핀은 선택된 드라이버/회로 기준으로 확정한다.
 
 ## 4.9 `Vehicle_State`
 
@@ -433,7 +433,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 |---|---|---|---|
 | gear | enum(uint8) P=0/R=1/N=2/D=3 | FROZEN | 0 |
 | ready | bool | FROZEN | 1 |
-| vehicle_mode | enum(uint8) INIT=0/READY=1/ACTIVE=2/FAULT=3/ESTOP=4 (`DEC-CTRL-001` 상태와 동일) | FROZEN | 2 |
+| vehicle_mode | enum(uint8) INIT=0/READY=1/ACTIVE=2/FAULT=3 (`DEC-CTRL-001` 상태와 동일) | FROZEN | 2 |
 | safety_state | enum(uint8) NORMAL=0/WARNING=1/CRITICAL=2 | FROZEN | 3 |
 | (reserved) | — 0 고정 | FROZEN | 4-7 |
 
@@ -518,7 +518,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 >
 > **2026-09-17:** B에 `VisionRelayTask` 추가 — E가 UART로 보낸 `Vision_Status`/`ADAS_Request` raw 값을 그대로 CAN에 옮겨 발행한다(E는 CAN 인터페이스가 없음, `DEC-HW-008/030/031`). 이 Task는 값을 해석·재판단하지 않고 단순 relay만 하며, GUI 표시용 `VehicleModelTask` 로직과 분리한다. E의 `can_service`는 삭제되고 `uart_bridge_service`로 대체됐다(§6 Linux E Node 표 참고).
 >
-> **2026-09-15:** E-Stop/Gear GPIO도 F에서 C로 이전했다. C는 E-Stop EXTI ISR에서 Motor Driver Enable/STBY를 즉시 로컬 차단(가장 높은 우선순위, CAN/RTOS Task 경유 없이 ISR에서 직접 처리 가능)하고, `DriverInputTask`가 gear/estop_status를 `Driver_Input`에 실어 CAN 발행한다. F는 더 이상 E-Stop/Gear GPIO를 직접 읽지 않으며, `SafetyTask`는 CAN으로 수신한 `Driver_Input.estop_status`를 보고 override를 갱신한다. F의 `DiagnosticTask`는 Pi DTC Manager 없이 `DTC_Event` 발행과 현재 fault/status 처리를 담당하며, 지속 이력 저장은 하지 않는다. B는 각 ECU의 이벤트를 직접 구독해 표시한다.
+> **2026-09-15:** Gear GPIO도 F에서 C로 이전했다(당시 함께 이전한 E-Stop 관련 내용은 2026-09-17에 기능 자체가 삭제됐다). `DriverInputTask`가 gear를 `Driver_Input`에 실어 CAN 발행한다. F는 더 이상 Gear GPIO를 직접 읽지 않는다. F의 `DiagnosticTask`는 Pi DTC Manager 없이 `DTC_Event` 발행과 현재 fault/status 처리를 담당하며, 지속 이력 저장은 하지 않는다. B는 각 ECU의 이벤트를 직접 구독해 표시한다.
 
 Linux E Node는 다음을 Freeze한다.
 
@@ -565,7 +565,6 @@ VCU/Drive 제어 코드 작성 전에:
 - [x] Vehicle State Machine 확정 (2026-09-17, `DEC-CTRL-001`)
 - [x] READY/Enable 조건 확정 (2026-09-17, `DEC-CTRL-002/003`)
 - [x] Arbitration Rule 확정 (§1.2, `DEC-CTRL-012`)
-- [ ] E-Stop Recovery 확정 (방식은 결정, 재시작 트리거 구체 정의는 OPEN — `DEC-CTRL-006`)
 - [ ] D↔R 조건 확정 (방식은 결정, threshold/유지시간 수치는 bench 필요 — `DEC-CTRL-004/005`)
 - [x] Command Timeout/Safe State 확정 (2026-09-17, `DEC-CTRL-015/016`, BENCH 초기값)
 
@@ -631,13 +630,12 @@ View에서 CAN Driver를 직접 호출하지 않는다. `VisionRelayTask`는 UAR
 ## C Drive
 
 ```text
-E-Stop GPIO/EXTI → 로컬 즉시 Motor Enable/STBY 차단 (CAN 비의존)
-RF 수신기(기어·조향·속도 요청) → DriverInputTask → Driver_Input(CAN, C 발행: accel/brake/steering/gear/estop_status)
+RF 수신기(기어·조향·속도 요청) → DriverInputTask → Driver_Input(CAN, C 발행: accel/brake/steering/gear)
 Final_Drive_Command → Validation → Control → PWM/DIR/Servo
 PWM/모터 명령값 → 추정 함수 → Motor_RPM/Speed(estimated) → Status
 ```
 
-Motor driver rating과 command timeout/safe state가 FROZEN이어야 한다. Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) — speed/rpm 표시는 명령값 기반 추정 함수(`DEC-CTRL-021`)로 대체한다. Driver 입력(RF, `DEC-HW-024`)의 속도 요청 표현 및 기존 accel/brake 계약과의 매핑은 `DEC-CTRL-019`에서 확정한다. E-Stop 로컬 차단(`DEC-HW-020`)은 Driver_Input CAN 발행과 독립적으로 가장 먼저 처리한다.
+Motor driver rating과 command timeout/safe state가 FROZEN이어야 한다. Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) — speed/rpm 표시는 명령값 기반 추정 함수(`DEC-CTRL-021`)로 대체한다. Driver 입력(RF, `DEC-HW-024`)의 속도 요청 표현 및 기존 accel/brake 계약과의 매핑은 `DEC-CTRL-019`에서 확정한다.
 
 ## D Body
 
@@ -661,13 +659,13 @@ Raw image는 CAN으로 보내지 않는다. Rear Camera/Rear Vision/주차 Visio
 ## F VCU
 
 ```text
-Driver_Input(CAN, gear/estop 포함) + Perception + Status + Fault
+Driver_Input(CAN, gear 포함) + Perception + Status + Fault
 → Validation/Freshness
 → Safety/Arbitration
 → Final_Drive_Command / Body_Command
 ```
 
-Final command writer는 `VcuControlTask` 하나다. F는 Gear/E-Stop 물리 GPIO를 더 이상 직접 읽지 않는다 (2026-09-15부터 C 소유) — `SafetyTask`는 CAN으로 수신한 `Driver_Input.estop_status`를 override 조건으로 사용한다.
+Final command writer는 `VcuControlTask` 하나다. F는 Gear 물리 GPIO를 더 이상 직접 읽지 않는다 (2026-09-15부터 C 소유).
 
 ---
 
