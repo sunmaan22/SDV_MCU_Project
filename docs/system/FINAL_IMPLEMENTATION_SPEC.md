@@ -6,6 +6,8 @@
 >
 > **2026-09-17 CAN 트랜시버 재확정:** 처음 검토했던 MCP2515+TJA1050 모듈은 CAN FD(BRS) 미지원이라 TJA1051(T)로 교체 확정했다 (`DEC-HW-006`). MCP2515는 이제 사용하지 않는다.
 
+> **2026-09-17 Pi CAN 미사용 결정:** 모든 라즈베리파이(RF 송신측, E HPC Vision)는 CAN 인터페이스를 직접 쓰지 않는다(`DEC-HW-008` REMOVED). E(HPC Camera Vision)의 Pi는 `Vision_Status`/`ADAS_Request`를 UART로 B(IVI, STM32H735G-DK)에 보내고, **B가 그 값을 그대로 CAN에 relay 발행**한다(`DEC-HW-030`, 인터페이스는 UART로 FROZEN, 핀/보드레이트는 OPEN). 데이터의 논리적 owner/생성자는 여전히 E다 — B는 값을 해석·수정하지 않고 CAN 프레임으로 옮기기만 하는 대행자다. 사용자도 이 방식이 비효율적임을 인지한 상태에서, B에 여유 핀/CAN 포트가 있다는 이유로 선택했다.
+
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
 > **Status:** PARTIAL FREEZE — 2026-09-11 / Implementation Baseline v1.0 미도달
@@ -52,11 +54,11 @@ TEST_REPORT.md
 | 영역 | 고정 규칙 |
 |---|---|
 | A Ultrasonic | 4방향(FL/FR/RL/RR) 거리 / valid / warning / local fault owner — 초음파 충돌 위험도 판단 전담 |
-| B H735 | UI 표시 + 사용자 Request 생성 + `DTC_Event` 실시간 구독·표시(Active only, History 없음) |
+| B H735 | UI 표시 + 사용자 Request 생성 + `DTC_Event` 실시간 구독·표시(Active only, History 없음) + E의 `Vision_Status`/`ADAS_Request` UART 수신 → CAN relay 발행 대행(2026-09-17, `DEC-HW-030`; 값 생성/해석 없이 그대로 전달만 함) |
 | C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF) owner + RF Gear 입력/로컬 E-Stop owner (E-Stop 로컬 즉시 차단) |
 | D Gateway | CAN↔LIN mapping + LIN Master schedule owner |
 | D Slave | Lamp actual state owner |
-| E Vision | 전방 카메라 객체인식(COCO) 결과 + 전방 회피 ADAS 요청 owner (주차 관여 안 함) |
+| E Vision | 전방 카메라 객체인식(COCO) 결과 + 전방 회피 ADAS 요청 owner (주차 관여 안 함). CAN 인터페이스 없음 — UART로 B에 전달, B가 CAN relay 발행 대행(2026-09-17) |
 | F VCU | 최종 vehicle arbitration + Final Drive / Body Command owner |
 
 ## 1.1 고정 Message Publisher
@@ -64,8 +66,8 @@ TEST_REPORT.md
 | Logical Message | Publisher | Consumer |
 |---|---|---|
 | `Ultrasonic_Status` | A | F, B, E |
-| `Vision_Status` | E | F, B |
-| `ADAS_Request` | E | F |
+| `Vision_Status` | E (논리적 owner) — CAN 프레임은 B가 UART relay로 대행 발행 | F, B |
+| `ADAS_Request` | E (논리적 owner) — CAN 프레임은 B가 UART relay로 대행 발행 | F |
 | `Final_Drive_Command` | F | C |
 | `Drive_Status` | C | F, B, E |
 | `Body_User_Request` | B | F |
@@ -77,6 +79,8 @@ TEST_REPORT.md
 | `ECU_Heartbeat` | 각 Node | F, Pi |
 
 같은 최종 Message를 두 Node가 동시에 publish하지 않는다. `Driver_Input`은 accel/brake/steering뿐 아니라 gear와 estop_status도 포함한다 (2026-09-15부터 C가 Gear/E-Stop 물리 입력 owner, §4.8.1 참고).
+
+`Vision_Status`/`ADAS_Request`는 예외적으로 **논리적 owner(E)와 물리적 CAN 송신자(B)가 다르다** (2026-09-17, `DEC-HW-030`). E가 값을 생성하고 UART로 B에 보내면 B는 그 값을 그대로 CAN 프레임에 옮겨 발행할 뿐, 값을 해석·가공·재판단하지 않는다. F/다른 Node 입장에서는 여전히 "E가 발행한 메시지"로 취급하며 B를 신뢰 경계나 데이터 owner로 착각하지 않는다.
 
 ## 1.2 고정 Safety Rule
 
@@ -144,7 +148,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | `DEC-HW-005` | F VCU STM32 모델 | STM32G431KB 기반 구매 보드 | FROZEN |
 | `DEC-HW-006` | CAN FD Transceiver 모델 | TJA1051(T) 고속 저전력 CAN 트랜시버 모듈 (2026-09-17 사용자 확정, MCP2515+TJA1050 대체). NXP 분류상 "CAN FD passive" 등급 — CAN FD 데이터 phase 약 2Mbps까지 안정 동작(TJA1050과 달리 FD 사용 가능). STM32(A/C/D Gateway/D Slave/F)의 native FDCAN 페리페럴에 CANH/CANL/TXD/RXD/VCC/GND로 직결하며, 외부 CAN 컨트롤러(SPI 방식)는 사용하지 않는다. 실제 CAN FD(BRS) 사용 여부와 bitrate는 `DEC-NET-001/002`에서 별도 확정 | FROZEN |
 | `DEC-HW-007` | LIN Transceiver 모델 | LIN 2.1/SAE J2602 트랜시버, LIN 버스 모듈(마스터-슬레이브 프로토콜 컨트롤러) (2026-09-17 사용자 확정). 정확한 트랜시버 칩 품번은 실물 수령 후 회로도/실크스크린으로 재확인 필요 (모델 선택 동결이며 §3.1 하단 "동결 범위" 원칙과 동일하게 실물 확인은 별도) | FROZEN |
-| `DEC-HW-008` | Pi CAN FD Interface | OWNER INPUT | OPEN |
+| `DEC-HW-008` | Pi CAN FD Interface | 미사용 — 모든 라즈베리파이(E Vision, RF 송신측)는 CAN 인터페이스를 직접 쓰지 않는다 (2026-09-17 사용자 결정). E는 UART로 B에 전달하고 B가 CAN relay 발행을 대행한다(`DEC-HW-030`) | REMOVED |
 | `DEC-HW-009` | Ultrasonic Sensor 모델 | HC-SR04 (2026-09-17 사용자 확정; 개수 4개는 DEC-HW-025에서 FROZEN). ECHO 출력이 5V라 STM32 3.3V GPIO에 직결하지 않고 레벨 다운(전압 분배 등)을 거친다 | FROZEN |
 | `DEC-HW-010` | Motor 모델 | OWNER INPUT | OPEN |
 | `DEC-HW-011` | Motor Driver | OWNER INPUT | OPEN |
@@ -163,6 +167,8 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | `DEC-HW-026` | Gear owner node / 동작 방식 | C가 RF Gear 요청을 수신, `Driver_Input.gear`로 CAN 발행 (2026-09-17 사용자 변경 지시; 채널/값은 DEC-HW-028) | FROZEN |
 | `DEC-HW-027` | E-Stop 회로/부품 (스위치 모델, pull-up/down, debounce) | OWNER INPUT | OPEN |
 | `DEC-HW-028` | RF Gear 채널/필드와 P/R/N/D 매핑 | OWNER INPUT (스위치 위치 수, invalid/failsafe 포함) | OPEN |
+| `DEC-HW-030` | E(Vision Pi) ↔ B(IVI) 연결 방식 | UART (2026-09-17 사용자 확정, 인터페이스 종류만). B가 `Vision_Status`/`ADAS_Request`를 CAN으로 relay 발행하는 대행 경로(§1.1 예외 참고). 구체 UART 포트/핀/보드레이트/프레이밍(패킷 포맷)은 별도 OPEN 항목(`DEC-HW-031`) | FROZEN |
+| `DEC-HW-031` | E↔B UART 포트/핀/보드레이트/프레이밍 | OWNER INPUT | OPEN |
 | `DEC-HW-021` | B IVI 보드 | STM32H735G-DK | FROZEN |
 | `DEC-HW-022` | B CAN peripheral / 핀 예약 | FDCAN2, PB5 RX / PB6 TX (설계 배정; 외부 통신 검증 미완료) | FROZEN |
 | `DEC-HW-023` | B Display / Touch / 외부 메모리 역할 | LTDC RGB888 / BSP I2C4 touch / OCTOSPI1 NOR asset @ 0x90000000 / OCTOSPI2 HyperRAM framebuffer @ 0x70000000 | FROZEN |
@@ -457,13 +463,15 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | Node | Critical Tasks |
 |---|---|
 | A | UltrasonicTask, PerceptionTask, CanTxTask, HealthTask |
-| B | CanRxTask, VehicleModelTask, GuiTask, CommandTxTask, HealthTask |
+| B | CanRxTask, VehicleModelTask, GuiTask, CommandTxTask, VisionRelayTask, HealthTask |
 | C | CanRxTask, ControlTask, DriverInputTask, CanTxTask, StatusTask, HealthTask |
 | D Gateway | CanRxTask, GatewayMappingTask, LinScheduleTask, CanTxTask, HealthTask |
 | D Slave | LinRxTask, LightingTask, StatusTask, HealthTask |
 | F | SafetyTask, VcuControlTask, CanRxTask, CanTxTask, DiagnosticTask, HealthTask |
 
 > C에 `DriverInputTask` 추가 (RF 수신기 입력 읽기 + `Driver_Input` CAN 발행 — 입력 하드웨어가 실제로 C에 물리적으로 붙기 때문에 publisher를 F에서 C로 이전, §1.1 참고). C의 `FeedbackTask`(Encoder 기반)는 Encoder 삭제로 제거. F의 `DriverInputTask`는 publisher 이전에 따라 제거.
+>
+> **2026-09-17:** B에 `VisionRelayTask` 추가 — E가 UART로 보낸 `Vision_Status`/`ADAS_Request` raw 값을 그대로 CAN에 옮겨 발행한다(E는 CAN 인터페이스가 없음, `DEC-HW-008/030/031`). 이 Task는 값을 해석·재판단하지 않고 단순 relay만 하며, GUI 표시용 `VehicleModelTask` 로직과 분리한다. E의 `can_service`는 삭제되고 `uart_bridge_service`로 대체됐다(§6 Linux E Node 표 참고).
 >
 > **2026-09-15:** E-Stop/Gear GPIO도 F에서 C로 이전했다. C는 E-Stop EXTI ISR에서 Motor Driver Enable/STBY를 즉시 로컬 차단(가장 높은 우선순위, CAN/RTOS Task 경유 없이 ISR에서 직접 처리 가능)하고, `DriverInputTask`가 gear/estop_status를 `Driver_Input`에 실어 CAN 발행한다. F는 더 이상 E-Stop/Gear GPIO를 직접 읽지 않으며, `SafetyTask`는 CAN으로 수신한 `Driver_Input.estop_status`를 보고 override를 갱신한다. F의 `DiagnosticTask`는 Pi DTC Manager 없이 `DTC_Event` 발행과 현재 fault/status 처리를 담당하며, 지속 이력 저장은 하지 않는다. B는 각 ECU의 이벤트를 직접 구독해 표시한다.
 
@@ -473,11 +481,13 @@ Linux E Node는 다음을 Freeze한다.
 |---|---|
 | front_vision | lifetime / mode / restart |
 | vehicle_manager | state ownership |
-| can_service | CAN single owner |
+| uart_bridge_service | E↔B UART 링크 single owner (2026-09-17, `DEC-HW-030/031`; CAN 없음) |
 | health_monitor | timeout / restart condition |
 | logger | storage / rotation / blocking policy |
 
 Pi DTC Manager 서비스는 삭제됐다 (`DEC-DTC-000` REMOVED). Diagnostics history/storage는 어떤 Node도 소유하지 않는다.
+
+`can_service`는 삭제됐다 (2026-09-17, `DEC-HW-008` REMOVED) — E는 CAN을 직접 쓰지 않는다. `Vision_Status`/`ADAS_Request`는 `uart_bridge_service`가 B에 UART로 전달하고, B의 `VisionRelayTask`가 CAN으로 대신 발행한다.
 
 ---
 
@@ -565,9 +575,10 @@ Driver → Measurement → Perception → Repository → CAN
 CAN → Repository → TouchGFX
 Touch → Body_User_Request
 DTC_Event(CAN) → 실시간 구독 → Diagnostics 화면 (Active only, History 없음)
+E UART(Vision_Status/ADAS_Request raw) → VisionRelayTask → CAN 발행 (relay만, 값 해석/재판단 없음)
 ```
 
-View에서 CAN Driver를 직접 호출하지 않는다.
+View에서 CAN Driver를 직접 호출하지 않는다. `VisionRelayTask`는 UART로 받은 E의 값을 그대로 CAN 프레임에 실어 보낼 뿐이며, `VehicleModelTask`/GUI 로직과 섞지 않는다(2026-09-17, `DEC-HW-008/030/031`).
 
 ## C Drive
 
@@ -593,10 +604,11 @@ LIN schedule은 Gateway만 소유한다. Ambient 관련 기능은 삭제되어 D
 
 ```text
 Front Camera(1대) → YOLO/COCO 객체인식 → detected_class + direction/zone
-→ Vision_Status(팝업용, B로) / ADAS_Request(회피요청, F로) → can_service
+→ Vision_Status(팝업용) / ADAS_Request(회피요청) → uart_bridge_service → UART → B
+                                                                          (B가 CAN relay 발행, F/B가 소비)
 ```
 
-Raw image는 CAN으로 보내지 않는다. Rear Camera/Rear Vision/주차 Vision 기능은 삭제되었다 (`DEC-HW-016`, `DEC-VIS-002/006/007` REMOVED) — 초음파 충돌 위험도 판단은 A(Ultrasonic)가 전담한다.
+Raw image는 CAN으로 보내지 않는다. Rear Camera/Rear Vision/주차 Vision 기능은 삭제되었다 (`DEC-HW-016`, `DEC-VIS-002/006/007` REMOVED) — 초음파 충돌 위험도 판단은 A(Ultrasonic)가 전담한다. E는 CAN 인터페이스를 직접 쓰지 않는다 (2026-09-17, `DEC-HW-008` REMOVED) — `can_service`는 삭제되고 `uart_bridge_service`로 대체됐다. E가 여전히 `Vision_Status`/`ADAS_Request`의 논리적 owner이며, B는 CAN으로 옮겨 보내는 대행자일 뿐이다(§1.1 예외 참고).
 
 ## F VCU
 
