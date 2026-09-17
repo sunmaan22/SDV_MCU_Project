@@ -1,5 +1,7 @@
 # 4주 개발 계획 — RTOS 반영 6역할 기준
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
 > 원칙: **단독 Bring-up → RTOS Task 구조 → 작은 통신 통합 → 전체 Backbone → 차량 통합** 순서로 간다.
@@ -55,7 +57,7 @@ Watchdog / Health 구조
 |---|---|
 | A | Ultrasonic 1개 측정 → Timer ISR + UltrasonicTask 구조 |
 | B | TouchGFX Dummy UI → GuiTask + VehicleModelTask + CanRxTask skeleton |
-| C | PWM/DIR/Servo + RF/가변저항/Gear/E-Stop Input → ControlTask + DriverInputTask skeleton (E-Stop 로컬 즉시 차단 포함) |
+| C | Driver_Input Build/Download → RF raw 수신 → 기어·조향·속도 요청/두절 검증 → DriverInputTask → 이후 PWM/DIR/Servo·ControlTask 통합 (로컬 E-Stop 유지) |
 | D | Lighting 단독 + Gateway/Slave FreeRTOS skeleton + LIN 기본 통신 |
 | E | Pi Front camera capture, Linux service 구조 초안 |
 | F | VCU state dummy → SafetyTask/VcuControlTask/CanRxTask skeleton |
@@ -118,7 +120,7 @@ D Gateway LIN Master ↔ D LIN Slave
 ## Drive Path
 
 ```text
-C DriverInputTask (RF/가변저항)
+C DriverInputTask (RF)
 → Driver_Input (CAN)
 → F VcuControlTask (Safety/Arbitration)
 → Final_Drive_Command (CAN)
@@ -195,7 +197,7 @@ Front Vision 상시 active (Gear 무관)
 ## 차량 기능 시험
 
 - [ ] Gear P/R/N/D
-- [ ] RF/가변저항 Driver Input (accel/brake/steering)
+- [ ] RF Driver Input (기어·조향·속도 요청, CAN accel/brake 매핑은 별도 확정)
 - [ ] Steering input → Servo
 - [ ] 명령값 기반 speed/rpm 추정
 - [ ] Ultrasonic 4방향 warning/stop
@@ -235,7 +237,7 @@ Power ON
 → FreeRTOS Scheduler / Linux services start
 → MCU Health / Heartbeat
 → H735 Cluster READY
-→ RF/가변저항 Driver Input → C → Driver_Input(CAN) → F
+→ RF Driver Input → C → Driver_Input(CAN) → F
 → Front Vision(COCO) → ADAS_Request
 → VCU Safety / Arbitration Task
 → Drive ControlTask

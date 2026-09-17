@@ -1,5 +1,7 @@
 # Documentation Guide
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
 > 기준: **Architecture v1.2 + Final Implementation Freeze Policy / 2026-09-09**
@@ -89,7 +91,7 @@ E-Stop / Critical Fault
 - Drive ECU가 `Final_Drive_Command` timeout을 감지한다.
 - VCU는 peer status/heartbeat timeout을 감지한다.
 - DTC local detection은 각 Node, safety/severity integration은 VCU, 실시간 표시는 H735가 담당한다. History DB/지속 저장은 없다 (2026-09-15 삭제, `DEC-DTC-000` REMOVED).
-- Gear/E-Stop 물리 입력은 C가 소유한다. E-Stop은 C가 로컬에서 즉시 차단하며(CAN 비의존), F는 `Driver_Input.estop_status`로 상태만 받는다.
+- RF Gear 입력/로컬 E-Stop은 C가 소유한다. E-Stop은 C가 로컬에서 즉시 차단하며(CAN 비의존), F는 `Driver_Input.estop_status`로 상태만 받는다.
 
 # 5. 실행 환경
 

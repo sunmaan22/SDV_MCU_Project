@@ -1,5 +1,7 @@
 # VCU + DTC + CAN Integration Documentation
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 > **2026-09-15 범위 변경 (1차):** `Driver_Input`(가속/브레이크/조향) publisher가 F에서 C로 이전됐다. F는 더 이상 GPIO/ADC로 Driver Input을 직접 읽지 않고 CAN RX로 수신한다. `Vision_Request`는 `ADAS_Request`로 명칭을 통일했고, Ultrasonic Collision Critical이 `ADAS_Request`보다 항상 우선함을 재확인했다.
 >
 > **2026-09-15 범위 변경 (2차):** Gear/E-Stop 물리 입력도 F에서 C로 이전했다. **F는 Driver/Gear/E-Stop 입력용 GPIO를 갖지 않는다.** E-Stop은 C가 로컬에서 즉시 차단(CAN 비의존)하고 상태만 `Driver_Input.estop_status`로 CAN 보고한다. Pi DTC Manager(History DB)는 삭제됐다 — `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
@@ -83,7 +85,7 @@ DEC-DTC-001 ~ DEC-DTC-005
 DEC-HLT-001 ~ DEC-HLT-003
 ```
 
-Vehicle State, READY/Enable, D↔R, E-Stop recovery, Ultrasonic/ADAS action, Final_Drive_Command, Body_Command, Heartbeat, DTC, Watchdog, RTOS 수치는 Project Owner가 중앙 명세에서 결정한다. Gear/E-Stop 물리 입력 관련 Decision(`DEC-HW-020`, `DEC-HW-026~028`)은 [Motor_Steering_Control](../Motor_Steering_Control/README.md) 문서를 참고한다 (C 소유).
+Vehicle State, READY/Enable, D↔R, E-Stop recovery, Ultrasonic/ADAS action, Final_Drive_Command, Body_Command, Heartbeat, DTC, Watchdog, RTOS 수치는 Project Owner가 중앙 명세에서 결정한다. RF Gear 입력/로컬 E-Stop 관련 Decision(`DEC-HW-020`, `DEC-HW-026~028`)은 [Motor_Steering_Control](../Motor_Steering_Control/README.md) 문서를 참고한다 (C 소유).
 
 ## Coding Gate
 

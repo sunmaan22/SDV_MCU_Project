@@ -1,5 +1,7 @@
 # Motor + Steering Control Documentation
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 > **2026-09-15 범위 변경 (1차):** Encoder/Hall 실측 Feedback을 삭제했다 (`DEC-HW-012`, `DEC-CTRL-017` REMOVED). C는 RF/가변저항 Driver 입력을 읽어 `Driver_Input`을 CAN으로 발행하는 owner가 되었고(publisher가 F에서 C로 이전), Motor_RPM/Vehicle_Speed는 명령값 기반 추정 함수 결과로 대체한다 (`DEC-CTRL-021`, 실측 아님).
 >
 > **2026-09-15 범위 변경 (2차):** E-Stop/Gear 물리 입력도 F에서 C로 이전했다. E-Stop은 CAN 없이 로컬에서 즉시 Motor Driver를 차단하고, `Driver_Input`에 gear/estop_status를 포함해 CAN 발행한다. Pi DTC Manager(History DB)는 삭제됐다 — `DTC_Event`는 B(IVI)가 실시간으로만 표시한다.
@@ -11,10 +13,16 @@
 
 이 폴더는 **C 담당: Motor + Steering / 제어 + Driver 입력**의 하위 구현 문서다.
 
+## 지금 시작할 작업
+
+**[Driver_Input RF 수신 시작 가이드](DRIVER_INPUT_START.md)** 순서로 진행한다. 먼저 기존 프로젝트 Build/Download → nRF24L01 SPI 레지스터 확인 → 시험 패킷 수신 → 기어·조향·속도 요청 해석 → 신호 두절 시험을 한다. CAN/RTOS/모터 출력은 이후 통합한다. 이 초기 bench 프로젝트는 C ECU 입력부이며 별도 ECU 추가가 아니다.
+
+속도는 우선 목표 속도/스로틀 요청이라는 작업 가정이다. 실측 속도나 모터 출력 기반 추정 속도와 구분한다. 기존 `accel/brake` CAN 필드에 대한 매핑은 최상위 명세 §4.8.1의 OPEN 결정이다.
+
 ## 고정 역할
 
 ```text
-RF 수신기 / 가변저항 → Driver_Input (C 발행)
+RF 수신기(기어·조향·속도 요청) → Driver_Input (C 발행)
 VCU Final_Drive_Command
 → Drive + Steering ECU
 → Motor / Steering Control
@@ -47,7 +55,7 @@ FDCAN ISR
 → ControlTask
 → Motor PWM / DIR / Servo → Speed/RPM 추정
 
-Gear + Driver Input capture(ADC/PWM)
+RF 기어·조향·속도 요청 수신
 → DriverInputTask
 → Driver_Input (gear/estop_status 포함)
 
@@ -59,7 +67,7 @@ HealthTask
 
 - 안전한 bench 상태에서 low-output PWM/DIR
 - Servo Left/Center/Right 및 기구 한계 측정
-- RF/가변저항/Gear 입력 읽기 및 `Driver_Input` 발행
+- RF(기어·조향·속도 요청) 입력 읽기 및 `Driver_Input` 발행
 - E-Stop 로컬 즉시 차단 (CAN 비의존)
 - 명령값 기반 Speed/RPM 추정 함수
 - Dummy Final_Drive_Command → actuator output

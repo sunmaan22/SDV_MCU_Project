@@ -1,5 +1,7 @@
 # Motor + Steering Control Test Report
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
 > **2026-09-15 범위 변경 (1차):** Encoder/Hall 관련 테스트 항목을 전부 삭제했다. RF/가변저항 `Driver_Input` 읽기 시험과 명령값 기반 speed/rpm 추정 검증 항목으로 대체했다.
@@ -17,17 +19,18 @@
 |---|---|
 | Node / Feature | Motor + Steering Control ECU |
 | Owner | C |
-| Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo + RF 수신기/가변저항 |
+| Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo + RF 수신기 |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
 | Firmware / SW Commit | TBD |
 | Test Date | TBD |
-| Specification Revision | v0.2 |
-| Architecture Revision | v0.2 |
+| Specification Revision | v0.4 |
+| Architecture Revision | v0.4 |
 
 ### Revision History
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| v0.4 | 2026-09-17 | C 사용자 요청 | RF 기어·조향·속도 요청, Driver_Input 시작 순서, RF 오류/두절 시험 계획; 실기 NOT RUN |
 | v0.1 | 2026-09-09 | Team | Initial planned RTOS control test example |
 | v0.2 | 2026-09-15 | Team | Encoder/Hall 시험 항목 삭제, Driver_Input 읽기 및 speed/rpm 추정 시험 항목으로 대체 |
 
@@ -44,7 +47,22 @@
 
 # 1. Test Objective
 
-Drive + Steering ECU가 RF/가변저항 Driver 입력을 읽어 `Driver_Input`으로 발행하고, VCU의 최종 Command를 받아 Motor/Servo 출력으로 변환하며, 모터 명령값 기반 추정 함수로 Speed/RPM 표시값을 산출하는지 확인한다. 또한 Command Timeout, Invalid Input, CAN burst 등의 조건에서도 ControlTask가 정의된 주기 안에서 동작하고 안전한 상태 전환 및 Health 정보를 제공하는지 검증한다.
+## Driver_Input RF 우선 시험 (2026-09-17 추가)
+
+문서/로컬 파일 확인만 수행했으며 아래 시험은 모두 미실행이다. RF 모델·프로토콜·채널·단위·timeout을 먼저 기록하고 시험한다. 초기에는 모터/서보 출력 비활성 상태로 raw 값과 validity만 확인한다.
+
+| Test ID | Requirement | 조건 | 기대 결과 | 실행 상태 |
+|---|---|---|---|---|
+| T-RF-000 | 보드 bring-up | 현재 Driver_Input Build/Download/Reset | main 도달, COM1 시작 로그 또는 LED 확인 | NOT RUN |
+| T-RF-001 | REQ-DRV-RF-001 | 기어 각 위치, 조향 좌/중립/우, 속도 최소/최대 | 세 raw 값/수신 시각/valid 확인, 측정한 매핑과 일치 | NOT RUN |
+| T-RF-002 | REQ-DRV-RF-002 | 부팅 미수신, 누락 채널, invalid gear, 범위 초과, 패킷 오류 | 전체 요청 invalid, freshness를 정상 수신처럼 갱신하지 않음 | NOT RUN |
+| T-RF-003 | REQ-DRV-RF-003 | 송신기 OFF, 수신기 분리, 중복/오래된 패킷 | 합의한 timeout/failsafe 규칙으로 invalid; 저장된 payload 재사용으로 freshness 갱신 금지 | NOT RUN |
+| T-RF-004 | REQ-DRV-RF-004 | 재연결, 조작 유지, E-Stop 활성/해제 | 자동 구동 재개 없음, E-Stop 차단 유지, 합의된 복구 조건 확인 | NOT RUN |
+| T-RF-005 | REQ-DRV-001 | CAN 계약 확정 후 C↔F 통합 | 요청/추정 속도 구분, RF Gear 요청을 F가 중재, 동일 encode/decode | NOT RUN |
+
+로그에는 RF 모델, 펌웨어 식별자, raw 값, 해석한 요청, validity 사유, 마지막 유효 수신 시각과 timeout 검출 시각을 남긴다. RF 속도와 기존 CAN accel/brake 매핑 확정 전 아래 accel/brake 시험은 미실행 계획이며 채널이 존재한다는 증거가 아니다.
+
+Drive + Steering ECU가 RF Driver 입력을 읽어 `Driver_Input`으로 발행하고, VCU의 최종 Command를 받아 Motor/Servo 출력으로 변환하며, 모터 명령값 기반 추정 함수로 Speed/RPM 표시값을 산출하는지 확인한다. 또한 Command Timeout, Invalid Input, CAN burst 등의 조건에서도 ControlTask가 정의된 주기 안에서 동작하고 안전한 상태 전환 및 Health 정보를 제공하는지 검증한다.
 
 초기 Motor/Servo 시험은 낮은 출력의 bench 조건에서 수행하며, 전체 차량 주행 시험보다 먼저 단독 기능과 timeout 동작을 검증한다.
 
@@ -59,7 +77,7 @@ Drive + Steering ECU가 RF/가변저항 Driver 입력을 읽어 `Driver_Input`�
 | CMSIS-RTOS API | CMSIS-RTOS2 |
 | Motor | TBD |
 | Motor Driver | TB6612FNG 후보, 최종 확정 전 |
-| Driver Input 장치 | RF 수신기 또는 가변저항, `DEC-HW-024` 확정 전 |
+| Driver Input 장치 | RF 수신기, `DEC-HW-024`/`DEC-HW-029` 확정 전 |
 | Steering Servo | TBD |
 | Power | 실제 시험 시 기록 |
 | CAN Interface | FDCAN 또는 실제 보드 지원 구조 TBD |
@@ -74,7 +92,7 @@ Drive + Steering ECU가 RF/가변저항 Driver 입력을 읽어 `Driver_Input`�
 | Motor Driver PWM | TBD | STM32 TIM PWM | actual pin TBD |
 | Motor Driver DIR | TBD | STM32 GPIO | actual pin TBD |
 | Motor Driver STBY/Enable | TBD | STM32 GPIO | safe init 확인 |
-| Driver Input (accel/brake/steer) | TBD | TIM Input Capture / ADC | 채택 장치에 따라 확정 |
+| Driver Input (기어/조향/속도 요청) | TBD | SPI + CE/CSN GPIO (핀 TBD) | 채택 장치에 따라 확정 |
 | Servo PWM | TBD | STM32 TIM PWM | actual servo spec 기준 |
 | CAN FD Transceiver | TBD | STM32 FDCAN | actual board support 확인 |
 
@@ -86,7 +104,7 @@ Drive + Steering ECU가 RF/가변저항 Driver 입력을 읽어 `Driver_Input`�
 
 | Test ID | Requirement ID | Test Method | Expected | Result | PASS/FAIL |
 |---|---|---|---|---|---|
-| T-DRV-001 | REQ-DRV-001 | RF/가변저항/Gear 신호 입력 | `Driver_Input` CAN 발행 | NOT RUN | TBD |
+| T-DRV-001 | REQ-DRV-001 | RF(기어·조향·속도 요청) 신호 입력 | `Driver_Input` CAN 발행 | NOT RUN | TBD |
 | T-DRV-001a | REQ-DRV-001a | E-Stop 활성화 (CAN 연결 끊은 상태) | CAN 없이도 Motor Driver 즉시 disable | NOT RUN | TBD |
 | T-DRV-001b | REQ-DRV-001b | E-Stop 활성화 | `Driver_Input.estop_status=true` CAN 발행 | NOT RUN | TBD |
 | T-DRV-002 | REQ-DRV-002 | Dummy/real CAN command | Drive/Steering command 수신 | NOT RUN | TBD |
@@ -111,9 +129,9 @@ Drive + Steering ECU가 RF/가변저항 Driver 입력을 읽어 `Driver_Input`�
 
 | Test ID | Input / Condition | Expected Output | Actual / Measured | Evidence | Result |
 |---|---|---|---|---|---|
-| T-DRV-001-A | RF/가변저항 accel 입력 변화 | `Driver_Input.accel` 반영 | NOT RUN | log TBD | TBD |
-| T-DRV-001-B | RF/가변저항 brake 입력 변화 | `Driver_Input.brake` 반영 | NOT RUN | log TBD | TBD |
-| T-DRV-001-C | RF/가변저항 steer 입력 변화 | `Driver_Input.steer` 반영 | NOT RUN | log TBD | TBD |
+| T-DRV-001-A | RF accel 입력 변화 | `Driver_Input.accel` 반영 | NOT RUN | log TBD | TBD |
+| T-DRV-001-B | RF brake 입력 변화 | `Driver_Input.brake` 반영 | NOT RUN | log TBD | TBD |
+| T-DRV-001-C | RF steer 입력 변화 | `Driver_Input.steering` 반영 | NOT RUN | log TBD | TBD |
 | T-DRV-005-A | low speed request | 낮은 Motor PWM | NOT RUN | scope/log TBD | TBD |
 | T-DRV-005-B | speed request increase | PWM mapping 증가 | NOT RUN | scope/log TBD | TBD |
 | T-DRV-005-C | stop request | Motor output safe/zero policy | NOT RUN | scope/video TBD | TBD |
@@ -152,7 +170,7 @@ Motor/Driver의 실제 전기적 한계를 확인하기 전 무리하게 최대 
 
 | Item | Value |
 |---|---|
-| Driver Input 장치 (RF/가변저항) | TBD (`DEC-HW-024`) |
+| Driver Input 장치 (RF) | TBD (`DEC-HW-024`/`DEC-HW-029`) |
 | Accel 입력 → speed 선형 매핑 계수 | TBD (`DEC-CTRL-019`) |
 | Brake 입력 → speed 선형 매핑 계수 | TBD (`DEC-CTRL-019`) |
 | Brake 감속 감지 → brake_lamp threshold | TBD (`DEC-CTRL-020`) |
@@ -253,7 +271,7 @@ Motor/Driver의 실제 전기적 한계를 확인하기 전 무리하게 최대 
 | Interrupt | Expected ISR Action | Expected Task Wake-up | Actual | Result |
 |---|---|---|---|---|
 | FDCAN RX | enqueue/notify only | CanRxTask | NOT RUN | TBD |
-| Driver Input capture (PWM/ADC), 필요 시 | raw sample/timestamp only | DriverInputTask | NOT RUN | TBD |
+| Driver Input RF 수신 IRQ, 필요 시 | raw sample/timestamp only | DriverInputTask | NOT RUN | TBD |
 
 Code Review 항목:
 - [ ] ISR에서 제어 연산 없음
@@ -378,7 +396,7 @@ RESULT: NOT RUN
 - [ ] Motor output이 안전한 초기 상태에서 시작한다.
 - [ ] 낮은 출력 bench test에서 PWM/DIR 동작을 재현한다.
 - [ ] Servo center/left/right calibration을 기록한다.
-- [ ] RF/가변저항 입력을 읽어 `Driver_Input`을 CAN으로 발행한다.
+- [ ] RF 입력을 읽어 `Driver_Input`을 CAN으로 발행한다.
 - [ ] 명령값 기반 speed/rpm 추정값을 산출하고 estimated임을 확인한다.
 - [ ] VCU CAN command를 받아 output에 반영한다.
 - [ ] Command timeout에서 stale command를 유지하지 않는다.
@@ -395,7 +413,7 @@ RESULT: NOT RUN
 ## Remaining Issues
 
 - 실제 Motor/Driver 정격 확정 필요
-- RF 수신기 vs 가변저항 최종 선택 필요 (`DEC-HW-024`)
+- nRF24L01 모듈 보드/핀/패킷 확정 필요 (`DEC-HW-024`/`DEC-HW-029`)
 - 입력값→speed/steering 선형 매핑 계수 확정 필요 (`DEC-CTRL-019`)
 - Motor 명령값→speed/rpm 추정 함수 형태 확정 필요 (`DEC-CTRL-021`)
 - Brake 감속 감지→brake_lamp threshold 확정 필요 (`DEC-CTRL-020`)

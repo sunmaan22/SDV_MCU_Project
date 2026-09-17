@@ -18,6 +18,8 @@ Raspberry Pi 4 Vision/HPC · STM32 + FreeRTOS 분산 ECU · CAN FD Backbone · L
 
 </div>
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 ---
 
 > **현재 기준:** Architecture v1.2 + RTOS Development Policy — 2026-09-09
@@ -57,8 +59,8 @@ Raspberry Pi 4 Vision/HPC · STM32 + FreeRTOS 분산 ECU · CAN FD Backbone · L
 - **Ultrasonic Perception:** 초음파센서 4방향(FL/FR/RL/RR)으로 장애물 거리를 측정하고 판단한다.
 - **Camera Vision:** Front Camera 1대 영상을 Raspberry Pi에서 COCO 기반으로 처리한다.
 - **HPC / Vision Decision:** 영상에서 객체(class/방향) 의미 정보를 만들고 회피 요청을 생성한다. 초음파 충돌 위험도 판단은 하지 않는다.
-- **VCU / Final Arbitration:** Driver Input(RF/가변저항, C 발행), ADAS 요청, 초음파 Collision Critical(ADAS보다 우선, E-Stop/Critical Fault 다음), Fault를 보고 최종 차량 명령을 정한다.
-- **Drive / Steering Control:** RF/가변저항 Driver 입력을 읽고, 브러시드 DC Motor와 RC Servo를 실제로 제어하며, 명령값 기반으로 speed/rpm을 추정한다.
+- **VCU / Final Arbitration:** Driver Input(RF, C 발행), ADAS 요청, 초음파 Collision Critical(ADAS보다 우선, E-Stop/Critical Fault 다음), Fault를 보고 최종 차량 명령을 정한다.
+- **Drive / Steering Control:** RF Driver 입력을 읽고, 브러시드 DC Motor와 RC Servo를 실제로 제어하며, 명령값 기반으로 speed/rpm을 추정한다.
 - **Body / Lighting:** 헤드램프 밝기/턴시그널/브레이크등을 LIN으로 연결하고 CAN FD와 Gateway한다.
 - **Cockpit:** STM32H735에서 Cluster + IVI UI를 구현한다.
 - **Diagnostics:** 각 Node의 고장을 DTC로 모아 실시간으로 표시한다 (지속 저장/History 없음).
@@ -195,7 +197,7 @@ flowchart TB
     USS --> US["Ultrasonic Sensors (FL/FR/RL/RR)"]
     DRIVE --> TB["TB6612FNG 후보 / Brushed DC Motor"]
     DRIVE --> SERVO["RC Steering Servo"]
-    DRIVERIN["RF 수신기 / 가변저항"] --> DRIVE
+    DRIVERIN["RF 수신기(기어·조향·속도 요청)"] --> DRIVE
 
     GW <-->|"LIN"| BODY["STM32 #4 + FreeRTOS 기본 / Body LIN Slave"]
     BODY --> LIGHT["Headlamp(밝기) / Turn / Brake"]
@@ -478,7 +480,7 @@ H735 상세 명세/설계 예시는 [`docs/ecus/IVI/`](../ecus/IVI)에서 확인
 |---|---|---|---|---|
 | **A** | **Ultrasonic / 인지** | STM32 #1 + Ultrasonic | FreeRTOS | 4방향(FL/FR/RL/RR) 장애물 거리를 측정하고 판단한다. |
 | **B** | **Cluster + IVI / UI** | STM32H735 + TouchGFX | FreeRTOS | 차량 상태, 경고, Collision Warning, DTC(실시간)를 보여준다. |
-| **C** | **Motor + Steering / 제어** | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기/가변저항 + Gear/E-Stop | FreeRTOS | Driver/Gear/E-Stop 입력을 읽고 최종 명령대로 차량을 실제로 움직인다. E-Stop은 로컬 즉시 차단. |
+| **C** | **Motor + Steering / 제어** | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기(기어·조향·속도 요청) + 로컬 E-Stop | FreeRTOS | Driver/Gear/E-Stop 입력을 읽고 최종 명령대로 차량을 실제로 움직인다. E-Stop은 로컬 즉시 차단. |
 | **D** | **Lighting / LIN-CAN** | STM32 #3 + #4 | FreeRTOS | 헤드램프 밝기/조명을 LIN으로 연결하고 CAN FD와 Gateway한다. |
 | **E** | **HPC + Camera Vision / 인지·판단** | Raspberry Pi + Front Camera | Linux | 전방 영상을 COCO로 처리하고 ADAS 회피 요청을 만든다. |
 | **F** | **VCU + DTC + CAN Integration / 최종 판단** | STM32 #5 (물리 GPIO 없음) | FreeRTOS | 최종 안전 판단, CAN 통합, DTC 발행/실시간 통합을 관리한다. |
@@ -490,7 +492,7 @@ H735 상세 명세/설계 예시는 [`docs/ecus/IVI/`](../ecus/IVI)에서 확인
 - C는 Driver/Gear/E-Stop 입력 읽기와 실제 Motor/Steering 제어(+ 명령값 기반 speed/rpm 추정)를 담당한다. E-Stop은 CAN과 무관하게 로컬에서 즉시 차단한다.
 - D는 Body Local LIN Network와 CAN↔LIN Gateway를 담당한다.
 - E는 전방 Camera Vision과 고수준 회피 요청을 담당하며 초음파 충돌 위험도 판단에는 관여하지 않는다.
-- F는 VCU Arbitration(Ultrasonic Collision Critical은 E-Stop/Critical Fault 다음), Safety, CAN 통합, DTC 실시간 발행을 담당한다. Driver/Gear/E-Stop 물리 입력은 C가 소유하고 F는 CAN으로 받는다.
+- F는 VCU Arbitration(Ultrasonic Collision Critical은 E-Stop/Critical Fault 다음), Safety, CAN 통합, DTC 실시간 발행을 담당한다. RF Driver/Gear 입력 + 로컬 E-Stop은 C가 소유하고 F는 CAN으로 받는다.
 - 모든 STM32 담당자는 자기 기능뿐 아니라 **Task/ISR/Queue/Health 구조**도 설명할 수 있어야 한다.
 
 ---
@@ -590,7 +592,7 @@ Power ON
 → FreeRTOS / Linux services initialization
 → 모든 Node Heartbeat / Health 확인
 → H735 Cluster READY
-→ RF/가변저항/Gear/E-Stop Input → C → Driver_Input(CAN) → F
+→ RF(기어·조향·속도 요청) + 로컬 E-Stop Input → C → Driver_Input(CAN) → F
 → Front Vision(COCO) Active → ADAS_Request
 → VCU Safety / Arbitration (Ultrasonic Collision Critical은 E-Stop/Critical Fault 다음)
 → Drive / Steering ControlTask (+ 명령값 기반 speed/rpm 추정)

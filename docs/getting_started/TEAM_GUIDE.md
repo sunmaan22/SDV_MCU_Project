@@ -1,5 +1,7 @@
 # Team Guide
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
 > 처음 보는 팀원이 이 문서 하나로 **내 역할, 필요한 전자기초, RTOS가 왜 필요한지, 개발 순서**를 이해하는 것을 목표로 한다.
@@ -165,7 +167,7 @@ GUI가 바쁘다고 CAN timeout 검출이 멈추거나, CAN frame을 많이 받�
 **한마디:** VCU가 정한 명령을 실제 움직임으로 바꾼다.
 
 ```text
-RF 수신기 / 가변저항
+RF 수신기(기어·조향·속도 요청)
 → DriverInputTask → Driver_Input(CAN)
 
 VCU Final Command
@@ -344,7 +346,7 @@ SafetyTask와 VcuControlTask는 logging/UI 같은 부가 기능 때문에 늦어
 ## 4.2 GPIO
 
 사용 예:
-- Gear Button
+- RF 모듈 CE/CSN 제어 (nRF24L01)
 - E-Stop
 - Direction
 - LED

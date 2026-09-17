@@ -1,5 +1,7 @@
 # Final Implementation Specification
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
 > **Status:** PARTIAL FREEZE — 2026-09-11 / Implementation Baseline v1.0 미도달
@@ -47,7 +49,7 @@ TEST_REPORT.md
 |---|---|
 | A Ultrasonic | 4방향(FL/FR/RL/RR) 거리 / valid / warning / local fault owner — 초음파 충돌 위험도 판단 전담 |
 | B H735 | UI 표시 + 사용자 Request 생성 + `DTC_Event` 실시간 구독·표시(Active only, History 없음) |
-| C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF/가변저항) owner + Gear/E-Stop 물리 입력 owner (E-Stop 로컬 즉시 차단) |
+| C Drive | Motor / Servo 실제 actuator output owner + Driver 입력(RF) owner + RF Gear 입력/로컬 E-Stop owner (E-Stop 로컬 즉시 차단) |
 | D Gateway | CAN↔LIN mapping + LIN Master schedule owner |
 | D Slave | Lamp actual state owner |
 | E Vision | 전방 카메라 객체인식(COCO) 결과 + 전방 회피 ADAS 요청 owner (주차 관여 안 함) |
@@ -147,22 +149,23 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | `DEC-HW-014` | Ambient Sensor | 미사용 — Ambient 기능 삭제 | REMOVED |
 | `DEC-HW-015` | Front Camera | OWNER INPUT (전방 전용, COCO 기반 객체인식용) | OPEN |
 | `DEC-HW-016` | Rear Camera | 미사용 — 충돌주의는 초음파 4방향 전용, Rear Vision 삭제 | REMOVED |
-| `DEC-HW-017` | Accelerator Sensor | OWNER INPUT | OPEN |
-| `DEC-HW-018` | Brake Sensor | OWNER INPUT | OPEN |
-| `DEC-HW-019` | Steering Input Sensor | OWNER INPUT | OPEN |
+| `DEC-HW-017` | RF 속도/스로틀 요청 소스 | OWNER INPUT (별도 ADC 센서 연결을 전제하지 않음) | OPEN |
+| `DEC-HW-018` | RF 브레이크 요청 표현 | OWNER INPUT (별도 채널/통합 스틱/미제공 여부 확인) | OPEN |
+| `DEC-HW-019` | RF 조향 요청 소스 | OWNER INPUT (채널/필드/중립/방향) | OPEN |
 | `DEC-HW-020` | E-Stop owner node / 동작 방식 | C 물리 GPIO/EXTI, 로컬 즉시 차단(CAN 비의존) + `Driver_Input.estop_status`로 상태 보고 | FROZEN |
-| `DEC-HW-024` | Driver 원격 입력 장치 (RF 리모컨 or 가변저항) | OWNER INPUT | OPEN |
+| `DEC-HW-024` | RF 송수신기 모델 / MCU 인터페이스 | nRF24L01 / SPI (2026-09-17 사용자 확정); 모듈 보드/전원/핀/무선 설정/패킷은 DEC-HW-029 | FROZEN |
+| `DEC-HW-029` | nRF24L01 실장 모듈 / 배선 / RF 패킷 설정 | OWNER INPUT (모듈 제조사/전원, SPI·CE·CSN·IRQ 핀, RF 주소/채널/data rate/CRC/ACK/payload) | OPEN |
 | `DEC-HW-025` | Ultrasonic 4방향 센서 배치 | 전좌(FL) / 전우(FR) / 후좌(RL) / 후우(RR) 4개 고정 | FROZEN |
-| `DEC-HW-026` | Gear owner node / 동작 방식 | C 물리 GPIO, `Driver_Input.gear`로 CAN 발행 | FROZEN |
+| `DEC-HW-026` | Gear owner node / 동작 방식 | C가 RF Gear 요청을 수신, `Driver_Input.gear`로 CAN 발행 (2026-09-17 사용자 변경 지시; 채널/값은 DEC-HW-028) | FROZEN |
 | `DEC-HW-027` | E-Stop 회로/부품 (스위치 모델, pull-up/down, debounce) | OWNER INPUT | OPEN |
-| `DEC-HW-028` | Gear 입력 회로/부품 (버튼 개수 vs 로터리 스위치 vs ADC selector) | OWNER INPUT | OPEN |
+| `DEC-HW-028` | RF Gear 채널/필드와 P/R/N/D 매핑 | OWNER INPUT (스위치 위치 수, invalid/failsafe 포함) | OPEN |
 | `DEC-HW-021` | B IVI 보드 | STM32H735G-DK | FROZEN |
 | `DEC-HW-022` | B CAN peripheral / 핀 예약 | FDCAN2, PB5 RX / PB6 TX (설계 배정; 외부 통신 검증 미완료) | FROZEN |
 | `DEC-HW-023` | B Display / Touch / 외부 메모리 역할 | LTDC RGB888 / BSP I2C4 touch / OCTOSPI1 NOR asset @ 0x90000000 / OCTOSPI2 HyperRAM framebuffer @ 0x70000000 | FROZEN |
 
 동결 범위:
 - G431KB는 **MCU 모델 선택** 동결이다. NUCLEO 정품 여부, 제조사/보드 revision/실장 MCU 전체 품번은 구매 실물과 회로도로 기록한다. NUCLEO-G431KB 핀맵을 다른 G431KB 보드에 자동 적용하지 않는다.
-- 모델 선택은 자원·배선 적합성 시험 PASS를 뜻하지 않는다. G431KB의 역할별 Pin/Timer/ADC/UART/FDCAN 배정, 메모리 예산과 실기 검증은 Gate A/D에 남는다.
+- 모델 선택은 자원·배선 적합성 시험 PASS를 뜻하지 않는다. G431KB의 역할별 Pin/Timer/ADC/UART/SPI/FDCAN 배정, 메모리 예산과 실기 검증은 Gate A/D에 남는다.
 - B의 핀 예약은 현재 `.ioc` 및 [PIN_MAP](../ecus/IVI/PIN_MAP.md) 기준이다. Internal loopback은 PB5/PB6의 외부 전기 경로를 검증하지 않는다.
 - `DEC-HW-023`은 메모리 역할/주소 기반 동결이다. 전체 MPU/cache 설정, 모든 clock/timing, GUI frame budget, RTOS stack/queue 수치는 동결하지 않는다.
 
@@ -205,7 +208,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | `DEC-CTRL-016` | Steering timeout action | OWNER INPUT | OPEN |
 | `DEC-CTRL-017` | Encoder invalid fallback | 미사용 — Encoder 삭제 | REMOVED |
 | `DEC-CTRL-018` | PID 적용 여부 / tuning policy | OWNER INPUT | OPEN |
-| `DEC-CTRL-019` | 입력값→speed/steering 선형 매핑 (RF/가변저항, accel 비례↑ brake 비례↓) | OWNER INPUT | OPEN |
+| `DEC-CTRL-019` | RF 속도 요청→accel/brake 또는 speed_request 계약 및 조향 매핑 | OWNER INPUT | OPEN |
 | `DEC-CTRL-020` | Brake 입력 감속 감지 → `brake_lamp` 자동 점등 threshold | OWNER INPUT | OPEN |
 | `DEC-CTRL-021` | Motor 명령값→speed/rpm 표시값 추정 함수 (실측 아님을 UI에 명시) | OWNER INPUT | OPEN |
 
@@ -354,7 +357,20 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 
 ## 4.8.1 `Driver_Input`
 
-> Publisher는 C다 (2026-09-15부터 accel/brake/steering + gear + E-Stop 상태까지 포함, §7.1에서 지적된 누락 계약을 채움). C는 RF 리모컨 또는 가변저항으로 accel/brake/steering을, 물리 GPIO로 gear와 E-Stop을 읽어 하나의 `Driver_Input` 메시지로 CAN 발행한다. E-Stop의 실제 차단은 C가 CAN과 무관하게 로컬에서 수행하며, 이 필드는 F의 `Vehicle_State`/arbitration 반영용이다.
+### 2026-09-17 RF 입력 변경 계약
+
+사용자가 RF 모델을 `nRF24L01`로 확인했다. `DEC-HW-024`는 nRF24L01/SPI 선택만 FROZEN이며, 모듈 보드·배선·무선 설정·패킷은 `DEC-HW-029`에 OPEN으로 분리한다. 송신측 MCU/펌웨어와 RF 주소·채널·data rate·CRC·payload 규격을 맞춘다. [C 시작 가이드](../ecus/Motor_Steering_Control/DRIVER_INPUT_START.md)의 SPI 절차를 따른다.
+
+- 사용자 요청으로 C의 기어·조향·속도 요청 소스를 RF로 통일한다. 별도 로컬 Gear GPIO/가변저항은 현재 기본 구성에서 제외한다. E-Stop의 로컬 GPIO/EXTI 차단과 C/F 역할 경계는 유지한다.
+- **속도는 우선 목표 속도/스로틀 요청이라는 작업 가정**이며 실제 속도 센서값으로 확정한 것이 아니다. `Drive_Status.vehicle_speed` 및 `motor_rpm`의 명령값 기반 추정 의미는 그대로다.
+- 아래 기존 CAN 필드 목록은 유지하되, RF 속도 요청을 `accel/brake`로 변환할지 `speed_request` 필드를 추가할지는 `DEC-CTRL-019`에서 C/F가 결정한다. 단일 속도 요청만으로 독립된 브레이크 입력을 받았다고 가정하지 않는다. 결정 전 새 CAN 필드/단위/payload를 통합 상수로 사용하지 않는다.
+- `gear`는 운전자 요청이다. 실제 기어/방향은 F의 중재를 거친 `Final_Drive_Command`와 `Vehicle_State`를 따른다. RF 요청을 모터 PWM/DIR/서보에 바로 연결하지 않는다.
+- 기어·조향·속도 요청 중 하나라도 누락/범위 오류/오래된 값이거나 수신기가 RF failsafe를 표시하면 전체 요청을 invalid로 취급한다. 부팅 미수신도 invalid다. 새 유효 수신/샘플로만 freshness를 갱신하고, 같은 값으로 계속 조작 중인 상태를 단순 값 불변만으로 timeout 처리하지 않는다.
+- RF timeout과 VCU command timeout은 별도 감시한다. invalid를 F에 전달하고 안전 정책에 따라 처리하며, 마지막 유효 입력을 정상으로 계속 재발행하지 않는다. nRF24L01 수신이 멈춰도 이전 payload가 RAM에 남을 수 있으므로 새 유효 패킷 기준 timeout을 송신기 OFF 시험으로 검증한다. timeout 수치와 출력 안전 동작/복구 조건은 OPEN이다.
+- 변경 근거: 2026-09-17 사용자 C 담당 계획 및 로컬 `Driver_Input.ioc`/`Core/Src/main.c` 확인. `DEC-HW-026`의 소스를 RF로 변경하고 owner C는 유지한다. 사용자 추가 확인에 따라 nRF24L01/SPI 선택을 동결했다. 모듈 보드/무선 설정/패킷/핀/단위는 동결하지 않았다. 새 실기 시험은 NOT RUN이다.
+- 영향/재시험: C 수신·매핑·두절·E-Stop, F 입력 validity·기어·속도 중재, B 요청/추정 속도 구분 및 C↔F CAN encode/decode. 시작 절차는 [C Driver_Input 가이드](../ecus/Motor_Steering_Control/DRIVER_INPUT_START.md)를 따른다.
+
+> Publisher는 C다 (2026-09-15부터 accel/brake/steering + gear + E-Stop 상태까지 포함, §7.1에서 지적된 누락 계약을 채움). C는 RF로 기어·조향·속도 요청을 수신하고 E-Stop은 로컬 GPIO/EXTI로 읽어 하나의 `Driver_Input` 메시지로 CAN 발행한다. E-Stop의 실제 차단은 C가 CAN과 무관하게 로컬에서 수행하며, 이 필드는 F의 `Vehicle_State`/arbitration 반영용이다.
 
 | Field | Unit / Type | Final |
 |---|---|---|
@@ -443,7 +459,7 @@ Status는 `OPEN / FROZEN / REMOVED`를 사용한다. `REMOVED`는 삭제된 결�
 | D Slave | LinRxTask, LightingTask, StatusTask, HealthTask |
 | F | SafetyTask, VcuControlTask, CanRxTask, CanTxTask, DiagnosticTask, HealthTask |
 
-> C에 `DriverInputTask` 추가 (RF 수신기 또는 가변저항 입력 읽기 + `Driver_Input` CAN 발행 — 입력 하드웨어가 실제로 C에 물리적으로 붙기 때문에 publisher를 F에서 C로 이전, §1.1 참고). C의 `FeedbackTask`(Encoder 기반)는 Encoder 삭제로 제거. F의 `DriverInputTask`는 publisher 이전에 따라 제거.
+> C에 `DriverInputTask` 추가 (RF 수신기 입력 읽기 + `Driver_Input` CAN 발행 — 입력 하드웨어가 실제로 C에 물리적으로 붙기 때문에 publisher를 F에서 C로 이전, §1.1 참고). C의 `FeedbackTask`(Encoder 기반)는 Encoder 삭제로 제거. F의 `DriverInputTask`는 publisher 이전에 따라 제거.
 >
 > **2026-09-15:** E-Stop/Gear GPIO도 F에서 C로 이전했다. C는 E-Stop EXTI ISR에서 Motor Driver Enable/STBY를 즉시 로컬 차단(가장 높은 우선순위, CAN/RTOS Task 경유 없이 ISR에서 직접 처리 가능)하고, `DriverInputTask`가 gear/estop_status를 `Driver_Input`에 실어 CAN 발행한다. F는 더 이상 E-Stop/Gear GPIO를 직접 읽지 않으며, `SafetyTask`는 CAN으로 수신한 `Driver_Input.estop_status`를 보고 override를 갱신한다. F의 `DiagnosticTask`는 Pi DTC Manager 없이 `DTC_Event` 발행과 현재 fault/status 처리를 담당하며, 지속 이력 저장은 하지 않는다. B는 각 ECU의 이벤트를 직접 구독해 표시한다.
 
@@ -470,7 +486,7 @@ Pi DTC Manager 서비스는 삭제됐다 (`DEC-DTC-000` REMOVED). Diagnostics hi
 - [ ] FDCAN 지원 확인
 - [ ] CAN/LIN Transceiver 확정
 - [ ] Sensor/Actuator 모델 확정
-- [ ] Pin/Timer/ADC/UART/FDCAN peripheral 확정
+- [ ] Pin/Timer/ADC/UART/SPI/FDCAN peripheral 확정
 
 ## Gate B: Interface Freeze
 
@@ -553,12 +569,12 @@ View에서 CAN Driver를 직접 호출하지 않는다.
 
 ```text
 E-Stop GPIO/EXTI → 로컬 즉시 Motor Enable/STBY 차단 (CAN 비의존)
-Gear GPIO + RF 수신기/가변저항 → DriverInputTask → Driver_Input(CAN, C 발행: accel/brake/steering/gear/estop_status)
+RF 수신기(기어·조향·속도 요청) → DriverInputTask → Driver_Input(CAN, C 발행: accel/brake/steering/gear/estop_status)
 Final_Drive_Command → Validation → Control → PWM/DIR/Servo
 PWM/모터 명령값 → 추정 함수 → Motor_RPM/Speed(estimated) → Status
 ```
 
-Motor driver rating과 command timeout/safe state가 FROZEN이어야 한다. Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) — speed/rpm 표시는 명령값 기반 추정 함수(`DEC-CTRL-021`)로 대체한다. Driver 입력(RF 또는 가변저항, `DEC-HW-024`)은 accel/brake 값에 선형 비례해 target speed가 오르내린다(`DEC-CTRL-019`). E-Stop 로컬 차단(`DEC-HW-020`)은 Driver_Input CAN 발행과 독립적으로 가장 먼저 처리한다.
+Motor driver rating과 command timeout/safe state가 FROZEN이어야 한다. Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) — speed/rpm 표시는 명령값 기반 추정 함수(`DEC-CTRL-021`)로 대체한다. Driver 입력(RF, `DEC-HW-024`)의 속도 요청 표현 및 기존 accel/brake 계약과의 매핑은 `DEC-CTRL-019`에서 확정한다. E-Stop 로컬 차단(`DEC-HW-020`)은 Driver_Input CAN 발행과 독립적으로 가장 먼저 처리한다.
 
 ## D Body
 

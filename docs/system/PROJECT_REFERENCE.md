@@ -1,5 +1,7 @@
 # Project Reference
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 [프로젝트 홈](../../README.md) · [문서 안내](../README.md) · [폴더 목록](README.md)
 
 > 현재 프로젝트에서 **어떤 보드가 무엇을 맡고, 어떤 센서/데이터를 소유하고, 어떤 RTOS Task 구조를 기본으로 하는지** 한 곳에서 확인하는 문서다.  
@@ -20,7 +22,7 @@ STM32H735 Cockpit ←───────────────────�
                                                         │       ↓
 STM32 #3 Body Gateway ←──────────────────────────────────┘  STM32 #2 Drive/Steer
         ↕ LIN                                                    ↑
-STM32 #4 Body LIN Slave                                RF 수신기/가변저항 + Gear + E-Stop
+STM32 #4 Body LIN Slave                                RF 수신기(기어·조향·속도 요청) + 로컬 E-Stop
         └ Lighting (헤드램프 밝기/턴/브레이크)
 ```
 
@@ -30,7 +32,7 @@ STM32 #4 Body LIN Slave                                RF 수신기/가변저항
 |---|---|---|---|
 | A | STM32 #1 + Ultrasonic | Collision distance perception (4방향 FL/FR/RL/RR) | FreeRTOS |
 | B | STM32H735 + TouchGFX | Cluster + IVI + DTC 실시간 표시 | FreeRTOS + TouchGFX |
-| C | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기/가변저항 + Gear/E-Stop | Drive + Steering control, Driver Input(gear/estop_status 포함), E-Stop 로컬 즉시 차단 | FreeRTOS |
+| C | STM32 #2 + Motor Driver + Motor + Servo + RF 수신기(기어·조향·속도 요청) + 로컬 E-Stop | Drive + Steering control, Driver Input(gear/estop_status 포함), E-Stop 로컬 즉시 차단 | FreeRTOS |
 | D-Gateway | STM32 #3 + CAN/LIN Transceiver | CAN FD ↔ LIN Gateway, LIN Master | FreeRTOS |
 | D-Slave | STM32 #4 + LIN Transceiver | Lighting LIN Slave | FreeRTOS 기본 |
 | E | Raspberry Pi | Front Camera Vision(COCO), HPC services | Linux |
@@ -79,9 +81,9 @@ Safety / Control
 
 | 영역 | 입력 / 센서 | Owner | Interface 후보 | 상태 |
 |---|---|---|---|---|
-| Driver | P/R/N/D (Gear) | Drive ECU(C) | GPIO/ADC | `DEC-HW-026`/`028` 확정 전 |
+| Driver | RF Gear 요청 (P/R/N/D 매핑 OPEN) | Drive ECU(C) | RF 채널/필드 | `DEC-HW-026`/`028` 기준 |
 | Driver | E-Stop | Drive ECU(C) | GPIO/EXTI | `DEC-HW-020`/`027` 확정 전, 로컬 즉시 차단 |
-| Driver | Accelerator/Brake/Steering (RF 리모컨 또는 가변저항) | Drive ECU(C) | PWM capture / ADC | `DEC-HW-024` 확정 전 |
+| Driver | 기어·조향·속도 요청 (RF) | Drive ECU(C) | SPI (nRF24L01) | `DEC-HW-024` 확정 전 |
 | Steering | Actual Steering Feedback | Drive ECU | ADC/I2C | 선택 확장 |
 | Collision Warning | Ultrasonic Sensors (FL/FR/RL/RR 4방향 고정) | Ultrasonic ECU | GPIO/Timer | `FROZEN` |
 | Vision | Front Camera | Raspberry Pi | CSI | 계획 |
@@ -177,7 +179,7 @@ Fault   : CAN timeout, invalid data, UI task fault
 ## C. Motor + Steering
 
 ```text
-Input   : RF 수신기/가변저항(Driver Input), Final Drive Command
+Input   : RF 수신기(Driver Input), Final Drive Command
 Process : Driver Input 읽기 → Driver_Input 발행 / Command validation → control → Motor/Servo mapping → 명령값 기반 speed/rpm 추정
 Output  : Driver_Input, Motor PWM/DIR, Servo PWM, RPM(estimated)/Drive Status
 Fault   : command timeout, driver input invalid, control output fault
@@ -190,10 +192,10 @@ Encoder/Hall 실측 Feedback은 사용하지 않는다 (`DEC-HW-012` REMOVED) �
 | Task / ISR | Trigger / Period 후보 | Priority 방향 | 역할 |
 |---|---|---|---|
 | **E-Stop EXTI** | GPIO event | **ISR (최고 우선)** | Motor Driver Enable/STBY 로컬 즉시 차단 (CAN 비의존) |
-| Driver Input capture ISR (accel/brake/steering/gear) | PWM capture/ADC event | ISR | raw sample + notify |
+| Driver Input RF 수신 ISR, 사용 시 | 선택한 RF peripheral event | ISR | raw sample + notify |
 | `CanRxTask` | event | High | latest VCU command update |
 | `ControlTask` | 5~10 ms 후보 | Highest application | speed/steering control, PWM update, speed/rpm 추정 |
-| `DriverInputTask` | 5~10 ms 후보/event | High | RF/가변저항/Gear read → `Driver_Input`(gear/estop_status 포함) 산출 |
+| `DriverInputTask` | 5~10 ms 후보/event | High | RF(기어·조향·속도 요청) read → `Driver_Input`(gear/estop_status 포함) 산출 |
 | `CanTxTask` | 20~50 ms 후보 + event | Normal | `Driver_Input`/`Drive_Status` 송신 |
 | `HealthTask` | 50~100 ms 후보 | Low/Normal | command timeout / task health |
 

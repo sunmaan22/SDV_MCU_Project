@@ -1,5 +1,7 @@
 # Motor + Steering Control Software Architecture
 
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
 > **2026-09-15 범위 변경 (1차):** Encoder/Hall 기반 Feedback 구조를 삭제했다 (`DEC-HW-012`, `DEC-CTRL-017` REMOVED). `FeedbackTask`/`FeedbackEstimator`/`CaptureAdapter`는 제거하고, RF/가변저항 Driver 입력을 읽는 `DriverInputTask`를 신설했다 (`Driver_Input` publisher가 F에서 C로 이전). `Motor_RPM`/`Vehicle_Speed`는 모터 명령값(PWM) 기반 추정 함수로 대체한다 (`DEC-CTRL-021`, 실측 아님).
@@ -17,9 +19,9 @@
 |---|---|
 | Node / System | Motor + Steering Control ECU |
 | Owner | C |
-| Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo + RF 수신기/가변저항 |
+| Board / Platform | STM32G431KB (STM32 #2) + Motor Driver + Brushed DC Motor + RC Servo + RF 수신기 |
 | Execution Model | FreeRTOS + CMSIS-RTOS2 기본 |
-| Revision | v0.2 |
+| Revision | v0.4 |
 | Status | Draft |
 | Related Specification | `SPECIFICATION.md` |
 | Related Test | `TEST_REPORT.md` |
@@ -28,6 +30,7 @@
 
 | Revision | Date | Author | Change |
 |---|---|---|---|
+| v0.4 | 2026-09-17 | C 사용자 요청 | RF 기어·조향·속도 요청, Driver_Input 시작 순서, RF 오류/두절 시험 계획; 실기 NOT RUN |
 | v0.1 | 2026-09-09 | Team | Initial filled RTOS architecture example |
 | v0.2 | 2026-09-15 | Team | Encoder/Hall Feedback 구조 삭제, `DriverInputTask` 신설(RF/가변저항 읽기 + `Driver_Input` publish), Motor_RPM/Vehicle_Speed를 명령값 기반 추정 함수로 대체 |
 | v0.3 | 2026-09-15 | Team | E-Stop/Gear GPIO를 F에서 C로 이전. E-Stop EXTI ISR 로컬 즉시 차단 경로 추가 |
@@ -38,12 +41,12 @@
 
 ## 1.1 Purpose
 
-> Drive + Steering ECU는 RF/가변저항 Driver 입력을 읽어 `Driver_Input`으로 발행하고, VCU의 최종 명령을 안전하게 수신해 Motor/Servo 출력으로 변환하며, 모터 명령값 기반 추정 함수로 Speed/RPM 표시값을 계산해 CAN FD로 상태를 반환한다.
+> Drive + Steering ECU는 RF Driver 입력을 읽어 `Driver_Input`으로 발행하고, VCU의 최종 명령을 안전하게 수신해 Motor/Servo 출력으로 변환하며, 모터 명령값 기반 추정 함수로 Speed/RPM 표시값을 계산해 CAN FD로 상태를 반환한다.
 
 ## 1.2 Scope
 
 포함:
-- RF 수신기/가변저항 read → `Driver_Input` 발행
+- RF 수신기 read → `Driver_Input` 발행
 - FDCAN RX/TX
 - Command validation / freshness
 - Motor PWM / Direction / Enable
@@ -95,7 +98,7 @@
 | Motor Driver는 TB6612FNG 후보 | 최종 Motor current spec 확인 전 확정 금지 |
 | Steering은 RC Servo 기본안 | 실제 pulse/angle calibration 필요 |
 | Encoder/Hall 사용하지 않음 (`FROZEN` 방향) | 실측 feedback 없이 명령값 기반 추정만 제공 |
-| RF 리모컨 또는 가변저항 중 미확정 | `DEC-HW-024`에서 확정 |
+| nRF24L01 + SPI 사용, 모듈 보드/핀/패킷 미확정 | `DEC-HW-024`/`DEC-HW-029`에서 확정 |
 | VCU가 최종 Command Owner | Drive ECU가 ADAS/Driver input arbitration을 직접 하지 않음 |
 | 정확한 CAN ID/Task period 일부 TBD | 통합/실측 후 확정 |
 
@@ -105,8 +108,8 @@
 
 ```mermaid
 flowchart TD
-    RFIN["RF 수신기 / 가변저항"] --> DRIVE["Drive + Steering ECU"]
-    GEAR["Gear GPIO"] --> DRIVE
+    RFIN["RF 수신기(기어·조향·속도 요청)"] --> DRIVE["Drive + Steering ECU"]
+    %% Gear는 RFIN의 RF 요청에 포함된다.
     ESTOP["E-Stop GPIO/EXTI"] --> DRIVE
     ESTOP -->|"로컬 출력 차단"| MD
     VCU["VCU"] -->|"Final Speed / Steering / Enable / Gear"| DRIVE
@@ -124,7 +127,7 @@ flowchart TD
 
 | External Entity | Direction | Data / Service | Interface | Owner |
 |---|---|---|---|---|
-| RF 수신기/가변저항 | RX | driver 입력 신호 | PWM capture / ADC | C |
+| RF 수신기 | RX | driver 입력 신호 | SPI (nRF24L01) | C |
 | VCU | RX | Final command / enable / gear | CAN FD | F |
 | VCU | TX | `Driver_Input` | CAN FD | C |
 | VCU/H735/HPC | TX | RPM(est) / speed(est) / steering / health | CAN FD | C |
@@ -134,6 +137,14 @@ flowchart TD
 ---
 
 # 5. Solution Strategy & Rationale
+
+### RF 입력부 우선 구현 (v0.4 / 2026-09-17)
+
+첫 bench 단계는 [DRIVER_INPUT_START.md](DRIVER_INPUT_START.md)를 따른다. `main.c` USER CODE에서 수신값 확인 후 필요할 때 `driver_input.c/.h`로 분리한다. 아래 전체 RTOS/컴포넌트 구조는 후속 통합 목표이며 초기 파일 생성 목록이 아니다.
+
+`RF 수신 → 프레임/채널 해석 → 범위·freshness·failsafe 검증 → 기어/조향/속도 요청 snapshot` 순서로 처리한다. nRF24L01 수신 패킷의 길이/version/sequence/필드 범위/input_valid를 검증하고, radio CRC 설정과 FIFO 상태도 확인한다. 혼합되거나 일부만 새로 갱신된 요청을 무조건 valid로 만들지 않는다. snapshot에는 로컬 E-Stop 상태를 별도로 합친다.
+
+RF 속도 요청의 CAN `accel/brake` 매핑은 OPEN이다. nRF24L01은 SPI로 패킷을 읽는다. SPI 인스턴스와 CE/CSN/IRQ 핀은 다른 기능과의 충돌 검토 후 배정한다. 통합 시 `DriverInputTask`가 snapshot을 만들고 `CanTxTask`로 전달하며 F만 최종 명령을 결정한다.
 
 | Decision / Strategy | Why | Related Quality / Constraint |
 |---|---|---|
@@ -171,7 +182,7 @@ flowchart TD
              ↓
        SpeedEstimator (PWM → estimated RPM/speed)
 
-RF/가변저항
+RF
     ↓
 DriverInputAdapter
     ↓
@@ -197,7 +208,7 @@ Control / Estimated Speed / Fault
 | `MotorController` | speed target → PWM/DIR | command | motor output | calibration/control policy |
 | `SteeringController` | steering target → servo command | command | servo output | calibration |
 | `SpeedEstimator` | PWM 등 명령값 → estimated RPM/speed | motor output | rpm/speed(estimated) | 추정 함수(`DEC-CTRL-021`) |
-| `DriverInputAdapter` | RF/가변저항/Gear raw sample 획득 | ISR/ADC event | raw sample | timer/ADC |
+| `DriverInputAdapter` | RF(기어·조향·속도 요청) raw sample 획득 | RF 수신 event | raw sample | 선택한 RF peripheral |
 | `DriverInputEstimator` | raw sample → accel/brake/steer/gear 값 | raw sample | driver input struct | 선형 매핑(`DEC-CTRL-019`) |
 | `DriverInputRepository` | 최신 Driver 입력(gear/estop_status 포함) 보관 | estimator output | snapshot | DriverInputTask |
 | `EstopLocalCutoff` | E-Stop EXTI에서 Motor Driver Enable/STBY 즉시 차단 | GPIO EXTI | GPIO write (즉시) | ISR, CAN 비의존 |
@@ -218,7 +229,7 @@ drive_steering/
 ├─ drivers/
 │  ├─ motor_driver/
 │  ├─ servo/
-│  └─ driver_input_hw/     # RF receiver 또는 가변저항 ADC
+│  └─ driver_input_hw/     # 선택한 RF receiver용 수신 코드
 ├─ communication/
 │  ├─ can_rx/
 │  ├─ can_tx/
@@ -242,7 +253,7 @@ drive_steering/
 |---|---|---|---|---|---|---|
 | `CanRxTask` | command decode/validation | CAN event | High | command update latency TBD | TBD | 긴 blocking 금지 |
 | `ControlTask` | Motor + Steering control / output update / speed·rpm 추정 | 5~10 ms 후보 | Highest application | 1 cycle 내 완료 | TBD | printf/slow I/O 금지 |
-| `DriverInputTask` | RF/가변저항 read → `Driver_Input` 산출 | event / 5~10 ms 후보 | High | next control cycle 전 | TBD | 긴 blocking 금지 |
+| `DriverInputTask` | RF read → `Driver_Input` 산출 | event / 5~10 ms 후보 | High | next control cycle 전 | TBD | 긴 blocking 금지 |
 | `CanTxTask` | `Driver_Input` / `Drive_Status` / Heartbeat TX | 20~50 ms 후보 + event | Normal | status period | TBD | CAN TX service 사용 |
 | `HealthTask` | command timeout / task / queue / stack health | 50~100 ms 후보 | Low/Normal | health period | TBD | 짧은 처리 |
 
@@ -265,8 +276,8 @@ ControlTask
 |---|---|---|---|---|
 | FDCAN RX | CAN frame arrival | 최소 frame metadata/copy | `CanRxTask` | Queue/Notification |
 | **E-Stop EXTI** | **GPIO EXTI** | **Motor Driver Enable/STBY GPIO를 ISR 내부에서 즉시 비활성 레벨로 설정 (예외적으로 안전 액션을 ISR이 직접 수행), 이후 notify** | `DriverInputTask` (상태를 `Driver_Input`에 반영) | GPIO write (즉시) + Notification |
-| Driver Input capture (PWM capture/ADC), 필요 시 | Timer/ADC | raw sample/timestamp only | `DriverInputTask` | Notification / capture buffer |
-| Gear GPIO change, 필요 시 | GPIO/EXTI 또는 polling | raw state only | `DriverInputTask` | Notification |
+| Driver Input RF 수신 IRQ, 필요 시 | RF peripheral | raw sample/timestamp only | `DriverInputTask` | Notification / capture buffer |
+| RF Gear 채널/필드 갱신 | 선택한 RF 수신 peripheral | raw sample/timestamp only | `DriverInputTask` | RF 수신 이벤트와 함께 처리 |
 | Timer Update, 필요 시 | periodic timing | timestamp/event only | relevant task | Notification |
 
 ISR에서 하지 않는 것 (E-Stop의 로컬 GPIO 차단은 예외):
@@ -282,7 +293,7 @@ ISR에서 하지 않는 것 (E-Stop의 로컬 GPIO 차단은 예외):
 |---|---|---|---|---|---|---|
 | `CanRxQueue` | Queue | FDCAN ISR | CanRxTask | raw CAN frame | TBD | overflow counter + health fault |
 | `CommandQueue` | Queue/latest object | CanRxTask | ControlTask | validated final command | TBD | newest command 우선 정책 검토 |
-| `DriverInputNotify` | Task Notification | Driver Input ISR/ADC | DriverInputTask | raw sample ready | counter/index | missed sample 허용 |
+| `DriverInputNotify` | Task Notification | Driver Input RF ISR | DriverInputTask | raw sample ready | counter/index | missed sample 허용 |
 | `DriverInputQueue` | Queue/latest object | DriverInputTask | CanTxTask | driver input struct | TBD | latest-value 우선 |
 | `StatusQueue` | Queue/latest object | ControlTask | CanTxTask | drive status (est. speed/rpm 포함) | TBD | latest-state policy |
 | `HealthFlags` | Event Flags/counters | tasks | HealthTask | alive/overrun/overflow | N/A | missing health → unhealthy |
@@ -295,7 +306,7 @@ Command는 오래된 값을 여러 개 순서대로 처리하기보다 **최신 
 |---|---|---|---|---|
 | Motor PWM Timer | `ControlTask` | init only | single owner | output race 방지 |
 | Servo PWM Timer | `ControlTask` | init only | single owner | steering output 일관성 |
-| Driver Input capture(ADC/PWM) | `DriverInputTask` + ISR adapter | ControlTask는 snapshot만 읽음 | notification/buffer | ISR/task 분리 |
+| Driver Input RF 수신 | `DriverInputTask` + ISR adapter | ControlTask는 snapshot만 읽음 | notification/buffer | ISR/task 분리 |
 | CAN TX | `CanTxTask`/CanTxService | Fault event producer | TX queue | ControlTask blocking 방지 |
 | Command state | CanRxTask writes, ControlTask consumes | HealthTask metadata read | queue/snapshot | direct global write 최소화 |
 
@@ -336,14 +347,16 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant IN as RF/가변저항
-    participant ADC as DriverInputAdapter
+    participant IN as RF
+    participant RFAD as DriverInputAdapter
     participant DI as DriverInputTask
     participant TX as CanTxTask
     participant VCU
 
-    IN->>ADC: raw signal (Gear/E-Stop 상태 포함)
-    ADC->>DI: sample notify
+    participant ES as 로컬 E-Stop GPIO/EXTI
+    IN->>RFAD: RF 기어/조향/속도 요청 raw signal
+    ES->>DI: 로컬 차단 상태 (estop_status)
+    RFAD->>DI: sample notify
     DI->>DI: accel/brake/steer + gear/estop_status + validity
     DI->>TX: Driver_Input snapshot
     TX->>VCU: Driver_Input
@@ -381,9 +394,9 @@ sequenceDiagram
                 STM32 + FreeRTOS
         ┌──────────────┼──────────────┐
         │              │              │
-     PWM/DIR       Timer/ADC       Servo PWM
+     PWM/DIR       RF peripheral       Servo PWM
         │          Capture            │
- Motor Driver   RF 수신기/가변저항   RC Servo
+ Motor Driver   RF 수신기   RC Servo
         │
  Brushed DC Motor
 ```
@@ -393,7 +406,7 @@ sequenceDiagram
 | STM32 #2 | FreeRTOS control SW | FDCAN/Timer/GPIO/ADC | STM32G431KB; 실제 보드 revision/핀맵 확인 필요 |
 | Motor Driver | MotorDriverIF | PWM/DIR/Enable | TB6612FNG 후보, current fit 확인 |
 | Brushed DC Motor | actuator | driver output | voltage/current TBD |
-| RF 수신기 또는 가변저항 | DriverInputAdapter | PWM capture / ADC | `DEC-HW-024` 확정 후 기준 |
+| RF 수신기 | DriverInputAdapter | SPI (nRF24L01) | `DEC-HW-024`/`DEC-HW-029` 확정 후 기준 |
 | RC Servo | steering actuator | PWM | spec/calibration TBD |
 | CAN FD Transceiver | physical bus | FDCAN↔CANH/L | part TBD |
 
@@ -404,11 +417,11 @@ sequenceDiagram
 | Motor PWM | Motor Driver | TBD | TIMx PWM | OUT | verify driver logic |
 | Motor DIR A/B | Motor Driver | TBD | GPIO | OUT | TBD |
 | Driver Enable/STBY | Motor Driver | TBD | GPIO | OUT | safe init state |
-| Driver Input (accel/brake) | RF 수신기/가변저항 | TBD | TIM Input Capture / ADC | IN | 채택 장치에 따라 확정 |
-| Driver Input (steering) | RF 수신기/가변저항 | TBD | TIM Input Capture / ADC | IN | 채택 장치에 따라 확정 |
+| Driver Input (속도 요청) | RF 수신기 | TBD | SPI + CE/CSN GPIO (핀 TBD) | IN | 채택 장치에 따라 확정 |
+| Driver Input (steering) | RF 수신기 | TBD | SPI + CE/CSN GPIO (핀 TBD) | IN | 채택 장치에 따라 확정 |
 | Servo PWM | RC Servo | TBD | TIM PWM | OUT | servo spec 기준 |
 | E-Stop | E-Stop 스위치 | TBD | GPIO/EXTI | IN | Motor Enable/STBY 로컬 차단 경로와 연계, pull-up/down 확정 필요 |
-| Gear | Gear 스위치 | TBD | GPIO/ADC | IN | 버튼/로터리/ADC selector 중 확정 |
+| Gear | RF 수신기 | TBD | 선택한 RF peripheral | IN | 채널/필드와 P/R/N/D 매핑 OPEN |
 | CAN TX/RX | Transceiver | TBD | FDCAN | I/O | schematic 확인 |
 
 ---
@@ -583,7 +596,7 @@ Command freshness ────┤
 |---|---|---|---|---|
 | ADR-DRV-001 | FreeRTOS task 구조 사용 | one super-loop | control/comm/health 주기 분리 | stack/queue 관리 필요 |
 | ADR-DRV-002 | ControlTask가 Motor+Steering output logical owner | motor/steering 별도 direct writers | 출력 상태 동기화와 race 방지 | control task 책임 증가 |
-| ADR-DRV-003 | Encoder/Hall 실측 Feedback 삭제, 명령값 기반 추정으로 대체 | Encoder 유지 | HW 단순화, RF/가변저항 입력 우선순위 | 표시 speed/rpm은 항상 estimated |
+| ADR-DRV-003 | Encoder/Hall 실측 Feedback 삭제, 명령값 기반 추정으로 대체 | Encoder 유지 | HW 단순화, RF 입력 우선순위 | 표시 speed/rpm은 항상 estimated |
 | ADR-DRV-004 | Driver Input 읽기를 별도 `DriverInputTask`로 분리 | ControlTask에서 직접 read | 입력 샘플링과 제어 주기를 독립 관리 | 추가 IPC 필요 |
 | ADR-DRV-005 | CAN TX를 ControlTask에서 직접 blocking 수행하지 않음 | direct transmit | control timing 보호 | CanTxTask 필요 |
 | ADR-DRV-006 | TB6612FNG는 후보로 유지 | 즉시 확정 | Motor Stall Current 미확정 | 부품 확정 전 spec 비교 필요 |
@@ -596,7 +609,7 @@ Command freshness ────┤
 |---|---|---|---|
 | Reliability | VCU command 끊김 | stale command 유지하지 않음 | timeout fault injection |
 | Timing | CAN burst + control | ControlTask period/jitter 목표 유지 | trace/runtime stats |
-| Driver Input | RF/가변저항 입력 변화 | `Driver_Input` 값 재현성 있게 반영 | signal generator/manual input test |
+| Driver Input | RF 입력 변화 | `Driver_Input` 값 재현성 있게 반영 | signal generator/manual input test |
 | Steering | min/center/max command | calibrated mechanical range 내 | bench test |
 | RTOS health | long soak | stack/queue overflow 0 | runtime stats |
 
@@ -612,7 +625,7 @@ Command freshness ────┤
 | RISK-DRV-004 | Servo mechanical limit 미확정 | 과도한 steering command | center/min/max calibration | C |
 | RISK-DRV-005 | Task period/priority 미조정 | jitter/overrun | timing profiling | C |
 | RISK-DRV-006 | Queue depth 미검증 | CAN burst loss | occupancy/overflow test | C/F |
-| RISK-DRV-007 | RF 수신기/가변저항 미확정 | 인터페이스 재설계 가능 | `DEC-HW-024` 조기 확정 | C |
+| RISK-DRV-007 | nRF24L01 모듈 보드/핀/패킷 미확정 | 인터페이스 재설계 가능 | `DEC-HW-024`/`DEC-HW-029` 조기 확정 | C |
 
 ---
 
@@ -620,7 +633,7 @@ Command freshness ────┤
 
 | Requirement ID | Component | Task / Runtime | Interface | Test ID |
 |---|---|---|---|---|
-| REQ-DRV-001 | DriverInputAdapter/Estimator | DriverInputTask | Timer/ADC | T-DRV-001 |
+| REQ-DRV-001 | DriverInputAdapter/Estimator | DriverInputTask | RF peripheral | T-DRV-001 |
 | REQ-DRV-002 | CanRxAdapter/CommandDecoder | CanRxTask | CAN RX | T-DRV-002 |
 | REQ-DRV-005 | MotorController | ControlTask | PWM/DIR | T-DRV-005 |
 | REQ-DRV-006 | SteeringController | ControlTask | Servo PWM | T-DRV-006 |
@@ -641,7 +654,7 @@ Command freshness ────┤
 | VCU | Vehicle Control Unit |
 | PWM | Pulse Width Modulation |
 | RPM | Revolutions Per Minute (여기서는 명령값 기반 추정값) |
-| Driver Input | RF 리모컨 또는 가변저항으로 들어오는 가속/브레이크/조향 원시 입력 |
+| Driver Input | RF로 들어오는 기어·조향·속도 요청 원시 입력 |
 | RTOS | Real-Time Operating System |
 | ISR | Interrupt Service Routine |
 | IWDG | Independent Watchdog |
