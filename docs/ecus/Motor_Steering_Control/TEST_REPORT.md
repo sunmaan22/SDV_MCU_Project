@@ -1,12 +1,14 @@
 # Motor + Steering Control Test Report
 
-> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. E-Stop은 로컬 GPIO/EXTI 차단을 유지한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+> **2026-09-17 C 입력 계획 변경:** 기어·조향·속도 요청은 RF로 STM32(C)에 수신한다. RF 모델은 nRF24L01, STM32 연결은 SPI로 확정했다. 모듈 보드/핀/패킷/수치와 CAN 매핑은 OPEN이다. 아래 2026-09-15 기록의 가변저항·로컬 Gear GPIO 설명은 변경 이력이며 현재 입력 구성에 적용하지 않는다.
+
+> **2026-09-17 E-Stop 전체 삭제:** 데모용 프로젝트라는 이유로 E-Stop 기능을 소프트웨어·하드웨어 전부 삭제했다(`FINAL_IMPLEMENTATION_SPEC.md` `DEC-HW-020/027`, `DEC-CTRL-006` REMOVED 참고). "추가 E-Stop 검증 계획" 절과 E-Stop 관련 시험 항목(T-DRV-001a/001b, F-DRV-000)은 문서에서 삭제했다.
 
 > 2026-09-11: STM32G431KB 구매 모델 부분 동결. [최상위 명세](../../system/FINAL_IMPLEMENTATION_SPEC.md) DEC-HW-001~005를 따른다. 제조사/revision/핀 배정과 실기 시험은 별도이며, 아래 시험 결과/측정값을 PASS로 변경한 것은 아니다.
 
 > **2026-09-15 범위 변경 (1차):** Encoder/Hall 관련 테스트 항목을 전부 삭제했다. RF/가변저항 `Driver_Input` 읽기 시험과 명령값 기반 speed/rpm 추정 검증 항목으로 대체했다.
 >
-> **2026-09-15 범위 변경 (2차):** E-Stop/Gear 물리 입력 시험 항목을 F에서 C로 이전했다. E-Stop은 CAN 비의존 로컬 즉시 차단 시험을 추가했다. 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1, §1.2, §3.1, §4.8.1, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
+> **2026-09-15 범위 변경 (2차):** Gear 물리 입력 시험 항목을 F에서 C로 이전했다(당시 함께 이전한 E-Stop 시험은 2026-09-17에 기능 자체가 삭제됐다). 근거: [`FINAL_IMPLEMENTATION_SPEC.md` §1, §1.2, §3.1, §4.8.1, §8 C Drive](../../system/FINAL_IMPLEMENTATION_SPEC.md).
 
 [프로젝트 홈](../../../README.md) · [문서 안내](../../README.md) · [폴더 목록](README.md)
 
@@ -38,15 +40,6 @@
 
 ---
 
-## 추가 E-Stop 검증 계획
-
-| 조건 | 기대 동작 | 실행 상태 |
-|---|---|---|
-| 부팅 전부터 E-Stop active | Motor Enable/STBY 비활성 유지 | NOT RUN |
-| E-Stop active + 반복 enable command | ControlTask가 로컬 차단을 덮어쓰지 않음 | NOT RUN |
-| E-Stop active + CAN 단절/RTOS 부하 | CAN 수신/Task 실행을 기다리지 않고 로컬 차단 | NOT RUN |
-| E-Stop 해제 | 단순 해제만으로 재구동하지 않음; DEC-CTRL-006 확정 조건 적용 | NOT RUN |
-
 # 1. Test Objective
 
 ## Driver_Input RF 우선 시험 (2026-09-17 추가)
@@ -59,7 +52,7 @@ T-RF-000(보드 bring-up)만 실행해 PASS했고, RF raw 입력 관련 T-RF-001
 | T-RF-001 | REQ-DRV-RF-001 | 기어 각 위치, 조향 좌/중립/우, 속도 최소/최대 | 세 raw 값/수신 시각/valid 확인, 측정한 매핑과 일치 | NOT RUN |
 | T-RF-002 | REQ-DRV-RF-002 | 부팅 미수신, 누락 채널, invalid gear, 범위 초과, 패킷 오류 | 전체 요청 invalid, freshness를 정상 수신처럼 갱신하지 않음 | NOT RUN |
 | T-RF-003 | REQ-DRV-RF-003 | 송신기 OFF, 수신기 분리, 중복/오래된 패킷 | 합의한 timeout/failsafe 규칙으로 invalid; 저장된 payload 재사용으로 freshness 갱신 금지 | NOT RUN |
-| T-RF-004 | REQ-DRV-RF-004 | 재연결, 조작 유지, E-Stop 활성/해제 | 자동 구동 재개 없음, E-Stop 차단 유지, 합의된 복구 조건 확인 | NOT RUN |
+| T-RF-004 | REQ-DRV-RF-004 | 재연결, 조작 유지 | 자동 구동 재개 없음, 합의된 복구 조건 확인 | NOT RUN |
 | T-RF-005 | REQ-DRV-001 | CAN 계약 확정 후 C↔F 통합 | 요청/추정 속도 구분, RF Gear 요청을 F가 중재, 동일 encode/decode | NOT RUN |
 
 **T-RF-000 결과 (2026-09-17):** SPI1(PA5/PA6/PA7, 8bit, /128 prescaler)·FDCAN1(PA11/PA12)·NRF_CE/NRF_CSN(PA1/PA4) 핀 구성을 반영한 `Driver_Input`을 STM32CubeIDE에서 Build → ST-LINK로 NUCLEO-G431KB에 Download, STM32CubeProgrammer verify 성공. 리셋 후 COM1(115200 8N1)에서 `Welcome to STM32 world !` 정상 출력 확인(§12 로그 참고). SPI/FDCAN 신호 자체는 아직 nRF24L01/CAN 버스에 연결하지 않아 시험하지 않았고, main 도달과 디버그 UART 경로만 확인한 것이다.
@@ -113,8 +106,6 @@ Drive + Steering ECU가 RF Driver 입력을 읽어 `Driver_Input`으로 발행�
 | Test ID | Requirement ID | Test Method | Expected | Result | PASS/FAIL |
 |---|---|---|---|---|---|
 | T-DRV-001 | REQ-DRV-001 | RF(기어·조향·속도 요청) 신호 입력 | `Driver_Input` CAN 발행 | NOT RUN | TBD |
-| T-DRV-001a | REQ-DRV-001a | E-Stop 활성화 (CAN 연결 끊은 상태) | CAN 없이도 Motor Driver 즉시 disable | NOT RUN | TBD |
-| T-DRV-001b | REQ-DRV-001b | E-Stop 활성화 | `Driver_Input.estop_status=true` CAN 발행 | NOT RUN | TBD |
 | T-DRV-002 | REQ-DRV-002 | Dummy/real CAN command | Drive/Steering command 수신 | NOT RUN | TBD |
 | T-DRV-003 | REQ-DRV-003 | invalid/out-of-range command | actuator에 직접 적용되지 않음 | NOT RUN | TBD |
 | T-DRV-004 | REQ-DRV-004 | `Drive_Enable=false` | Motor safe state | NOT RUN | TBD |
@@ -200,7 +191,6 @@ Motor/Driver의 실제 전기적 한계를 확인하기 전 무리하게 최대 
 
 | Test ID | Fault / Edge Case | Expected Detection | Expected Safe/Recovery Action | Actual | Result |
 |---|---|---|---|---|---|
-| F-DRV-000 | E-Stop active + CAN cable 분리 | GPIO EXTI (CAN 무관) | Motor Driver Enable/STBY 즉시 disable | NOT RUN | TBD |
 | F-DRV-001 | VCU command timeout | last_rx timeout | Motor safe state + fault | NOT RUN | TBD |
 | F-DRV-002 | `Drive_Enable=false` while command exists | enable check | output disable | NOT RUN | TBD |
 | F-DRV-003 | speed request out-of-range | range validation | reject/clamp policy | NOT RUN | TBD |

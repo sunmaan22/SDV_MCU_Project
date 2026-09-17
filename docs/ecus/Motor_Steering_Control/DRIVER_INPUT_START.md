@@ -97,7 +97,7 @@ SPI 클럭과 radio data rate는 서로 다르다. 핀·SPI 클럭·RF 설정은
 | 세 요청 해석 | 기어/조향/속도 요청 매핑·범위·중립 기록 | NOT RUN |
 | 오류/두절 | 부팅 미수신, invalid, 송신기 OFF, 재연결 시 유효성 전이 확인 | NOT RUN |
 | C↔F 통합 | CAN 계약 확정 후 같은 payload를 양쪽에서 해석, F만 최종 명령 생성 | NOT RUN |
-| 출력 통합 | E-Stop·timeout·복구 검증 후 모터/서보 시험 | NOT RUN |
+| 출력 통합 | timeout·복구 검증 후 모터/서보 시험 (E-Stop은 2026-09-17 기능 삭제, FINAL_IMPLEMENTATION_SPEC.md 참고) | NOT RUN |
 
 송신기가 꺼져도 마지막 payload는 STM32 RAM에 남는다. 저장값을 다시 읽는 것만으로 수신 시각을 갱신하지 않는다. 새로운 유효 패킷이 timeout 안에 들어오지 않으면 입력을 invalid로 바꾸고, 송신기가 보낸 input_valid=false도 반영한다.
 
