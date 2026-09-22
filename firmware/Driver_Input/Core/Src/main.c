@@ -18,10 +18,12 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
+#include "task.h" /* uxTaskGetStackHighWaterMark */
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,7 +43,12 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+/* Tick rate is 1000Hz (FreeRTOSConfig.h) so 1 tick == 1ms. */
+#define CONTROL_TASK_PERIOD_MS       10U  /* TBD: 5~10ms 후보, Owner FROZEN 필요 (ARCHITECTURE.md 7.1) */
+#define DRIVER_INPUT_TASK_PERIOD_MS  10U  /* TBD: RF IRQ 핀 미배정 상태라 periodic polling, ARCHITECTURE.md 7.6 */
+#define CONTROL_LED_TOGGLE_PERIOD_MS    500U
+#define CONTROL_STACK_LOG_EVERY_N       100U
+#define DRIVER_INPUT_STACK_LOG_EVERY_N  100U
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -52,8 +59,35 @@ FDCAN_HandleTypeDef hfdcan1;
 
 SPI_HandleTypeDef hspi1;
 
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .priority = (osPriority_t) osPriorityNormal,
+  .stack_size = 128 * 4
+};
+/* Definitions for ControlTask */
+osThreadId_t ControlTaskHandle;
+const osThreadAttr_t ControlTask_attributes = {
+  .name = "ControlTask",
+  .priority = (osPriority_t) osPriorityAboveNormal,
+  .stack_size = 256 * 4
+};
+/* Definitions for DriverInputTask */
+osThreadId_t DriverInputTaskHandle;
+const osThreadAttr_t DriverInputTask_attributes = {
+  .name = "DriverInputTask",
+  .priority = (osPriority_t) osPriorityNormal,
+  .stack_size = 256 * 4
+};
 /* USER CODE BEGIN PV */
+volatile uint32_t g_controlCycleCount = 0;
+volatile uint32_t g_controlOverrunCount = 0;
+volatile uint32_t g_controlStackHighWaterMark = 0;
 
+volatile uint32_t g_driverInputCycleCount = 0;
+volatile uint32_t g_driverInputOverrunCount = 0;
+volatile uint32_t g_driverInputStackHighWaterMark = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -61,6 +95,10 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_SPI1_Init(void);
+void StartDefaultTask(void *argument);
+void StartControlTask(void *argument);
+void StartDriverInputTask(void *argument);
+
 /* USER CODE BEGIN PFP */
 static void NRF24_CSN_Low(void);
 static void NRF24_CSN_High(void);
@@ -170,6 +208,43 @@ int main(void)
   }
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* creation of ControlTask */
+  ControlTaskHandle = osThreadNew(StartControlTask, NULL, &ControlTask_attributes);
+
+  /* creation of DriverInputTask */
+  DriverInputTaskHandle = osThreadNew(StartDriverInputTask, NULL, &DriverInputTask_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
   /* Initialize leds */
   BSP_LED_Init(LED_GREEN);
 
@@ -251,6 +326,11 @@ int main(void)
   }
 
   /* USER CODE END BSP */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -431,6 +511,118 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE END 4 */
 
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartControlTask */
+/**
+* @brief Function implementing the ControlTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartControlTask */
+void StartControlTask(void *argument)
+{
+  /* USER CODE BEGIN StartControlTask */
+  uint32_t wakeTime = osKernelGetTickCount();
+  uint32_t ledToggleAccumMs = 0;
+
+  /* Motor PWM/Servo output: not yet implemented, Owner FROZEN 필요 (bench: RTOS skeleton only) */
+  for(;;)
+  {
+    wakeTime += CONTROL_TASK_PERIOD_MS;
+    if (osDelayUntil(wakeTime) != osOK)
+    {
+      /* Target tick already passed: previous cycle overran the period */
+      g_controlOverrunCount++;
+    }
+
+    g_controlCycleCount++;
+
+    ledToggleAccumMs += CONTROL_TASK_PERIOD_MS;
+    if (ledToggleAccumMs >= CONTROL_LED_TOGGLE_PERIOD_MS)
+    {
+      ledToggleAccumMs = 0;
+      BSP_LED_Toggle(LED_GREEN); /* bench heartbeat: task is alive */
+    }
+
+    if ((g_controlCycleCount % CONTROL_STACK_LOG_EVERY_N) == 0U)
+    {
+      g_controlStackHighWaterMark = (uint32_t)uxTaskGetStackHighWaterMark(NULL);
+    }
+  }
+  /* USER CODE END StartControlTask */
+}
+
+/* USER CODE BEGIN Header_StartDriverInputTask */
+/**
+* @brief Function implementing the DriverInputTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDriverInputTask */
+void StartDriverInputTask(void *argument)
+{
+  /* USER CODE BEGIN StartDriverInputTask */
+  uint32_t wakeTime = osKernelGetTickCount();
+
+  /* RF(nRF24L01) 패킷 읽기/Driver_Input 발행: 핀/패킷 레이아웃 TBD, Owner FROZEN 필요.
+   * IRQ 핀이 배정되면 이 periodic polling을 DriverInputNotify(Task Notification)
+   * 기반 event-driven으로 교체한다 (ARCHITECTURE.md 7.3, 7.4). */
+  for(;;)
+  {
+    wakeTime += DRIVER_INPUT_TASK_PERIOD_MS;
+    if (osDelayUntil(wakeTime) != osOK)
+    {
+      g_driverInputOverrunCount++;
+    }
+
+    g_driverInputCycleCount++;
+
+    if ((g_driverInputCycleCount % DRIVER_INPUT_STACK_LOG_EVERY_N) == 0U)
+    {
+      g_driverInputStackHighWaterMark = (uint32_t)uxTaskGetStackHighWaterMark(NULL);
+    }
+  }
+  /* USER CODE END StartDriverInputTask */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM6 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM6)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
